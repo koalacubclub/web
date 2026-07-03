@@ -8,10 +8,8 @@ test('landing page renders hero, reel feed and social links', async ({
 
   await expect(page).toHaveTitle(/koala cub club/i)
 
-  const heading = page.getByRole('heading', { level: 1 })
-  await expect(heading).toContainText(/she sees/i)
-
-  await expect(page.getByText(/a tabby with opinions/i).first()).toBeVisible()
+  // Hero: the Koala's Park mini game canvas
+  await expect(page.locator('canvas[aria-label*="mini game"]')).toBeVisible()
 
   // Reel feed: poster cards that link out to Instagram reels
   const reelLinks = page.locator('a[href*="instagram.com/reel/"]')
