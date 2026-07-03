@@ -6,68 +6,133 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+# Force JavaScript-based actions (pnpm/action-setup@v4 etc.) to run on Node 24.
+# GitHub is deprecating Node 20 in actions on 2026-09-16 and defaulting to
+# Node 24 on 2026-06-02 — opting in now silences the deprecation warning and
+# surfaces any Node-24-only breakage early.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel a run on main: parallel merges would cancel each other's
+  # required checks, leaving commits un-gated. Only supersede in-progress PR runs.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  build-test:
-    name: Lint, typecheck, test, build
+  # Jobs are grouped by COST/SETUP, not by task. The fast static checks are
+  # seconds each, so they share one install. test / build / e2e stay separate:
+  # they run on parallel runners (wall-clock ≈ slowest job, not the sum) and
+  # isolating them means a failure in one can't mask or block the others.
+
+  static:
+    # lint + typecheck + format, one install. `if: ${{ !cancelled() }}` runs
+    # every step even after an earlier one fails, so a lint error doesn't hide a
+    # typecheck error — you see all hygiene issues in a single pass.
+    name: static (lint + typecheck + format)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      - run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
-
       - name: Typecheck
+        if: ${{ !cancelled() }}
         run: pnpm typecheck
-
-      - name: Format check
+      - name: Format
+        if: ${{ !cancelled() }}
         run: pnpm format:check
 
-      - name: Unit tests
-        run: pnpm test:coverage
-
-      - name: Build
-        run: pnpm build
-
-  e2e:
-    name: Playwright e2e
+  test:
+    # Unit/integration suite, isolated from the static checks so a formatting nit
+    # can never mask a real test failure — and, on a parallel runner, at no extra
+    # wall-clock. Vitest annotates the failing file/line inline on the PR.
+    name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:coverage
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+  build:
+    # Production bundle. Own job so a build failure is immediately visible
+    # without expanding a combined check.
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
 
-      - name: Install Playwright browsers
+  e2e:
+    # Playwright functional tests — boots the app via playwright.config.ts's
+    # webServer and drives a real headless Chromium against the running stack.
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
-
       - name: Run Playwright tests
         run: pnpm test:e2e
-
-      - name: Upload Playwright report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  deploy:
+    # Production deploy to Vercel — gated on every check above. Vercel's own
+    # git auto-deploy for main is disabled (vercel.json → git.deploymentEnabled),
+    # so production only ships from here, after static + test + build + e2e pass.
+    # PR/branch preview deploys still happen via Vercel's git integration.
+    name: deploy (production)
+    needs: [static, test, build, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://www.koalacub.club
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Pull Vercel project settings
+        run: pnpm dlx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build with Vercel
+        run: pnpm dlx vercel@latest build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy prebuilt output to Vercel
+        run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
