@@ -224,12 +224,24 @@ export default function ParkGame() {
       g.keys[e.key.toLowerCase()] = false
     }
 
-    // Tap / click anywhere on the canvas to walk the cat there. Maps the
-    // pointer position through the canvas's displayed (scaled) size back to
-    // internal tile coords, then aims the cat's center at that spot.
+    // Tap / click on the game to walk the cat there. Listens on window (not the
+    // canvas) so it fires even if another element is layered over the fixed
+    // hero — the event still bubbles to window. Only acts when the tap lands
+    // within the canvas box and the hero is actually in view (not scrolled to
+    // the content below). Maps the pointer through the canvas's displayed
+    // (scaled) size back to internal tile coords, aiming at the cat's center.
     const handlePointerDown = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return
+      if (window.scrollY > window.innerHeight * 0.5) return
+      if (
+        e.clientX < rect.left ||
+        e.clientX > rect.right ||
+        e.clientY < rect.top ||
+        e.clientY > rect.bottom
+      ) {
+        return
+      }
       const px = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH
       const py = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
       g.target = {
@@ -240,7 +252,7 @@ export default function ParkGame() {
 
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('keyup', handleKeyUp)
-    canvas.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('pointerdown', handlePointerDown)
 
     let animId: number
 
@@ -1191,7 +1203,7 @@ export default function ParkGame() {
       cancelAnimationFrame(animId)
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
-      canvas.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('pointerdown', handlePointerDown)
     }
   }, [initObjects])
 
