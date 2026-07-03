@@ -1434,6 +1434,10 @@ export default function ParkGame() {
       ctx.save()
       ctx.translate(g.hudShift, 0)
       const pad = PIXEL * 0.28
+      const pillH = 46
+      // Sit the score pill just above the ground line rather than at the very
+      // top (where it overlapped the site header's wordmark).
+      const top = WORLD_OFFSET + PIXEL - pillH - PIXEL * 0.2
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const scoreText = `${g.score}`
@@ -1446,18 +1450,18 @@ export default function ParkGame() {
 
       ctx.fillStyle = 'rgba(20,16,12,0.5)'
       ctx.beginPath()
-      ctx.roundRect(pad, pad, pillW, 46, 12)
+      ctx.roundRect(pad, top, pillW, pillH, 12)
       ctx.fill()
 
       ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
       ctx.fillStyle = COLORS.fishBowl
-      ctx.fillText('★', pad + 12, pad + 16)
+      ctx.fillText('★', pad + 12, top + 16)
       ctx.fillStyle = COLORS.white
-      ctx.fillText(scoreText, pad + 30, pad + 16)
+      ctx.fillText(scoreText, pad + 30, top + 16)
 
       ctx.font = "500 13px 'Inter', system-ui, sans-serif"
       ctx.fillStyle = 'rgba(255,255,255,0.55)'
-      ctx.fillText(bestText, pad + 12, pad + 34)
+      ctx.fillText(bestText, pad + 12, top + 34)
       ctx.textBaseline = 'alphabetic'
       ctx.restore()
     }
