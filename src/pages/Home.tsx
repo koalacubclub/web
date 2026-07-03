@@ -9,7 +9,7 @@
  * Font: Cormorant Garamond (display) + Inter (body)
  */
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence, useInView, MotionConfig } from 'framer-motion'
 import {
   Instagram,
@@ -312,8 +312,55 @@ function FixedHero() {
       {/* The mini game — fills the header */}
       <ParkGame />
 
-      {/* Top social icons */}
-      <div className="absolute top-5 right-5 sm:top-7 sm:right-7 flex items-center gap-3 z-20">
+      {/* Wordmark, top-left — Cormorant Garamond display style, matching the
+          site's headline/footer branding. Drop shadow keeps it legible over
+          the game's night sky. */}
+      <div className="absolute top-4 left-5 sm:top-6 sm:left-8 z-20">
+        <p
+          className="text-[oklch(0.82_0.13_78)] text-2xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Koala Cub Club
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── HERO CONTROLS ──────────────────────────────────────────────────────────
+// The interactive hero UI (social links + scroll-down button) lives in its own
+// fixed overlay ABOVE the scrolling content (z-40) so nothing — the game canvas
+// or the content panel — can ever intercept its clicks. The wrapper is
+// pointer-events-none; only the actual controls opt back in, and they turn off
+// (and fade out) once the hero is scrolled out of view.
+function HeroControls() {
+  const [atTop, setAtTop] = useState(true)
+
+  useEffect(() => {
+    const onScroll = () => setAtTop(window.scrollY < window.innerHeight * 0.6)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const scrollToContent = () =>
+    document
+      .getElementById('main-content')
+      ?.scrollIntoView({ behavior: 'smooth' })
+
+  const interactive = atTop ? 'pointer-events-auto' : 'pointer-events-none'
+
+  return (
+    <div
+      className={`fixed inset-0 z-40 pointer-events-none transition-opacity duration-500 ${
+        atTop ? 'opacity-100' : 'opacity-0'
+      }`}
+      aria-hidden={!atTop}
+    >
+      {/* Social icons, top-right */}
+      <div
+        className={`absolute top-5 right-5 sm:top-7 sm:right-7 flex items-center gap-3 ${interactive}`}
+      >
         <a
           href="https://www.instagram.com/koalacubclub/"
           target="_blank"
@@ -334,36 +381,24 @@ function FixedHero() {
         </a>
       </div>
 
-      {/* Wordmark, top-left — Cormorant Garamond display style, matching the
-          site's headline/footer branding. Drop shadow keeps it legible over
-          the game's night sky. */}
-      <div className="absolute top-4 left-5 sm:top-6 sm:left-8 z-20">
-        <p
-          className="text-[oklch(0.82_0.13_78)] text-2xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
-          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-        >
-          Koala Cub Club
-        </p>
-      </div>
-
-      {/* Scroll hint */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2, duration: 0.8 }}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20"
+      {/* Scroll-to-content button, bottom-center */}
+      <button
+        type="button"
+        onClick={scrollToContent}
+        aria-label="Scroll to content"
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20 ${interactive}`}
       >
-        <motion.div
+        <motion.span
           animate={{ y: [0, 6, 0] }}
           transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20"
+          className="flex"
         >
           <ArrowDown
             className="h-5 w-5 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]"
             strokeWidth={2}
           />
-        </motion.div>
-      </motion.div>
+        </motion.span>
+      </button>
     </div>
   )
 }
@@ -600,6 +635,7 @@ export default function Home() {
         </a>
         <FixedHero />
         <ContentPanel />
+        <HeroControls />
       </div>
     </MotionConfig>
   )
