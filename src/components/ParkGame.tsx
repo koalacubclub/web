@@ -54,6 +54,89 @@ const COLORS = {
   charcoal: '#4A4A4A',
 }
 
+// Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
+// transparent); until then each falls back to its emoji so the game works now.
+type FoodTier = 'common' | 'uncommon' | 'rare' | 'legendary'
+interface FoodType {
+  key: string
+  label: string
+  emoji: string
+  points: number
+  weight: number // relative spawn frequency
+  tier: FoodTier
+}
+const FOODS: FoodType[] = [
+  {
+    key: 'treat',
+    label: 'Treat',
+    emoji: '🍪',
+    points: 5,
+    weight: 30,
+    tier: 'common',
+  },
+  {
+    key: 'fish',
+    label: 'Fish',
+    emoji: '🐟',
+    points: 10,
+    weight: 28,
+    tier: 'common',
+  },
+  {
+    key: 'cheese',
+    label: 'Cheese',
+    emoji: '🧀',
+    points: 15,
+    weight: 16,
+    tier: 'uncommon',
+  },
+  {
+    key: 'drumstick',
+    label: 'Drumstick',
+    emoji: '🍗',
+    points: 15,
+    weight: 16,
+    tier: 'uncommon',
+  },
+  {
+    key: 'shrimp',
+    label: 'Shrimp',
+    emoji: '🍤',
+    points: 20,
+    weight: 12,
+    tier: 'uncommon',
+  },
+  {
+    key: 'tin',
+    label: 'Cat food tin',
+    emoji: '🥫',
+    points: 25,
+    weight: 7,
+    tier: 'rare',
+  },
+  {
+    key: 'sushi',
+    label: 'Sushi',
+    emoji: '🍣',
+    points: 30,
+    weight: 6,
+    tier: 'rare',
+  },
+  {
+    key: 'goldfish',
+    label: 'Golden fish',
+    emoji: '🐠',
+    points: 50,
+    weight: 2,
+    tier: 'legendary',
+  },
+]
+const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
+  FOODS.map((f) => [f.key, f]),
+)
+const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
+const BEST_SCORE_KEY = 'kcc-park-best'
+
 interface GameObject {
   type: string
   x: number
@@ -81,6 +164,14 @@ interface Popup {
   life: number
 }
 
+interface Food {
+  key: string
+  x: number
+  y: number
+  born: number
+  life: number
+}
+
 export default function ParkGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameRef = useRef({
@@ -99,6 +190,12 @@ export default function ParkGame() {
     objects: [] as GameObject[],
     butterflies: [] as Butterfly[],
     popups: [] as Popup[],
+    foods: [] as Food[],
+    foodImages: {} as Record<string, HTMLImageElement>,
+    score: 0,
+    best: 0,
+    nextFoodAt: 180,
+    hudShift: 0, // canvas-px offset to keep the HUD pinned against the camera pan
     frameCount: 0,
   })
 
@@ -213,6 +310,18 @@ export default function ParkGame() {
     initObjects()
 
     const g = gameRef.current
+
+    // Restore best score; preload food sprites (emoji fallback until PNGs exist).
+    try {
+      g.best = Number(localStorage.getItem(BEST_SCORE_KEY)) || 0
+    } catch {
+      /* localStorage unavailable — ignore */
+    }
+    FOODS.forEach((f) => {
+      const img = new Image()
+      img.src = `/game/food/${f.key}.png`
+      g.foodImages[f.key] = img
+    })
 
     const handleKeyDown = (e: KeyboardEvent) => {
       g.keys[e.key.toLowerCase()] = true
@@ -1083,6 +1192,170 @@ export default function ParkGame() {
       })
     }
 
+    function spawnFood() {
+      // Weighted random pick.
+      let r = Math.random() * FOOD_TOTAL_WEIGHT
+      let pick = FOODS[0]
+      for (const f of FOODS) {
+        r -= f.weight
+        if (r <= 0) {
+          pick = f
+          break
+        }
+      }
+      // Find a free tile away from objects, other food, and the cat.
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const x = 1 + Math.floor(Math.random() * (MAP_COLS - 2))
+        const y = 2 + Math.floor(Math.random() * (GROUND_ROWS - 4))
+        const onObject = g.objects.some(
+          (o) =>
+            x + 0.5 >= o.x && x < o.x + o.w && y + 0.5 >= o.y && y < o.y + o.h,
+        )
+        if (onObject) continue
+        if (g.foods.some((f) => Math.hypot(f.x - x, f.y - y) < 1.2)) continue
+        if (Math.hypot(g.cat.x - x, g.cat.y - y) < 1.5) continue
+        g.foods.push({ key: pick.key, x, y, born: g.frameCount, life: 900 })
+        return
+      }
+    }
+
+    function updateFoods() {
+      // Spawn cadence: up to 3 on screen, every ~4–9s.
+      if (g.frameCount >= g.nextFoodAt && g.foods.length < 3) {
+        spawnFood()
+        g.nextFoodAt = g.frameCount + 240 + Math.floor(Math.random() * 300)
+      }
+      // Lifespan + collection.
+      const cat = g.cat
+      g.foods = g.foods.filter((f) => {
+        const age = g.frameCount - f.born
+        if (age > f.life) return false
+        if (age > 8 && Math.hypot(cat.x - f.x, cat.y - f.y) < 0.85) {
+          const def = FOODS_BY_KEY[f.key]
+          g.score += def.points
+          if (g.score > g.best) {
+            g.best = g.score
+            try {
+              localStorage.setItem(BEST_SCORE_KEY, String(g.best))
+            } catch {
+              /* ignore */
+            }
+          }
+          g.popups.push({
+            text: `+${def.points} ${def.label}`,
+            x: (f.x + 0.5) * PIXEL,
+            y: f.y * PIXEL - 6,
+            life: 80,
+          })
+          cat.interacting = true // little hearts on pickup
+          return false
+        }
+        return true
+      })
+    }
+
+    function drawFoods() {
+      if (!ctx) return
+      g.foods.forEach((f) => {
+        const def = FOODS_BY_KEY[f.key]
+        const cx = (f.x + 0.5) * PIXEL
+        const baseY = (f.y + 0.5) * PIXEL
+        const age = g.frameCount - f.born
+        const ease = 1 - Math.pow(1 - Math.min(1, age / 12), 3) // pop-in
+        const bob = Math.sin(g.frameCount * 0.08 + f.x * 1.3) * 3
+        const remaining = f.life - age
+        const blink =
+          remaining < 150 && Math.floor(g.frameCount / 6) % 2 === 0 ? 0.4 : 1
+        const size = PIXEL * 0.9 * ease
+        const cy = baseY + bob
+        ctx.globalAlpha = blink
+
+        // Soft glow (gold for the legendary, warm cream otherwise).
+        const glowCol = def.tier === 'legendary' ? '255,215,80' : '255,240,190'
+        const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, size)
+        glow.addColorStop(0, `rgba(${glowCol},0.45)`)
+        glow.addColorStop(1, `rgba(${glowCol},0)`)
+        ctx.fillStyle = glow
+        ctx.beginPath()
+        ctx.arc(cx, cy, size, 0, Math.PI * 2)
+        ctx.fill()
+
+        // Ground shadow.
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'
+        ctx.beginPath()
+        ctx.ellipse(
+          cx,
+          baseY + size * 0.42,
+          size * 0.3,
+          size * 0.1,
+          0,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+
+        // Sprite if the PNG loaded, else emoji fallback.
+        const img = g.foodImages[f.key]
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size)
+        } else {
+          ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(def.emoji, cx, cy)
+          ctx.textBaseline = 'alphabetic'
+        }
+
+        // Twinkle sparkle.
+        const tw = (Math.sin(g.frameCount * 0.15 + f.x) + 1) / 2
+        ctx.fillStyle = `rgba(255,255,240,${0.4 + tw * 0.5})`
+        ctx.beginPath()
+        ctx.arc(
+          cx + size * 0.34,
+          cy - size * 0.36,
+          1.5 + tw * 1.5,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+
+        ctx.globalAlpha = 1
+      })
+    }
+
+    function drawHUD() {
+      if (!ctx) return
+      ctx.save()
+      ctx.translate(g.hudShift, 0)
+      const pad = PIXEL * 0.28
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      const scoreText = `${g.score}`
+      ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
+      const scoreW = ctx.measureText(scoreText).width
+      ctx.font = "500 13px 'Inter', system-ui, sans-serif"
+      const bestText = `Best ${g.best}`
+      const bestW = ctx.measureText(bestText).width
+      const pillW = Math.max(scoreW + 30, bestW) + 22
+
+      ctx.fillStyle = 'rgba(20,16,12,0.5)'
+      ctx.beginPath()
+      ctx.roundRect(pad, pad, pillW, 46, 12)
+      ctx.fill()
+
+      ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
+      ctx.fillStyle = COLORS.fishBowl
+      ctx.fillText('★', pad + 12, pad + 16)
+      ctx.fillStyle = COLORS.white
+      ctx.fillText(scoreText, pad + 30, pad + 16)
+
+      ctx.font = "500 13px 'Inter', system-ui, sans-serif"
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'
+      ctx.fillText(bestText, pad + 12, pad + 34)
+      ctx.textBaseline = 'alphabetic'
+      ctx.restore()
+    }
+
     function updateCat() {
       const cat = g.cat
       const speed = 0.035
@@ -1206,6 +1479,7 @@ export default function ParkGame() {
       const overflow = displayW - viewport
       if (overflow <= 0.5) {
         canvas.style.transform = 'translateX(0px)'
+        g.hudShift = 0
         return
       }
       const catDisplayX = ((g.cat.x + 0.5) / MAP_COLS) * displayW
@@ -1216,6 +1490,9 @@ export default function ParkGame() {
         Math.max(viewport - displayW, viewport / 2 - catDisplayX),
       )
       canvas.style.transform = `translateX(${desiredLeft - centeredLeft}px)`
+      // Canvas left edge sits at viewport x = desiredLeft (display px); shift the
+      // HUD by that (in canvas px) so it stays pinned to the viewport's left.
+      g.hudShift = -desiredLeft * (CANVAS_WIDTH / displayW)
     }
 
     function gameLoop() {
@@ -1238,6 +1515,7 @@ export default function ParkGame() {
       drawObjects()
       drawButterflies()
       updateCat()
+      updateFoods()
       drawCat()
       ctx!.restore()
 
@@ -1254,10 +1532,13 @@ export default function ParkGame() {
       ctx!.translate(0, WORLD_OFFSET)
       drawStarsAndMoon()
       drawDreamBubble()
+      drawFoods()
       drawPopups()
       ctx!.restore()
 
       updateCamera()
+      // HUD last, pinned against the horizontal camera pan (see updateCamera).
+      drawHUD()
 
       animId = requestAnimationFrame(gameLoop)
     }
@@ -1280,7 +1561,7 @@ export default function ParkGame() {
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       <canvas
         ref={canvasRef}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
         className="block cursor-pointer select-none drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
