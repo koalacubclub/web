@@ -149,7 +149,7 @@ function ReelCard({
 // fills the hero. Move Koala with arrow keys / WASD (or the on-screen D-pad).
 function FixedHero() {
   return (
-    <div className="fixed inset-0 w-full h-dvh z-0 bg-[oklch(0.12_0.008_60)]">
+    <div className="fixed inset-0 w-full h-dvh z-0 select-none bg-[oklch(0.12_0.008_60)]">
       {/* Ambient depth behind the letterboxed game canvas */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(42,61,94,0.35)_0%,transparent_60%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55)_100%)]" />

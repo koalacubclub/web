@@ -268,6 +268,11 @@ export default function ParkGame() {
       pointerActive = false
       g.target = null
     }
+    // While dragging the cat, block the browser's text/element selection so a
+    // press-drag doesn't highlight the wordmark or other page content.
+    const handleSelectStart = (e: Event) => {
+      if (pointerActive) e.preventDefault()
+    }
 
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('keyup', handleKeyUp)
@@ -275,6 +280,7 @@ export default function ParkGame() {
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerUp)
+    document.addEventListener('selectstart', handleSelectStart)
 
     let animId: number
 
@@ -1242,6 +1248,7 @@ export default function ParkGame() {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
+      document.removeEventListener('selectstart', handleSelectStart)
     }
   }, [initObjects])
 
