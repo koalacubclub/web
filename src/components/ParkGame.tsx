@@ -323,6 +323,14 @@ export default function ParkGame() {
       g.foodImages[f.key] = img
     })
 
+    // Offscreen canvas holding the fully static sky + ground. Rendered once,
+    // then blitted each frame instead of recomputing the grass blobs, sand
+    // texture, and gradients every frame.
+    const bgCanvas = document.createElement('canvas')
+    bgCanvas.width = CANVAS_WIDTH
+    bgCanvas.height = CANVAS_HEIGHT
+    const bgCtx = bgCanvas.getContext('2d')
+
     const handleKeyDown = (e: KeyboardEvent) => {
       g.keys[e.key.toLowerCase()] = true
       if (
@@ -355,6 +363,9 @@ export default function ParkGame() {
       g.target = { x: px / PIXEL - 0.5, y: (py - WORLD_OFFSET) / PIXEL - 0.5 }
     }
     const handlePointerDown = (e: PointerEvent) => {
+      // Ignore presses on UI controls (social links, etc.) so the game doesn't
+      // steal them or move the cat as a side effect.
+      if (e.target instanceof Element && e.target.closest('a, button')) return
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return
       if (window.scrollY > window.innerHeight * 0.5) return
@@ -391,7 +402,7 @@ export default function ParkGame() {
     window.addEventListener('pointercancel', handlePointerUp)
     document.addEventListener('selectstart', handleSelectStart)
 
-    let animId: number
+    let animId = 0
 
     function drawGround() {
       if (!ctx) return
@@ -1469,37 +1480,48 @@ export default function ParkGame() {
       })
     }
 
+    // Camera measurements are cached and only refreshed on resize, so panning
+    // doesn't force a layout reflow (offsetWidth read) every frame.
+    let viewportW = window.innerWidth
+    let displayW = canvas.offsetWidth
+    let lastTx = NaN
+    const measure = () => {
+      viewportW = window.innerWidth
+      displayW = canvas.offsetWidth
+    }
+
     // Horizontal camera: when the canvas is wider than the viewport (its sides
     // are cropped), pan it to keep the cat centered — clamped so we never scroll
     // past the map's left/right edge. No-op when the whole width already fits.
     function updateCamera() {
       if (!canvas) return
-      const viewport = window.innerWidth
-      const displayW = canvas.offsetWidth
-      const overflow = displayW - viewport
-      if (overflow <= 0.5) {
-        canvas.style.transform = 'translateX(0px)'
+      let tx = 0
+      if (displayW - viewportW > 0.5) {
+        const catDisplayX = ((g.cat.x + 0.5) / MAP_COLS) * displayW
+        const centeredLeft = (viewportW - displayW) / 2
+        // Put the cat at viewport center, clamped so the canvas still covers it.
+        const desiredLeft = Math.min(
+          0,
+          Math.max(viewportW - displayW, viewportW / 2 - catDisplayX),
+        )
+        tx = desiredLeft - centeredLeft
+        // Shift the HUD by the canvas left edge (in canvas px) so it stays
+        // pinned to the viewport's left.
+        g.hudShift = -desiredLeft * (CANVAS_WIDTH / displayW)
+      } else {
         g.hudShift = 0
-        return
       }
-      const catDisplayX = ((g.cat.x + 0.5) / MAP_COLS) * displayW
-      const centeredLeft = (viewport - displayW) / 2
-      // Put the cat at viewport center, clamped so the canvas still covers it.
-      const desiredLeft = Math.min(
-        0,
-        Math.max(viewport - displayW, viewport / 2 - catDisplayX),
-      )
-      canvas.style.transform = `translateX(${desiredLeft - centeredLeft}px)`
-      // Canvas left edge sits at viewport x = desiredLeft (display px); shift the
-      // HUD by that (in canvas px) so it stays pinned to the viewport's left.
-      g.hudShift = -desiredLeft * (CANVAS_WIDTH / displayW)
+      // Only touch the DOM when the pan actually changes.
+      if (tx !== lastTx) {
+        canvas.style.transform = `translateX(${tx}px)`
+        lastTx = tx
+      }
     }
 
-    function gameLoop() {
-      g.frameCount++
+    // Bake the fully static sky + ground into the offscreen canvas once.
+    function renderStaticBackground() {
+      if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-
-      // Sky fills the top of the canvas down to the horizon (screen space).
       const horizon = WORLD_OFFSET + PIXEL * 1.8
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
       skyGrad.addColorStop(0, COLORS.sky)
@@ -1507,11 +1529,30 @@ export default function ParkGame() {
       skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
       ctx!.fillStyle = skyGrad
       ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
-
-      // The park world is pushed down so the sky has room above it.
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
+      ctx!.restore()
+      bgCtx.drawImage(canvas, 0, 0)
+    }
+    renderStaticBackground()
+
+    // Only animate while the game is on screen and the tab is visible.
+    let onScreen = window.scrollY < window.innerHeight
+    let tabVisible = !document.hidden
+    const active = () => onScreen && tabVisible
+
+    function gameLoop() {
+      animId = 0
+      g.frameCount++
+      ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+      // Pre-rendered static sky + ground.
+      ctx!.drawImage(bgCanvas, 0, 0)
+
+      // Dynamic world, pushed down so the sky has room above it.
+      ctx!.save()
+      ctx!.translate(0, WORLD_OFFSET)
       drawObjects()
       drawButterflies()
       updateCat()
@@ -1526,8 +1567,7 @@ export default function ParkGame() {
       ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       ctx!.restore()
 
-      // Above overlay, all in the shifted world space so the stars/moon sit
-      // just above the ground rather than at the very top of the canvas.
+      // Above overlay, in the shifted world space (stars/moon just above ground).
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawStarsAndMoon()
@@ -1540,10 +1580,35 @@ export default function ParkGame() {
       // HUD last, pinned against the horizontal camera pan (see updateCamera).
       drawHUD()
 
-      animId = requestAnimationFrame(gameLoop)
+      if (active()) animId = requestAnimationFrame(gameLoop)
     }
 
-    gameLoop()
+    const ensureRunning = () => {
+      if (active() && !animId) animId = requestAnimationFrame(gameLoop)
+    }
+    // The hero is position:fixed, so it always intersects the viewport
+    // geometrically — track scroll to pause once it's covered by the content.
+    const updateOnScreen = () => {
+      const v = window.scrollY < window.innerHeight
+      if (v !== onScreen) {
+        onScreen = v
+        ensureRunning()
+      }
+    }
+    const handleVisibility = () => {
+      tabVisible = !document.hidden
+      ensureRunning()
+    }
+    const handleScroll = () => updateOnScreen()
+    const handleResize = () => {
+      measure()
+      updateOnScreen()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('resize', handleResize)
+
+    ensureRunning()
 
     return () => {
       cancelAnimationFrame(animId)
@@ -1554,11 +1619,14 @@ export default function ParkGame() {
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
       document.removeEventListener('selectstart', handleSelectStart)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleResize)
     }
   }, [initObjects])
 
   return (
-    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
       <canvas
         ref={canvasRef}
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
