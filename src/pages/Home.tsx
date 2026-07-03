@@ -179,9 +179,14 @@ function FixedHero() {
         </a>
       </div>
 
-      {/* Wordmark, top-left */}
-      <div className="absolute top-5 left-5 sm:top-7 sm:left-8 z-20">
-        <p className="text-[oklch(0.75_0.12_80)] text-[10px] sm:text-xs uppercase tracking-[0.3em] font-light">
+      {/* Wordmark, top-left — Cormorant Garamond display style, matching the
+          site's headline/footer branding. Drop shadow keeps it legible over
+          the game's night sky. */}
+      <div className="absolute top-4 left-5 sm:top-6 sm:left-8 z-20">
+        <p
+          className="text-[oklch(0.82_0.13_78)] text-2xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
           Koala Cub Club
         </p>
       </div>
