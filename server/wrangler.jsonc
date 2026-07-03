@@ -4,6 +4,9 @@
   "main": "src/worker.ts",
   "compatibility_date": "2025-02-01",
   "observability": { "enabled": true },
+  // We serve only via the game.koalacub.club custom domain, so no workers.dev
+  // route is needed (also avoids requiring a workers.dev subdomain on the acct).
+  "workers_dev": false,
   "durable_objects": {
     "bindings": [{ "name": "GAME_WORLD", "class_name": "GameWorld" }]
   },
@@ -17,6 +20,7 @@
   },
   "env": {
     "production": {
+      "workers_dev": false,
       "vars": {
         "ENVIRONMENT": "production",
         "ALLOWED_ORIGINS": "https://www.koalacub.club,https://koalacub.club"
