@@ -53,7 +53,9 @@ The "feed" section shows Instagram reels from
 [@koalacubclub](https://www.instagram.com/koalacubclub/). Each card is a **local
 poster image** (`public/reels/<shortcode>.jpg`) that links out to the reel on
 instagram.com — no third-party embed scripts, so it stays fast. The list is a
-point-in-time snapshot defined by the `REELS` array in `src/pages/Home.tsx`.
+point-in-time snapshot defined by the `REELS` array in `src/data/reels.ts` (the
+single source of truth — the React feed and the build-time crawlable `<noscript>`
+in `vite.config.ts` both read from it, so they never drift).
 
 Refreshing is a **semi-manual, agent-assisted process** — deliberately not an
 automated script. Instagram blocks headless / logged-out scraping, so it needs a
@@ -79,8 +81,9 @@ tooling used to seed the feed originally). Steps:
    shortcode is the `…/reel/<shortcode>/` segment (portrait 9:16 works best).
    Instagram cover URLs are signed and expire, so download them promptly.
 3. Add/replace entries in the `REELS` array (`{ code, caption }`) in
-   `src/pages/Home.tsx`, newest first. Keep captions short (they truncate to one
-   line); strip the hashtags.
+   `src/data/reels.ts`, newest first. Keep captions short (they truncate to one
+   line); strip the hashtags. The crawlable `<noscript>` regenerates from this on
+   the next build — no other edits needed.
 
 > Note: the header/footer still link to both Instagram and TikTok. TikTok
 > currently lags behind on uploads, so the feed is sourced from Instagram.
