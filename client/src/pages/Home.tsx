@@ -450,10 +450,16 @@ function OrganicEdge() {
 // ─── CONTENT PANEL ──────────────────────────────────────────────────────────
 function ContentPanel() {
   return (
-    <div id="main-content" className="relative z-10">
+    <div className="relative z-10">
       {/* Spacer for hero — pointer-events-none so taps/clicks reach the game
           canvas (and hero social icons) sitting behind it. */}
       <div className="h-dvh pointer-events-none" />
+
+      {/* Scroll anchor for the hero's down-arrow and the skip link. It sits
+          AFTER the full-viewport hero spacer, so scrolling to it lands at the
+          start of the real content instead of the top of the page (which the
+          fixed hero covers — scrolling there is a no-op). */}
+      <div id="main-content" />
 
       {/* Organic wave transition */}
       <OrganicEdge />
