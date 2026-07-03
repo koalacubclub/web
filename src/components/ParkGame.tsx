@@ -1196,6 +1196,28 @@ export default function ParkGame() {
       })
     }
 
+    // Horizontal camera: when the canvas is wider than the viewport (its sides
+    // are cropped), pan it to keep the cat centered — clamped so we never scroll
+    // past the map's left/right edge. No-op when the whole width already fits.
+    function updateCamera() {
+      if (!canvas) return
+      const viewport = window.innerWidth
+      const displayW = canvas.offsetWidth
+      const overflow = displayW - viewport
+      if (overflow <= 0.5) {
+        canvas.style.transform = 'translateX(0px)'
+        return
+      }
+      const catDisplayX = ((g.cat.x + 0.5) / MAP_COLS) * displayW
+      const centeredLeft = (viewport - displayW) / 2
+      // Put the cat at viewport center, clamped so the canvas still covers it.
+      const desiredLeft = Math.min(
+        0,
+        Math.max(viewport - displayW, viewport / 2 - catDisplayX),
+      )
+      canvas.style.transform = `translateX(${desiredLeft - centeredLeft}px)`
+    }
+
     function gameLoop() {
       g.frameCount++
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -1234,6 +1256,8 @@ export default function ParkGame() {
       drawDreamBubble()
       drawPopups()
       ctx!.restore()
+
+      updateCamera()
 
       animId = requestAnimationFrame(gameLoop)
     }
