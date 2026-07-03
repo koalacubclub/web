@@ -9,13 +9,11 @@
  * Font: Cormorant Garamond (display) + Inter (body)
  */
 
-import { useRef, useMemo, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { motion, useInView, MotionConfig } from 'framer-motion'
 import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
-
-// Assets (served from /public)
-const HERO_IMAGE = '/hero.webp'
+import ParkGame from '@/components/ParkGame'
 
 // Instagram reels. Posters live in /public/reels (downloaded from @koalacubclub);
 // each card links out to the reel on instagram.com. This is a point-in-time
@@ -146,84 +144,18 @@ function ReelCard({
   )
 }
 
-// ─── FLOATING PARTICLES ─────────────────────────────────────────────────────
-function FloatingParticles() {
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 30 }).map((_, i) => ({
-        id: i,
-        size: 2.5 + ((i * 7) % 5) * 1.2,
-        left: 3 + ((i * 31) % 94),
-        top: 5 + ((i * 47) % 90),
-        isGold: i % 2 === 0,
-        yTravel: -(40 + ((i * 13) % 60)),
-        xTravel: ((i * 9) % 30) - 15,
-        duration: 5 + ((i * 3) % 7),
-        delay: (i * 0.5) % 4,
-      })),
-    [],
-  )
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none z-[5]">
-      {particles.map((p) => (
-        <motion.div
-          key={p.id}
-          className="absolute rounded-full"
-          style={{
-            width: `${p.size}px`,
-            height: `${p.size}px`,
-            left: `${p.left}%`,
-            top: `${p.top}%`,
-            background: p.isGold
-              ? 'oklch(0.80 0.14 75 / 0.7)'
-              : 'rgba(255,255,255,0.5)',
-            boxShadow: p.isGold
-              ? '0 0 12px 2px oklch(0.80 0.14 75 / 0.5)'
-              : '0 0 8px 1px rgba(255,255,255,0.3)',
-          }}
-          animate={{
-            y: [0, p.yTravel, 0],
-            x: [0, p.xTravel, 0],
-            opacity: [0.3, 0.9, 0.3],
-            scale: [0.8, 1.4, 0.8],
-          }}
-          transition={{
-            duration: p.duration,
-            repeat: Infinity,
-            delay: p.delay,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-// ─── FIXED HERO ─────────────────────────────────────────────────────────────
+// ─── FIXED HERO (mini-game) ─────────────────────────────────────────────────
+// The header hosts "Koala's Park" — an interactive pixel-art mini game that
+// fills the hero. Move Koala with arrow keys / WASD (or the on-screen D-pad).
 function FixedHero() {
   return (
-    <div className="fixed inset-0 w-full h-dvh z-0">
-      <img
-        src={HERO_IMAGE}
-        alt="Koala lounging on her window perch"
-        className="w-full h-full object-cover object-[65%_center] sm:object-center"
-      />
+    <div className="fixed inset-0 w-full h-dvh z-0 bg-[oklch(0.12_0.008_60)]">
+      {/* Ambient depth behind the letterboxed game canvas */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(42,61,94,0.35)_0%,transparent_60%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55)_100%)]" />
 
-      {/* Vignette */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,rgba(0,0,0,0.5)_100%)]" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-black/10" />
-
-      {/* Grain */}
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none mix-blend-overlay"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-        }}
-      />
-
-      {/* Floating particles — luminous dust motes */}
-      <FloatingParticles />
+      {/* The mini game — fills the header */}
+      <ParkGame />
 
       {/* Top social icons */}
       <div className="absolute top-5 right-5 sm:top-7 sm:right-7 flex items-center gap-3 z-20">
@@ -247,41 +179,11 @@ function FixedHero() {
         </a>
       </div>
 
-      {/* Hero text */}
-      <div className="absolute inset-0 flex flex-col justify-end pb-32 sm:pb-40 lg:pb-44 z-10">
-        <div className="container">
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="text-[oklch(0.75_0.12_80)] text-xs sm:text-sm uppercase tracking-[0.3em] font-light mb-4"
-          >
-            Koala Cub Club
-          </motion.p>
-
-          <motion.h1
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1.2, delay: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            className="text-white text-5xl sm:text-7xl md:text-8xl lg:text-[9rem] xl:text-[10rem] leading-[0.85] tracking-tight max-w-5xl"
-            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
-          >
-            She sees
-            <br />
-            <span className="italic font-light text-[oklch(0.75_0.12_80)]">
-              you.
-            </span>
-          </motion.h1>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.8, delay: 1.2, ease: [0.16, 1, 0.3, 1] }}
-            className="text-white/40 text-sm font-light mt-5 max-w-xs tracking-wide"
-          >
-            A tabby with opinions. Zero regard for personal space.
-          </motion.p>
-        </div>
+      {/* Wordmark, top-left */}
+      <div className="absolute top-5 left-5 sm:top-7 sm:left-8 z-20">
+        <p className="text-[oklch(0.75_0.12_80)] text-[10px] sm:text-xs uppercase tracking-[0.3em] font-light">
+          Koala Cub Club
+        </p>
       </div>
 
       {/* Scroll hint */}
@@ -289,7 +191,7 @@ function FixedHero() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 2, duration: 0.8 }}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10"
+        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20"
       >
         <motion.div
           animate={{ y: [0, 6, 0] }}
@@ -302,62 +204,10 @@ function FixedHero() {
   )
 }
 
-// ─── WALKING CAT ────────────────────────────────────────────────────────
-// Clean side-profile silhouette (facing its direction of travel) that trots
-// along the wave crest — replaces the old photo cutout that looked out of place.
-function CatSilhouette({ className = '' }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 104 60"
-      className={className}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      {/* tail, curling up behind */}
-      <path d="M20 36 C4 36 2 12 16 8 C9 15 13 28 30 30 Z" />
-      {/* body */}
-      <ellipse cx="50" cy="34" rx="30" ry="13" />
-      {/* haunch */}
-      <circle cx="28" cy="34" r="15" />
-      {/* head */}
-      <circle cx="82" cy="28" r="11" />
-      {/* ears, two upright triangles with a valley between */}
-      <path d="M72 18 L75 3 L83 16 Z" />
-      <path d="M85 16 L90 3 L94 18 Z" />
-      {/* legs, mid-stride */}
-      <rect x="24" y="44" width="7" height="15" rx="3.5" />
-      <rect x="40" y="45" width="7" height="14" rx="3.5" />
-      <rect x="62" y="45" width="7" height="14" rx="3.5" />
-      <rect x="76" y="44" width="7" height="15" rx="3.5" />
-    </svg>
-  )
-}
-
-function WalkingCat() {
-  return (
-    <motion.div
-      className="absolute bottom-2 z-20 pointer-events-none text-[oklch(0.78_0.13_78)]"
-      style={{ width: '52px', height: '30px' }}
-      animate={{
-        x: ['-80px', 'calc(100vw + 80px)'],
-        y: [0, -4, 0, -3, 0, -4, 0, -3, 0],
-      }}
-      transition={{
-        x: { duration: 16, repeat: Infinity, ease: 'linear' },
-        y: { duration: 0.6, repeat: Infinity, ease: 'easeInOut' },
-      }}
-    >
-      <CatSilhouette className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.5)]" />
-    </motion.div>
-  )
-}
-
 // ─── ANIMATED ORGANIC WAVE EDGE ─────────────────────────────────────────────
 function OrganicEdge() {
   return (
     <div className="relative w-full h-24 sm:h-32 lg:h-40 -mb-1">
-      {/* Koala trotting along the wave */}
-      <WalkingCat />
       {/* Back wave — slower, offset animation */}
       <svg
         viewBox="0 0 1440 120"
