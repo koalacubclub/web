@@ -224,12 +224,22 @@ export default function ParkGame() {
       g.keys[e.key.toLowerCase()] = false
     }
 
-    // Tap / click on the game to walk the cat there. Listens on window (not the
-    // canvas) so it fires even if another element is layered over the fixed
-    // hero — the event still bubbles to window. Only acts when the tap lands
-    // within the canvas box and the hero is actually in view (not scrolled to
-    // the content below). Maps the pointer through the canvas's displayed
-    // (scaled) size back to internal tile coords, aiming at the cat's center.
+    // Press-and-hold (or drag) on the game to walk the cat toward the pointer;
+    // release to stop. Listens on window (not the canvas) so it works even if
+    // another element is layered over the fixed hero — events still bubble to
+    // window. Only engages when the press starts inside the canvas box and the
+    // hero is actually in view (not scrolled to the content below).
+    let pointerActive = false
+    const aimAtPointer = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      // Clamp to the canvas box so dragging past an edge keeps steering there.
+      const cx = Math.min(Math.max(e.clientX, rect.left), rect.right)
+      const cy = Math.min(Math.max(e.clientY, rect.top), rect.bottom)
+      const px = ((cx - rect.left) / rect.width) * CANVAS_WIDTH
+      const py = ((cy - rect.top) / rect.height) * CANVAS_HEIGHT
+      g.target = { x: px / PIXEL - 0.5, y: py / PIXEL - 0.5 }
+    }
     const handlePointerDown = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return
@@ -242,17 +252,24 @@ export default function ParkGame() {
       ) {
         return
       }
-      const px = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH
-      const py = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
-      g.target = {
-        x: px / PIXEL - 0.5,
-        y: py / PIXEL - 0.5,
-      }
+      pointerActive = true
+      aimAtPointer(e)
+    }
+    const handlePointerMove = (e: PointerEvent) => {
+      if (pointerActive) aimAtPointer(e)
+    }
+    // Release / cancel stops the cat wherever it is.
+    const handlePointerUp = () => {
+      pointerActive = false
+      g.target = null
     }
 
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('keyup', handleKeyUp)
     window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
 
     let animId: number
 
@@ -1062,7 +1079,7 @@ export default function ParkGame() {
 
     function updateCat() {
       const cat = g.cat
-      const speed = 0.06
+      const speed = 0.035
       let moving = false
       let newX = cat.x
       let newY = cat.y
@@ -1204,6 +1221,9 @@ export default function ParkGame() {
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
     }
   }, [initObjects])
 
@@ -1211,7 +1231,7 @@ export default function ParkGame() {
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       <canvas
         ref={canvasRef}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or tap where you want her to go."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer."
         className="block cursor-pointer drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
