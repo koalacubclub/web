@@ -1583,15 +1583,24 @@ export default function ParkGame() {
       })
     }
 
-    // Camera measurements are cached and only refreshed on resize, so panning
-    // doesn't force a layout reflow (offsetWidth read) every frame.
-    let viewportW = window.innerWidth
-    let displayW = canvas.offsetWidth
+    // Camera measurements are cached and refreshed on resize / any canvas box
+    // change (see the ResizeObserver below), so panning doesn't force a layout
+    // reflow (offsetWidth read) every frame.
+    //
+    // viewportW is measured from the canvas's parent (the fixed hero fills the
+    // viewport), NOT window.innerWidth: innerWidth *includes* the vertical
+    // scrollbar, but the canvas is centered inside the scrollbar-excluded
+    // content box. Using innerWidth made the right-edge clamp (viewportW -
+    // displayW) overshoot by the scrollbar width, so the camera stopped short of
+    // the right edge and Koala could slide off-screen to the right.
+    let viewportW = 0
+    let displayW = 0
     let lastTx = NaN
     const measure = () => {
-      viewportW = window.innerWidth
+      viewportW = canvas.parentElement?.clientWidth || window.innerWidth
       displayW = canvas.offsetWidth
     }
+    measure()
 
     // Render the canvas near device resolution (capped) and draw in logical
     // 960x816 coords via a context scale. This replaces the old low-res backing
@@ -1740,6 +1749,23 @@ export default function ParkGame() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', handleResize)
 
+    // Refresh the cached camera measurements on ANY change to the canvas box —
+    // not just window 'resize'. A scrollbar appearing, a DPR change, or the
+    // mobile URL-bar / svh re-resolving all change displayW without firing
+    // 'resize', which would otherwise leave a stale measurement and make the
+    // camera pan the wrong amount. The observer only writes cached values (and
+    // re-sizes the backing store); it triggers no per-frame reflow. Changing the
+    // drawing-buffer size in sizeBacking() doesn't alter the element's CSS box,
+    // so this can't feed back into the observer.
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            measure()
+            sizeBacking()
+          })
+        : null
+    ro?.observe(canvas)
+
     ensureRunning()
 
     return () => {
@@ -1758,6 +1784,7 @@ export default function ParkGame() {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      ro?.disconnect()
       clearHold()
       document.body.classList.remove('kcc-dragging')
     }

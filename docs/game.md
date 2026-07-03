@@ -29,7 +29,34 @@ food PNGs.
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
-  sliding with the pan.
+  sliding with the pan. Details of `updateCamera()`:
+  - **Fit gate:** panning is a no-op unless the canvas is actually wider than the
+    viewport (`displayW - viewportW > 0.5`) — when the whole map fits, the
+    transform stays at `0` and `g.hudShift = 0`.
+  - **Clamped follow:** the canvas is laid out centered, so its left edge sits at
+    `centeredLeft = (viewportW - displayW) / 2`. The camera picks a target left
+    edge that puts Koala at viewport-center (`viewportW/2 - catDisplayX`),
+    **clamped to `[viewportW - displayW, 0]`** so it never scrolls past the map's
+    left (`> 0`) or right (`< viewportW - displayW`) edge:
+    `desiredLeft = min(0, max(viewportW - displayW, viewportW/2 - catDisplayX))`.
+    The applied transform is the delta from the centered layout,
+    `tx = desiredLeft - centeredLeft`, and it's written to
+    `canvas.style.transform` **only when `tx` actually changes** (`lastTx`).
+  - **HUD counter-pan:** `g.hudShift = -desiredLeft * (CANVAS_WIDTH / displayW)`
+    converts the pan back into logical canvas px so `drawHUD()` can offset the
+    score pill and keep it pinned to the viewport's left.
+  - **No per-frame reflow:** `viewportW` / `displayW` are cached, read from a
+    `measure()` helper on setup and refreshed by a **`ResizeObserver`** on the
+    canvas (plus the window `resize` handler) — the loop never reads `offsetWidth`.
+  - **Measurement gotcha:** `viewportW` is measured from
+    `canvas.parentElement.clientWidth`, **not `window.innerWidth`** — the latter
+    includes the vertical scrollbar, but the canvas is centered in the
+    scrollbar-excluded content box. Using `innerWidth` made the right clamp
+    overshoot by the scrollbar width, so the camera stopped short of the right
+    edge and Koala could slide off-screen going right. The `ResizeObserver` also
+    matters here: a scrollbar appearing or a DPR / mobile `svh` change resizes the
+    canvas **without** firing window `resize`, which would otherwise leave a stale
+    `displayW`.
 - **Cat idle states:** standing → **lying** after ~10s idle → **sleeping** after
   ~20s (with a "Zzz" dream bubble); any input resets it. Idle time is counted in
   frame-rate-independent units (see Rendering & performance).
