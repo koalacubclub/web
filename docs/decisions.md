@@ -94,6 +94,28 @@ exists at `public/game/food/<key>.png` (256px, transparent). Drop the PNGs in an
 they're picked up automatically — no code change. Spec + prompts in
 [food-icons.md](./food-icons.md).
 
+## 12. Render the game canvas at device resolution (no pixelated upscale)
+
+The `ParkGame` canvas draws in logical coords but sizes its backing store to
+~device pixels (`RS = min(2, cssWidth·dpr / CANVAS_WIDTH)`, applied via
+`ctx.setTransform`) and scales **smoothly** — `image-rendering: pixelated` was
+removed. Drawing at a small backing store and nearest-neighbor upscaling made
+everything blocky and made moving sprites shimmer / "crawl". **Trade-off:** a
+higher backing store is more paint per frame, so `RS` is capped at 2× to bound the
+cost on mobile. Details in [game.md](./game.md) and
+[perf-main-thread-plan.md](./perf-main-thread-plan.md).
+
+## 13. Time-based, frame-rate-independent game loop
+
+Movement and animation are driven by elapsed time (`dt`), not raw frame count, so
+the game runs at the same real speed regardless of FPS — mobile frequently runs
+below 60 (and decision #12's device-resolution canvas makes each frame heavier).
+`frameCount` is advanced as a real-time clock (`dt × 0.06` = 60fps-frame units) so
+every `frameCount`-based animation keeps pace; `dt` is clamped to 100ms so a
+backgrounded tab can't teleport the cat on resume. The loop also **pauses** when the
+tab is hidden or the hero is scrolled out of view (a scroll check, since the fixed
+hero always intersects the viewport). See [game.md](./game.md).
+
 ## Testing notes
 
 - Unit: Vitest + Testing Library (jsdom). `src/test/setup.ts` stubs

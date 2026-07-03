@@ -18,11 +18,21 @@ food PNGs.
 - **Render order:** ground/objects/cat are drawn, then a purple `multiply` night
   wash over everything, then stars/moon/**food**/popups/HUD on top (true colors,
   above the wash).
-- **Controls:** arrow keys / WASD, or tap / press-and-drag to walk toward the
-  pointer. On viewports narrower than the (scaled) canvas, a **horizontal camera**
-  pans the canvas via CSS `transform` to keep Koala centered; the score HUD is
-  offset by `g.hudShift` so it stays pinned to the viewport instead of sliding
-  with the pan.
+- **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
+  toward the pointer (release to stop). Mouse/pen engage immediately.
+- **Controls (touch):** gesture-disambiguated so the full-screen hero doesn't
+  hijack the page scroll — a **quick swipe scrolls the page**, while a **~150ms
+  hold** (finger still, moved < ~10px) "grabs" Koala and the subsequent drag steers
+  her, calling `preventDefault` so the page won't scroll. There is **no on-screen
+  D-pad**. During a drag a `kcc-dragging` class on `<body>` disables text selection
+  / the iOS long-press callout (the rest of the page stays selectable).
+- **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
+  camera** pans the canvas via CSS `transform` to keep Koala centered; the score
+  HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
+  sliding with the pan.
+- **Cat idle states:** standing → **lying** after ~10s idle → **sleeping** after
+  ~20s (with a "Zzz" dream bubble); any input resets it. Idle time is counted in
+  frame-rate-independent units (see Rendering & performance).
 - **Reduced motion:** the page respects `prefers-reduced-motion` for framer-motion
   and CSS, but the canvas loop itself keeps animating (it's the hero centerpiece).
 
@@ -40,12 +50,41 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 - **Collecting:** walk within ~0.85 tile → score `+= points`, a `+N Label` popup
   pops, and Koala shows hearts. Rarer/higher-point items (goldfish = 50) spawn
   less often.
-- **Score:** shown in a top-left HUD; the **best score persists** in
+- **Score:** shown in an on-canvas HUD pill that sits just above the ground line
+  (pinned against the camera pan via `g.hudShift`); the **best score persists** in
   `localStorage` under `kcc-park-best`.
 - **Art:** each food renders its **emoji as a fallback**, and automatically uses
   `public/game/food/<key>.png` (256px, transparent) once that file exists — images
   are preloaded into `g.foodImages`. To add real art, drop the PNGs in; no code
   change. Full sprite spec + generation prompts: [food-icons.md](./food-icons.md).
+
+## Rendering & performance
+
+- **Device-resolution canvas.** The backing store is sized to ~device pixels —
+  `RS = min(2, cssWidth × devicePixelRatio / CANVAS_WIDTH)` — and the game draws in
+  logical coords via `ctx.setTransform(RS, …)`, scaled **smoothly** (there is
+  **no `image-rendering: pixelated`**). Rendering at the small backing size and
+  nearest-neighbor upscaling used to make everything blocky and made motion
+  "crawl". The canvas uses a static `box-shadow`, not a per-frame `drop-shadow`
+  filter.
+- **Static background is baked once.** The sky gradient + ground (grass blobs,
+  sand, dirt) never change, so they're rendered a single time into an **offscreen
+  canvas** and blitted with one `drawImage` per frame instead of recomputing all
+  the bézier/gradient work every frame.
+- **The loop pauses when it can't be seen.** `requestAnimationFrame` stops when the
+  tab is hidden (`visibilitychange`) or the hero is scrolled out of view. The hero
+  is `position: fixed` (always intersecting the viewport), so this uses a scroll
+  check (`scrollY < innerHeight`), not an IntersectionObserver.
+- **Frame-rate independent.** Everything is time-based, so it runs at the same real
+  speed regardless of FPS (mobile often runs below 60). Each frame computes `dt`
+  (clamped to 100ms so a tab-resume can't teleport anything): the cat moves at
+  `0.0021 tiles/ms × dt`, `frameCount` advances as a real-time clock
+  (`+= dt × 0.06`, i.e. 60fps-frame units) so every `sin(frameCount·k)` animation
+  keeps pace, and per-frame integrations (butterflies, popups, the idle timer)
+  scale by the same factor.
+
+See [perf-main-thread-plan.md](./perf-main-thread-plan.md) for the broader
+main-thread analysis — this canvas is the dominant animated surface.
 
 ## Tuning
 
