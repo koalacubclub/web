@@ -378,6 +378,9 @@ export default function ParkGame() {
         return
       }
       pointerActive = true
+      // Turn off page selection for the duration of the drag so it can't start
+      // an iOS text selection / callout; restored on release.
+      document.body.classList.add('kcc-dragging')
       aimAtPointer(e)
     }
     const handlePointerMove = (e: PointerEvent) => {
@@ -387,6 +390,7 @@ export default function ParkGame() {
     const handlePointerUp = () => {
       pointerActive = false
       g.target = null
+      document.body.classList.remove('kcc-dragging')
     }
     // While dragging the cat, block the browser's text/element selection so a
     // press-drag doesn't highlight the wordmark or other page content.
@@ -1642,6 +1646,7 @@ export default function ParkGame() {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      document.body.classList.remove('kcc-dragging')
     }
   }, [initObjects])
 
@@ -1663,9 +1668,11 @@ export default function ParkGame() {
           // the browser scale it smoothly — no nearest-neighbor pixelation.
           // Recognize taps immediately (no double-tap-zoom delay) on touch.
           touchAction: 'manipulation',
-          // Don't let a press/drag select or highlight the canvas.
+          // Don't let a press/drag select or highlight the canvas, and suppress
+          // the iOS long-press callout/selection.
           userSelect: 'none',
           WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
           WebkitTapHighlightColor: 'transparent',
           // Cover the header on any screen size: scale up so the game fills both
           // width and height (whichever needs more), keeping the map ratio.

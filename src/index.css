@@ -33,6 +33,18 @@
     touch-action: manipulation;
     overscroll-behavior-y: none;
   }
+  /* The page is normally selectable. While a game drag is active, ParkGame adds
+     `kcc-dragging` to <body> so the drag can't start an iOS text selection /
+     callout; it's removed on pointerup/cancel. This keeps the hero game
+     interaction clean without locking the rest of the site's text. */
+  .kcc-dragging,
+  .kcc-dragging * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+  }
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   [type='button']:not(:disabled),
