@@ -1,6 +1,11 @@
 # Koala Cub Club — web
 
-Front-end for Koala Cub Club. Built with **Vite + React + TypeScript**.
+Front-end for Koala Cub Club — a single-page landing site for the tabby.
+Built with **Vite + React + TypeScript**, styled with **Tailwind CSS v4**,
+animated with **framer-motion**, icons from **lucide-react**. The page lives in
+`src/pages/Home.tsx`; the `@/` import alias maps to `src/`.
+
+Motion respects `prefers-reduced-motion` (via `MotionConfig` + a CSS fallback).
 
 ## Requirements
 

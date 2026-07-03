@@ -18,9 +18,16 @@ describe('Home', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders one video embed per item', () => {
+  it('renders one lazy video embed per item', () => {
     const { container } = render(<Home />)
-    expect(container.querySelectorAll('iframe')).toHaveLength(8)
+    const iframes = container.querySelectorAll('iframe')
+    expect(iframes).toHaveLength(8)
+    expect(iframes[0]).toHaveAttribute('loading', 'lazy')
+    expect(iframes[0]).toHaveAttribute('allow', 'fullscreen')
+    expect(iframes[0]).toHaveAttribute(
+      'title',
+      'TikTok video: Outdoor adventures',
+    )
   })
 
   it('links out to the social accounts', () => {
