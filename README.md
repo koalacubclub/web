@@ -88,6 +88,33 @@ tooling used to seed the feed originally). Steps:
 > Note: the header/footer still link to both Instagram and TikTok. TikTok
 > currently lags behind on uploads, so the feed is sourced from Instagram.
 
+## Updating the club
+
+The "club" section (**Meet the cubs**) is a wall of
+[@koalacubclub](https://www.instagram.com/koalacubclub/)'s Instagram followers —
+newest first, paginated. Like the feed, each avatar is a **local image**
+(`public/followers/<username>.jpg`) that links out to the follower's Instagram
+profile, so there are no third-party embeds. The list is a point-in-time
+snapshot defined by the `FOLLOWERS` array in `src/data/followers.ts` (the single
+source of truth — the React club wall and the build-time crawlable `<noscript>`
+in `vite.config.ts` both read from it, so they never drift).
+
+Refreshing follows the same **agent-assisted, logged-in browser** flow as the
+feed (Instagram blocks logged-out access to a followers list):
+
+1. In a logged-in browser, open the followers dialog
+   (`https://www.instagram.com/koalacubclub/followers/`) and scroll it to the
+   bottom so every row lazy-loads. Then dump each follower's username, avatar
+   URL, and DOM order (top = newest) from the dialog's `<a href="/…/">` rows.
+2. Download each avatar to `public/followers/<username>.jpg` — Instagram avatar
+   URLs are signed and expire, so download them promptly. A follower whose
+   avatar can't be fetched (e.g. no profile picture) can be omitted from
+   `public/followers/`; the UI falls back to a monogram automatically.
+3. Replace the `FOLLOWERS` array (`src/data/followers.ts`) with the usernames in
+   newest-first order. Page size is controlled by `MEMBERS_PER_PAGE`. The
+   crawlable `<noscript>` regenerates from this on the next build — no other
+   edits needed.
+
 ## Git hooks
 
 Managed by [husky](https://typicode.github.io/husky/):

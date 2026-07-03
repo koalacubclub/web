@@ -37,6 +37,36 @@ describe('Home', () => {
     expect(reelLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
+  it('renders the club section with a paginated followers wall', () => {
+    const { container } = render(<Home />)
+
+    expect(screen.getByText(/the club/i)).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /meet the cubs/i }),
+    ).toBeInTheDocument()
+
+    // First page of members, each linking out to their Instagram profile
+    const memberLinks = container.querySelectorAll(
+      'a[aria-label$="on Instagram"]',
+    )
+    expect(memberLinks.length).toBeGreaterThan(0)
+    expect(memberLinks.length).toBeLessThanOrEqual(20)
+    expect(memberLinks[0]).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^https:\/\/www\.instagram\.com\/[^/]+\/$/),
+    )
+    expect(memberLinks[0]).toHaveAttribute('target', '_blank')
+    expect(memberLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
+
+    // Pagination is present (30 members across pages of 20)
+    expect(
+      screen.getByRole('button', { name: /more members/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /previous members/i }),
+    ).toBeInTheDocument()
+  })
+
   it('links out to the social accounts', () => {
     render(<Home />)
     expect(

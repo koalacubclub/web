@@ -20,6 +20,17 @@ test('landing page renders hero, reel feed and social links', async ({
     page.getByRole('link', { name: /instagram/i }).first(),
   ).toHaveAttribute('href', 'https://www.instagram.com/koalacubclub/')
 
+  // The club: paginated followers wall with member avatars linking to profiles
+  await expect(
+    page.getByRole('heading', { name: /meet the cubs/i }),
+  ).toBeVisible()
+  const memberLinks = page.locator('a[aria-label$="on Instagram"]')
+  await expect(memberLinks.first()).toBeVisible()
+  await expect(memberLinks.first()).toHaveAttribute('target', '_blank')
+  await expect(
+    page.getByRole('button', { name: /more members/i }),
+  ).toBeVisible()
+
   await expect(
     page.getByRole('link', { name: /tiktok/i }).first(),
   ).toHaveAttribute('href', 'https://tiktok.com/@koalacubclub')

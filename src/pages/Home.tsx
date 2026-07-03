@@ -9,12 +9,26 @@
  * Font: Cormorant Garamond (display) + Inter (body)
  */
 
-import { useRef, type ReactNode } from 'react'
-import { motion, useInView, MotionConfig } from 'framer-motion'
-import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
+import { useRef, useState, type ReactNode } from 'react'
+import { motion, AnimatePresence, useInView, MotionConfig } from 'framer-motion'
+import {
+  Instagram,
+  Mail,
+  ArrowDown,
+  Github,
+  Play,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import { IG_PROFILE, REELS, reelPoster, reelUrl } from '@/data/reels'
+import {
+  FOLLOWERS,
+  MEMBERS_PER_PAGE,
+  followerAvatar,
+  followerUrl,
+} from '@/data/followers'
 
 // Playful paw SVG
 function PawPrint({ className = '' }: { className?: string }) {
@@ -120,6 +134,160 @@ function ReelCard({
         {caption}
       </p>
     </motion.a>
+  )
+}
+
+// Member avatar — circular profile picture that links out to the follower's
+// Instagram. Falls back to a monogram if the avatar image is missing/broken.
+function MemberAvatar({
+  username,
+  index,
+}: {
+  username: string
+  index: number
+}) {
+  const [failed, setFailed] = useState(false)
+  const initial = username
+    .replace(/[^a-z0-9]/gi, '')
+    .charAt(0)
+    .toUpperCase()
+
+  return (
+    <motion.a
+      href={followerUrl(username)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`@${username} on Instagram`}
+      className="group flex flex-col items-center gap-2"
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{
+        duration: 0.5,
+        delay: (index % MEMBERS_PER_PAGE) * 0.03,
+        ease: [0.16, 1, 0.3, 1],
+      }}
+    >
+      <div className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full overflow-hidden bg-white/[0.04] border border-white/[0.08] ring-2 ring-transparent shadow-[0_6px_20px_rgba(0,0,0,0.25)] transition-all duration-300 group-hover:-translate-y-1 group-hover:ring-[oklch(0.75_0.12_80)]/50">
+        {failed ? (
+          <div
+            className="flex h-full w-full items-center justify-center text-lg sm:text-xl lg:text-2xl text-[oklch(0.82_0.13_78)]"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+          >
+            {initial || '🐾'}
+          </div>
+        ) : (
+          <img
+            src={followerAvatar(username)}
+            alt={`@${username}`}
+            loading="lazy"
+            onError={() => setFailed(true)}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        )}
+      </div>
+      <span className="max-w-[4.5rem] sm:max-w-[5rem] truncate text-[10px] sm:text-[11px] font-light text-white/40 transition-colors duration-300 group-hover:text-white/70">
+        @{username}
+      </span>
+    </motion.a>
+  )
+}
+
+// ─── THE CLUB (followers) ───────────────────────────────────────────────────
+// A wall of the account's Instagram followers — "the cubs" who make up the club.
+// Newest members first, paginated so the whole list is browsable without an
+// endless scroll.
+function ClubSection() {
+  const [page, setPage] = useState(0)
+  const pageCount = Math.ceil(FOLLOWERS.length / MEMBERS_PER_PAGE)
+  const start = page * MEMBERS_PER_PAGE
+  const members = FOLLOWERS.slice(start, start + MEMBERS_PER_PAGE)
+
+  return (
+    <>
+      {/* Section header — mirrors "The feed" styling */}
+      <Reveal className="container mt-16 sm:mt-24 mb-8 sm:mb-12">
+        <div className="flex items-center gap-3 mb-2">
+          <motion.div
+            animate={{ rotate: [0, 10, -10, 0] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <PawPrint className="w-4 h-4 text-[oklch(0.75_0.12_80)]/60" />
+          </motion.div>
+          <p className="text-[oklch(0.75_0.12_80)] text-[10px] sm:text-xs uppercase tracking-[0.35em] font-light">
+            The club
+          </p>
+        </div>
+        <h2
+          className="text-white/85 text-2xl sm:text-3xl lg:text-4xl tracking-tight"
+          style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
+        >
+          Meet the cubs
+        </h2>
+        <p className="mt-2 text-sm font-light text-white/35">
+          {FOLLOWERS.length} cubs follow Koala&rsquo;s adventures
+        </p>
+      </Reveal>
+
+      {/* Member grid — fades between pages */}
+      <div className="container">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={page}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-x-3 gap-y-6 sm:gap-y-7"
+          >
+            {members.map((username, index) => (
+              <MemberAvatar key={username} username={username} index={index} />
+            ))}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* Pagination — prev / dots / next, cat's-eye gold accent */}
+      {pageCount > 1 && (
+        <Reveal className="container mt-10 flex items-center justify-center gap-4">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            aria-label="Previous members"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/50 transition-all duration-300 hover:border-[oklch(0.75_0.12_80)]/30 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-white/[0.08] disabled:hover:text-white/50"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {Array.from({ length: pageCount }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setPage(i)}
+                aria-label={`Go to page ${i + 1}`}
+                aria-current={i === page ? 'true' : undefined}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  i === page
+                    ? 'w-6 bg-[oklch(0.75_0.12_80)]'
+                    : 'w-2 bg-white/15 hover:bg-white/30'
+                }`}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+            disabled={page === pageCount - 1}
+            aria-label="More members"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/50 transition-all duration-300 hover:border-[oklch(0.75_0.12_80)]/30 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-white/[0.08] disabled:hover:text-white/50"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </Reveal>
+      )}
+    </>
   )
 }
 
@@ -333,6 +501,9 @@ function ContentPanel() {
               </motion.span>
             </a>
           </Reveal>
+
+          {/* ─── The club: followers wall ─── */}
+          <ClubSection />
 
           {/* Decorative divider — whisker lines */}
           <div className="container mt-16 sm:mt-24 mb-10 sm:mb-14 flex items-center justify-center gap-4">
