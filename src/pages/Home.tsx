@@ -22,7 +22,8 @@ import {
 } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
-import { IG_PROFILE, REELS, reelPoster, reelUrl } from '@/data/reels'
+import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
+import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
   FOLLOWERS,
   MEMBERS_PER_PAGE,
@@ -106,9 +107,13 @@ function ReelCard({
       {/* Poster with organic shadow */}
       <div className="relative aspect-[9/16] rounded-2xl overflow-hidden transform-gpu isolate [clip-path:inset(0_round_1rem)] bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
         <img
-          src={reelPoster(code)}
-          alt={caption}
+          src={reelSrc[code]}
+          srcSet={reelSrcSet[code]}
+          sizes="(min-width: 1024px) 330px, 45vw"
+          alt=""
           loading="lazy"
+          width={640}
+          height={1136}
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
 

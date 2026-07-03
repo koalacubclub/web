@@ -1,12 +1,12 @@
 // Single source of truth for the Instagram reel feed. Consumed both by the
 // React feed (src/pages/Home.tsx) and by the build-time crawlable <noscript>
-// injector (vite.config.ts) so the two never drift. Posters live in
-// /public/reels/<code>.jpg — see README ("Updating the reel feed").
+// injector (vite.config.ts) so the two never drift. Pristine poster sources
+// live in src/assets/reels/<code>.jpg and are turned into responsive WebP at
+// build by vite-imagetools (see src/data/reelPosters.ts) — see README.
 
 export const IG_PROFILE = 'https://www.instagram.com/koalacubclub/'
 export const reelUrl = (code: string) =>
   `https://www.instagram.com/reel/${code}/`
-export const reelPoster = (code: string) => `/reels/${code}.jpg`
 
 export interface Reel {
   code: string

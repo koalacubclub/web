@@ -50,12 +50,16 @@ pnpm dev          # start the dev server (http://localhost:5173)
 ## Updating the reel feed
 
 The "feed" section shows Instagram reels from
-[@koalacubclub](https://www.instagram.com/koalacubclub/). Each card is a **local
-poster image** (`public/reels/<shortcode>.jpg`) that links out to the reel on
-instagram.com — no third-party embed scripts, so it stays fast. The list is a
-point-in-time snapshot defined by the `REELS` array in `src/data/reels.ts` (the
-single source of truth — the React feed and the build-time crawlable `<noscript>`
-in `vite.config.ts` both read from it, so they never drift).
+[@koalacubclub](https://www.instagram.com/koalacubclub/). Each card links out to
+the reel on instagram.com — no third-party embed scripts, so it stays fast. The
+poster is a **pristine JPEG source** in `src/assets/reels/<shortcode>.jpg` that
+[vite-imagetools](https://github.com/JonasKruckenberg/imagetools) turns into
+right-sized, responsive **WebP** variants (240/480/640-wide `srcset`) at build —
+the raw sources are never shipped, and the browser downloads only the size it
+needs. The list is a point-in-time snapshot defined by the `REELS` array in
+`src/data/reels.ts` (the single source of truth — the React feed and the
+build-time crawlable `<noscript>` in `vite.config.ts` both read from it, so they
+never drift; posters are matched to reels by the `<shortcode>` filename).
 
 Refreshing is a **semi-manual, agent-assisted process** — deliberately not an
 automated script. Instagram blocks headless / logged-out scraping, so it needs a
@@ -77,9 +81,12 @@ tooling used to seed the feed originally). Steps:
    )
    ```
 
-2. For each entry, save the cover to `public/reels/<shortcode>.jpg` — the
-   shortcode is the `…/reel/<shortcode>/` segment (portrait 9:16 works best).
-   Instagram cover URLs are signed and expire, so download them promptly.
+2. For each entry, save the full-res cover to
+   `src/assets/reels/<shortcode>.jpg` — the shortcode is the
+   `…/reel/<shortcode>/` segment (portrait 9:16 works best). Save the largest
+   available (≈640–720px wide is plenty); the build downscales/compresses it. No
+   need to optimize by hand — Instagram cover URLs are signed and expire, so
+   download them promptly.
 3. Add/replace entries in the `REELS` array (`{ code, caption }`) in
    `src/data/reels.ts`, newest first. Keep captions short (they truncate to one
    line); strip the hashtags. The crawlable `<noscript>` regenerates from this on

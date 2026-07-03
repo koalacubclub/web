@@ -28,7 +28,9 @@ describe('Home', () => {
     )
     expect(reelLinks).toHaveLength(12)
 
-    const posters = container.querySelectorAll('img[src^="/reels/"]')
+    const posters = container.querySelectorAll(
+      'a[href*="instagram.com/reel/"] img',
+    )
     expect(posters).toHaveLength(12)
     expect(posters[0]).toHaveAttribute('loading', 'lazy')
 

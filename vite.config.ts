@@ -3,6 +3,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { imagetools } from 'vite-imagetools'
 import { IG_PROFILE, REELS, reelUrl, type Reel } from './src/data/reels.ts'
 import { FOLLOWERS, followerUrl } from './src/data/followers.ts'
 
@@ -56,7 +57,7 @@ ${memberItems}
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), crawlableContent()],
+  plugins: [react(), tailwindcss(), imagetools(), crawlableContent()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
