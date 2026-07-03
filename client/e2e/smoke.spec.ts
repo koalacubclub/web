@@ -46,3 +46,15 @@ test('landing page renders hero, reel feed and social links', async ({
     page.getByRole('link', { name: /hello@koalacub\.club/i }),
   ).toHaveAttribute('href', 'mailto:hello@koalacub.club')
 })
+
+test('hero down-arrow smooth-scrolls to the content', async ({ page }) => {
+  await page.goto('/')
+
+  // The feed section sits below the full-height hero — off-screen initially.
+  const feed = page.getByRole('heading', { name: /watch the chaos unfold/i })
+  await expect(feed).not.toBeInViewport()
+
+  // Clicking the hero's down-arrow smooth-scrolls it into view.
+  await page.getByRole('button', { name: /scroll to content/i }).click()
+  await expect(feed).toBeInViewport()
+})
