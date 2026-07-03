@@ -5,13 +5,13 @@
 // is also imported by vite.config.ts (Node), where import.meta.glob is unavailable.
 
 const srcsets = import.meta.glob('../assets/reels/*.jpg', {
-  query: '?w=240;480;640&format=webp&quality=70&as=srcset',
+  query: '?w=200;280;360;480;640&format=webp&quality=64&as=srcset',
   import: 'default',
   eager: true,
 }) as Record<string, string>
 
 const fallbacks = import.meta.glob('../assets/reels/*.jpg', {
-  query: '?w=480&format=webp&quality=70',
+  query: '?w=360&format=webp&quality=64',
   import: 'default',
   eager: true,
 }) as Record<string, string>

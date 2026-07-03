@@ -1642,7 +1642,10 @@ export default function ParkGame() {
           // Cover the header on any screen size: scale up so the game fills both
           // width and height (whichever needs more), keeping the map ratio.
           // The flex parent centers it and clips the overflow.
-          width: `max(100%, calc(100dvh * ${MAP_COLS} / ${MAP_ROWS}))`,
+          // svh (not dvh) so the size resolves at first paint and stays put: dvh
+          // can resolve late on mobile, growing the canvas from ~0 to full screen
+          // after paint — a large layout shift (this was ~0.30 CLS). svh is stable.
+          width: `max(100%, calc(100svh * ${MAP_COLS} / ${MAP_ROWS}))`,
           height: 'auto',
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}

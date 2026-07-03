@@ -183,7 +183,7 @@ function MemberAvatar({
         ) : (
           <img
             src={followerAvatar(username)}
-            alt={`@${username}`}
+            alt=""
             loading="lazy"
             onError={() => setFailed(true)}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
