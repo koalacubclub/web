@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "koala-park-game",
+  "name": "koala-game",
   "main": "src/worker.ts",
   "compatibility_date": "2025-02-01",
   "observability": { "enabled": true },
@@ -20,6 +20,8 @@
   },
   "env": {
     "production": {
+      // Explicit name so the deploy is "koala-game", not "koala-game-production".
+      "name": "koala-game",
       "workers_dev": false,
       "vars": {
         "ENVIRONMENT": "production",
