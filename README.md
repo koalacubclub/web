@@ -9,7 +9,7 @@ Motion respects `prefers-reduced-motion` (via `MotionConfig` + a CSS fallback).
 
 ## Requirements
 
-- Node.js 22+
+- Node.js 24+
 - [pnpm](https://pnpm.io/) 10+ (`corepack enable` or `npm i -g pnpm`)
 
 ## Getting started
