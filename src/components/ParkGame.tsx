@@ -47,8 +47,6 @@ const COLORS = {
   butterfly: '#C9B1FF',
   stone: '#9E9E9E',
   stoneDark: '#757575',
-  fence: '#D7CCC8',
-  fenceDark: '#BCAAA4',
   charcoal: '#4A4A4A',
 }
 
@@ -92,6 +90,8 @@ export default function ParkGame() {
       state: 'standing' as 'standing' | 'lying' | 'sleeping',
     },
     keys: {} as Record<string, boolean>,
+    // Tap/click target the cat walks toward (top-left tile coords), or null.
+    target: null as { x: number; y: number } | null,
     objects: [] as GameObject[],
     butterflies: [] as Butterfly[],
     popups: [] as Popup[],
@@ -168,7 +168,6 @@ export default function ParkGame() {
       },
       { type: 'ball', x: 8, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       { type: 'stone', x: 1, y: 9, w: 1, h: 1, interactMsg: '... A warm rock' },
-      { type: 'fence', x: 0, y: 0, w: 20, h: 1, solid: true },
       {
         type: 'mushroom',
         x: 17,
@@ -225,8 +224,23 @@ export default function ParkGame() {
       g.keys[e.key.toLowerCase()] = false
     }
 
+    // Tap / click anywhere on the canvas to walk the cat there. Maps the
+    // pointer position through the canvas's displayed (scaled) size back to
+    // internal tile coords, then aims the cat's center at that spot.
+    const handlePointerDown = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return
+      const px = ((e.clientX - rect.left) / rect.width) * CANVAS_WIDTH
+      const py = ((e.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      g.target = {
+        x: px / PIXEL - 0.5,
+        y: py / PIXEL - 0.5,
+      }
+    }
+
     document.addEventListener('keydown', handleKeyDown)
     document.addEventListener('keyup', handleKeyUp)
+    canvas.addEventListener('pointerdown', handlePointerDown)
 
     let animId: number
 
@@ -357,7 +371,7 @@ export default function ParkGame() {
       })
 
       // Moon (crescent)
-      const moonX = CANVAS_WIDTH - PIXEL * 2.5
+      const moonX = CANVAS_WIDTH - PIXEL * 1.2
       const moonY = PIXEL * 0.35
       const moonR = PIXEL * 0.5
       ctx.fillStyle = '#FFFDE8'
@@ -378,12 +392,6 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-    }
-
-    function drawFenceAboveOverlay() {
-      if (!ctx) return
-      const fenceObj = g.objects.find((o: GameObject) => o.type === 'fence')
-      if (fenceObj) drawFence(fenceObj)
     }
 
     function drawDreamBubble() {
@@ -636,20 +644,6 @@ export default function ParkGame() {
       ctx.beginPath()
       ctx.arc(x + PIXEL * 0.6, y + PIXEL * 0.38, SCALE * 0.8, 0, Math.PI * 2)
       ctx.fill()
-    }
-
-    function drawFence(obj: GameObject) {
-      if (!ctx) return
-      const y = obj.y * PIXEL
-      for (let i = 0; i < obj.w; i++) {
-        const x = (obj.x + i) * PIXEL
-        ctx.fillStyle = COLORS.fenceDark
-        ctx.fillRect(x + PIXEL * 0.1, y + PIXEL * 0.2, SCALE * 3, PIXEL * 0.8)
-        ctx.fillRect(x + PIXEL * 0.6, y + PIXEL * 0.2, SCALE * 3, PIXEL * 0.8)
-        ctx.fillStyle = COLORS.fence
-        ctx.fillRect(x, y + PIXEL * 0.3, PIXEL, SCALE * 2)
-        ctx.fillRect(x, y + PIXEL * 0.6, PIXEL, SCALE * 2)
-      }
     }
 
     function drawButterflies() {
@@ -1022,9 +1016,6 @@ export default function ParkGame() {
           case 'mushroom':
             drawMushroom(obj)
             break
-          case 'fence':
-            drawFence(obj)
-            break
         }
       })
     }
@@ -1083,6 +1074,26 @@ export default function ParkGame() {
         moving = true
       }
 
+      // Keyboard input overrides tap-to-walk; otherwise head toward the tapped
+      // target and stop once we arrive.
+      if (moving) {
+        g.target = null
+      } else if (g.target) {
+        const dx = g.target.x - cat.x
+        const dy = g.target.y - cat.y
+        const dist = Math.hypot(dx, dy)
+        if (dist <= speed) {
+          newX = g.target.x
+          newY = g.target.y
+          g.target = null
+        } else {
+          newX += (dx / dist) * speed
+          newY += (dy / dist) * speed
+          if (Math.abs(dx) > 0.01) cat.dir = dx < 0 ? 'left' : 'right'
+          moving = true
+        }
+      }
+
       // Idle state management
       if (moving) {
         cat.idleFrames = 0
@@ -1118,6 +1129,9 @@ export default function ParkGame() {
       if (!blocked) {
         cat.x = newX
         cat.y = newY
+      } else {
+        // Ran into something solid — abandon the tap target so we don't push.
+        g.target = null
       }
       cat.idle = !moving
 
@@ -1163,9 +1177,8 @@ export default function ParkGame() {
       ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       ctx!.restore()
 
-      // Draw above overlay: stars, moon, fence, popups
+      // Draw above overlay: stars, moon, popups
       drawStarsAndMoon()
-      drawFenceAboveOverlay()
       drawDreamBubble()
       drawPopups()
 
@@ -1178,6 +1191,7 @@ export default function ParkGame() {
       cancelAnimationFrame(animId)
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
+      canvas.removeEventListener('pointerdown', handlePointerDown)
     }
   }, [initObjects])
 
@@ -1185,7 +1199,7 @@ export default function ParkGame() {
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       <canvas
         ref={canvasRef}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or tap where you want her to go."
         className="block cursor-pointer drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
