@@ -106,3 +106,33 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  deploy:
+    # Production deploy to Vercel — gated on every check above. Vercel's own
+    # git auto-deploy for main is disabled (vercel.json → git.deploymentEnabled),
+    # so production only ships from here, after static + test + build + e2e pass.
+    # PR/branch preview deploys still happen via Vercel's git integration.
+    name: deploy (production)
+    needs: [static, test, build, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://www.koalacub.club
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Pull Vercel project settings
+        run: pnpm dlx vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+      - name: Build with Vercel
+        run: pnpm dlx vercel@latest build --prod --token="$VERCEL_TOKEN"
+      - name: Deploy prebuilt output to Vercel
+        run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
