@@ -351,49 +351,136 @@ export default function ParkGame() {
     // window. Only engages when the press starts inside the canvas box and the
     // hero is actually in view (not scrolled to the content below).
     let pointerActive = false
-    const aimAtPointer = (e: PointerEvent) => {
+    // Aim the cat's walk target at a client (screen) point, clamped to the
+    // canvas box so dragging past an edge keeps steering there.
+    const aimAt = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return
-      // Clamp to the canvas box so dragging past an edge keeps steering there.
-      const cx = Math.min(Math.max(e.clientX, rect.left), rect.right)
-      const cy = Math.min(Math.max(e.clientY, rect.top), rect.bottom)
+      const cx = Math.min(Math.max(clientX, rect.left), rect.right)
+      const cy = Math.min(Math.max(clientY, rect.top), rect.bottom)
       const px = ((cx - rect.left) / rect.width) * CANVAS_WIDTH
       const py = ((cy - rect.top) / rect.height) * CANVAS_HEIGHT
       // py is screen space; subtract the world offset to get a park tile coord.
       g.target = { x: px / PIXEL - 0.5, y: (py - WORLD_OFFSET) / PIXEL - 0.5 }
     }
-    const handlePointerDown = (e: PointerEvent) => {
-      // Ignore presses on UI controls (social links, etc.) so the game doesn't
-      // steal them or move the cat as a side effect.
-      if (e.target instanceof Element && e.target.closest('a, button')) return
+    // Can a game drag start at this point? (inside the canvas box, hero in view,
+    // not on a UI control like the social links).
+    const canEngageAt = (
+      target: EventTarget | null,
+      clientX: number,
+      clientY: number,
+    ) => {
+      if (target instanceof Element && target.closest('a, button')) return false
       const rect = canvas.getBoundingClientRect()
-      if (!rect.width || !rect.height) return
-      if (window.scrollY > window.innerHeight * 0.5) return
-      if (
-        e.clientX < rect.left ||
-        e.clientX > rect.right ||
-        e.clientY < rect.top ||
-        e.clientY > rect.bottom
-      ) {
-        return
-      }
+      if (!rect.width || !rect.height) return false
+      if (window.scrollY > window.innerHeight * 0.5) return false
+      return (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      )
+    }
+    const engage = (clientX: number, clientY: number) => {
       pointerActive = true
-      // Turn off page selection for the duration of the drag so it can't start
-      // an iOS text selection / callout; restored on release.
+      // Turn off page selection for the drag so it can't start an iOS selection.
       document.body.classList.add('kcc-dragging')
-      aimAtPointer(e)
+      aimAt(clientX, clientY)
     }
-    const handlePointerMove = (e: PointerEvent) => {
-      if (pointerActive) aimAtPointer(e)
-    }
-    // Release / cancel stops the cat wherever it is.
-    const handlePointerUp = () => {
+    const disengage = () => {
       pointerActive = false
       g.target = null
       document.body.classList.remove('kcc-dragging')
     }
-    // While dragging the cat, block the browser's text/element selection so a
-    // press-drag doesn't highlight the wordmark or other page content.
+
+    // ── Mouse / pen: engage immediately (no page-scroll gesture to conflict). ──
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return // touch handled below (hold-to-grab)
+      if (!canEngageAt(e.target, e.clientX, e.clientY)) return
+      engage(e.clientX, e.clientY)
+    }
+    const handlePointerMove = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return
+      if (pointerActive) aimAt(e.clientX, e.clientY)
+    }
+    const handlePointerUp = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return
+      disengage()
+    }
+
+    // ── Touch: a quick swipe scrolls the page; a brief hold "grabs" the cat,
+    // after which dragging steers her and the page won't scroll. ──
+    const HOLD_MS = 150 // press this long (without moving) to grab the cat
+    const MOVE_TOL = 10 // px of movement before the hold that counts as a swipe
+    let touchId: number | null = null
+    let touchStartX = 0
+    let touchStartY = 0
+    let touchMoved = false
+    let touchEngaged = false
+    let holdTimer = 0
+    const touchById = (list: TouchList) => {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].identifier === touchId) return list[i]
+      }
+      return null
+    }
+    const clearHold = () => {
+      if (holdTimer) {
+        clearTimeout(holdTimer)
+        holdTimer = 0
+      }
+    }
+    const handleTouchStart = (e: TouchEvent) => {
+      if (touchId !== null) return // already tracking one touch
+      const t = e.changedTouches[0]
+      if (!t || !canEngageAt(e.target, t.clientX, t.clientY)) return
+      touchId = t.identifier
+      touchStartX = t.clientX
+      touchStartY = t.clientY
+      touchMoved = false
+      touchEngaged = false
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0
+        // Held still long enough → grab the cat.
+        if (!touchMoved && touchId !== null) {
+          touchEngaged = true
+          engage(touchStartX, touchStartY)
+        }
+      }, HOLD_MS)
+    }
+    const handleTouchMove = (e: TouchEvent) => {
+      if (touchId === null) return
+      const t = touchById(e.changedTouches)
+      if (!t) return
+      if (touchEngaged) {
+        e.preventDefault() // steering the cat — don't let the page scroll
+        aimAt(t.clientX, t.clientY)
+        return
+      }
+      // Not engaged yet: real movement means it's a scroll gesture — bail so the
+      // browser scrolls normally.
+      if (
+        Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
+        Math.abs(t.clientY - touchStartY) > MOVE_TOL
+      ) {
+        touchMoved = true
+        clearHold()
+      }
+    }
+    const endTouch = () => {
+      clearHold()
+      if (touchEngaged) disengage()
+      touchId = null
+      touchMoved = false
+      touchEngaged = false
+    }
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (touchId === null) return
+      if (!touchById(e.changedTouches)) return
+      endTouch()
+    }
+
+    // While dragging, block text/element selection (belt with .kcc-dragging).
     const handleSelectStart = (e: Event) => {
       if (pointerActive) e.preventDefault()
     }
@@ -404,6 +491,10 @@ export default function ParkGame() {
     window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerUp)
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchmove', handleTouchMove, { passive: false })
+    window.addEventListener('touchend', handleTouchEnd)
+    window.addEventListener('touchcancel', handleTouchEnd)
     document.addEventListener('selectstart', handleSelectStart)
 
     let animId = 0
@@ -1642,10 +1733,15 @@ export default function ParkGame() {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
       window.removeEventListener('pointercancel', handlePointerUp)
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchmove', handleTouchMove)
+      window.removeEventListener('touchend', handleTouchEnd)
+      window.removeEventListener('touchcancel', handleTouchEnd)
       document.removeEventListener('selectstart', handleSelectStart)
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      clearHold()
       document.body.classList.remove('kcc-dragging')
     }
   }, [initObjects])
