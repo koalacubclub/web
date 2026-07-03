@@ -1,5 +1,5 @@
 {
-  "name": "koala-park-server",
+  "name": "@koala/server",
   "private": true,
   "version": "0.0.0",
   "type": "module",
