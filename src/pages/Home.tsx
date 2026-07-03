@@ -11,23 +11,33 @@
 
 import { useRef, useMemo, type ReactNode } from 'react'
 import { motion, useInView, MotionConfig } from 'framer-motion'
-import { Instagram, Mail, ArrowDown, Github } from 'lucide-react'
+import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 
 // Assets (served from /public)
 const HERO_IMAGE = '/hero.webp'
 const KOALA_WALK_SPRITE = '/koala-walk.png'
 
-// Video feed
-const VIDEO_EMBEDS = [
-  { embedId: '7489368818505498926', caption: 'Outdoor adventures' },
-  { embedId: '7477553685114610990', caption: 'Window watching' },
-  { embedId: '7473006775875992878', caption: 'Stroller training' },
-  { embedId: '7467562539303207214', caption: 'Dental day' },
-  { embedId: '7489368818505498926', caption: 'Park exploration' },
-  { embedId: '7477553685114610990', caption: 'Bird TV' },
-  { embedId: '7473006775875992878', caption: 'Morning routine' },
-  { embedId: '7467562539303207214', caption: 'Treat time' },
+// Instagram reels. Posters live in /public/reels (downloaded from @koalacubclub);
+// each card links out to the reel on instagram.com. This is a point-in-time
+// snapshot — see README ("Updating the reel feed") to refresh when new reels post.
+const IG_PROFILE = 'https://www.instagram.com/koalacubclub/'
+const reelUrl = (code: string) => `https://www.instagram.com/reel/${code}/`
+const reelPoster = (code: string) => `/reels/${code}.jpg`
+
+const REELS = [
+  { code: 'DaGvXqFRQmV', caption: 'Brushing Koala’s teeth' },
+  { code: 'DZ0zua6RSu7', caption: 'First time touching grass' },
+  { code: 'DZisOcxxiGj', caption: 'Would your cat love this?' },
+  { code: 'DZQqudUxfag', caption: 'TV time for Koala' },
+  { code: 'DY-pGuuxxZi', caption: 'Opinions on her walk' },
+  { code: 'DYsvinMRbTs', caption: 'Doorman approves' },
+  { code: 'DYNuk02xQqY', caption: 'Outdoor training, day 3' },
+  { code: 'DYVcXI-xFH8', caption: 'She can open every door' },
+  { code: 'DXxZTGAxU8O', caption: 'Defeating a powerful monster' },
+  { code: 'DXu0dxIh3nN', caption: 'My little baby' },
+  { code: 'DXcy9xyhpqp', caption: 'First time outside' },
+  { code: 'DW_2W9AjWoy', caption: 'Nail trim, no problem' },
 ]
 
 // Playful paw SVG
@@ -69,13 +79,13 @@ function Reveal({
   )
 }
 
-// Video card with playful entrance
-function VideoCard({
-  embedId,
+// Reel card — poster thumbnail that links out to the reel on Instagram
+function ReelCard({
+  code,
   caption,
   index,
 }: {
-  embedId: string
+  code: string
   caption: string
   index: number
 }) {
@@ -86,9 +96,13 @@ function VideoCard({
   const rotation = index % 3 === 0 ? -1.5 : index % 3 === 1 ? 1 : -0.5
 
   return (
-    <motion.div
+    <motion.a
       ref={ref}
-      className="relative"
+      href={reelUrl(code)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Watch on Instagram: ${caption}`}
+      className="group relative block"
       initial={{ opacity: 0, y: 60, rotate: rotation * 2 }}
       animate={isInView ? { opacity: 1, y: 0, rotate: rotation } : {}}
       transition={{
@@ -99,22 +113,37 @@ function VideoCard({
       whileHover={{ rotate: 0, scale: 1.02, y: -4 }}
       style={{ transformOrigin: 'center bottom' }}
     >
-      {/* Video container with organic shadow */}
+      {/* Poster with organic shadow */}
       <div className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
-        <iframe
-          src={`https://www.tiktok.com/player/v1/${embedId}?description=0&music_info=0&controls=1`}
-          className="w-full h-full"
-          allow="fullscreen"
+        <img
+          src={reelPoster(code)}
+          alt={caption}
           loading="lazy"
-          title={`TikTok video: ${caption}`}
+          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
+
+        {/* Legibility gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+        {/* Instagram glyph, top-right */}
+        <Instagram className="absolute top-2.5 right-2.5 w-4 h-4 text-white/80 drop-shadow" />
+
+        {/* Play affordance */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md flex items-center justify-center opacity-80 transition-all duration-300 group-hover:opacity-100 group-hover:scale-110">
+            <Play
+              className="w-5 h-5 translate-x-[1px] text-white"
+              fill="currentColor"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Caption below */}
-      <p className="mt-3 text-[11px] tracking-wide text-white/35 font-light text-center">
+      <p className="mt-3 line-clamp-1 text-[11px] tracking-wide text-white/35 font-light text-center">
         {caption}
       </p>
-    </motion.div>
+    </motion.a>
   )
 }
 
@@ -416,11 +445,11 @@ function ContentPanel() {
           {/* Mobile-first video feed — 2 columns on mobile, scrollable */}
           <div className="container">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
-              {VIDEO_EMBEDS.map((video, index) => (
-                <VideoCard
-                  key={`${video.embedId}-${index}`}
-                  embedId={video.embedId}
-                  caption={video.caption}
+              {REELS.map((reel, index) => (
+                <ReelCard
+                  key={reel.code}
+                  code={reel.code}
+                  caption={reel.caption}
                   index={index}
                 />
               ))}
@@ -430,14 +459,14 @@ function ContentPanel() {
           {/* "More" link with playful animation */}
           <Reveal className="container mt-10 sm:mt-14 flex justify-center">
             <a
-              href="https://tiktok.com/@koalacubclub"
+              href={IG_PROFILE}
               target="_blank"
               rel="noopener noreferrer"
               className="group inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/[0.04] border border-white/[0.08] hover:border-[oklch(0.75_0.12_80)]/30 hover:bg-white/[0.06] transition-all duration-500"
             >
-              <TikTokIcon className="w-4 h-4 text-white/50 group-hover:text-[oklch(0.75_0.12_80)] transition-colors duration-500" />
+              <Instagram className="w-4 h-4 text-white/50 group-hover:text-[oklch(0.75_0.12_80)] transition-colors duration-500" />
               <span className="text-xs uppercase tracking-[0.2em] text-white/50 group-hover:text-white/80 transition-colors duration-500">
-                See all videos
+                See all on Instagram
               </span>
               <motion.span
                 className="text-white/30 group-hover:text-[oklch(0.75_0.12_80)] transition-colors duration-500"

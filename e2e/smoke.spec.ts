@@ -1,8 +1,9 @@
 import { expect, test } from '@playwright/test'
 
-// Smoke test: verifies the app shell and outbound links render. It does not
-// validate third-party TikTok embed loading (that depends on tiktok.com).
-test('landing page renders hero and social links', async ({ page }) => {
+// Smoke test: verifies the app shell, the reel feed, and outbound links render.
+test('landing page renders hero, reel feed and social links', async ({
+  page,
+}) => {
   await page.goto('/')
 
   await expect(page).toHaveTitle(/koala cub club/i)
@@ -11,6 +12,11 @@ test('landing page renders hero and social links', async ({ page }) => {
   await expect(heading).toContainText(/she sees/i)
 
   await expect(page.getByText(/a tabby with opinions/i).first()).toBeVisible()
+
+  // Reel feed: poster cards that link out to Instagram reels
+  const reelLinks = page.locator('a[href*="instagram.com/reel/"]')
+  await expect(reelLinks).toHaveCount(12)
+  await expect(reelLinks.first()).toHaveAttribute('target', '_blank')
 
   await expect(
     page.getByRole('link', { name: /instagram/i }).first(),

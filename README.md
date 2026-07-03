@@ -47,6 +47,22 @@ pnpm dev          # start the dev server (http://localhost:5173)
   bundle before running, so `pnpm test:e2e` is self-contained (run
   `pnpm exec playwright install chromium` once first).
 
+## Updating the reel feed
+
+The "feed" section shows Instagram reels from
+[@koalacubclub](https://www.instagram.com/koalacubclub/). Each card is a **local
+poster image** (`public/reels/<shortcode>.jpg`) that links out to the reel on
+instagram.com — no third-party embed scripts, so it stays fast. The list is a
+point-in-time snapshot defined by the `REELS` array in `src/pages/Home.tsx`.
+
+To refresh when new reels are posted:
+
+1. Open the profile and collect each reel's shortcode (the `…/reel/<shortcode>/`
+   segment) and its cover image.
+2. Save each cover as `public/reels/<shortcode>.jpg` (portrait 9:16 works best).
+3. Add/replace entries in the `REELS` array (`{ code, caption }`) in
+   `src/pages/Home.tsx`, newest first.
+
 ## Git hooks
 
 Managed by [husky](https://typicode.github.io/husky/):

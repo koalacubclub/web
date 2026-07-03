@@ -18,16 +18,20 @@ describe('Home', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders one lazy video embed per item', () => {
+  it('renders a reel poster per item linking out to Instagram', () => {
     const { container } = render(<Home />)
-    const iframes = container.querySelectorAll('iframe')
-    expect(iframes).toHaveLength(8)
-    expect(iframes[0]).toHaveAttribute('loading', 'lazy')
-    expect(iframes[0]).toHaveAttribute('allow', 'fullscreen')
-    expect(iframes[0]).toHaveAttribute(
-      'title',
-      'TikTok video: Outdoor adventures',
+    const reelLinks = container.querySelectorAll(
+      'a[href*="instagram.com/reel/"]',
     )
+    expect(reelLinks).toHaveLength(12)
+
+    const posters = container.querySelectorAll('img[src^="/reels/"]')
+    expect(posters).toHaveLength(12)
+    expect(posters[0]).toHaveAttribute('loading', 'lazy')
+
+    // Cards open in a new tab with safe rel
+    expect(reelLinks[0]).toHaveAttribute('target', '_blank')
+    expect(reelLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
   it('links out to the social accounts', () => {
