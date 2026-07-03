@@ -14,7 +14,7 @@ import { useEffect, useRef, useCallback } from 'react'
 const SCALE = 3
 const MAP_COLS = 20
 const GROUND_ROWS = 13 // the playable park (unchanged game logic)
-const SKY_ROWS = 4 // extra sky rows on top; the world is shifted down by these
+const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 const PIXEL = 16 * SCALE
 const CANVAS_WIDTH = MAP_COLS * PIXEL
