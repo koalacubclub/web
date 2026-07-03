@@ -16,7 +16,6 @@ import { TikTokIcon } from '@/components/TikTokIcon'
 
 // Assets (served from /public)
 const HERO_IMAGE = '/hero.webp'
-const KOALA_WALK_SPRITE = '/koala-walk.png'
 
 // Instagram reels. Posters live in /public/reels (downloaded from @koalacubclub);
 // each card links out to the reel on instagram.com. This is a point-in-time
@@ -303,38 +302,52 @@ function FixedHero() {
   )
 }
 
-// ─── WALKING KOALA SPRITE ───────────────────────────────────────────────
-function WalkingKoala() {
+// ─── WALKING CAT ────────────────────────────────────────────────────────
+// Clean side-profile silhouette (facing its direction of travel) that trots
+// along the wave crest — replaces the old photo cutout that looked out of place.
+function CatSilhouette({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 104 60"
+      className={className}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      {/* tail, curling up behind */}
+      <path d="M20 36 C4 36 2 12 16 8 C9 15 13 28 30 30 Z" />
+      {/* body */}
+      <ellipse cx="50" cy="34" rx="30" ry="13" />
+      {/* haunch */}
+      <circle cx="28" cy="34" r="15" />
+      {/* head */}
+      <circle cx="82" cy="28" r="11" />
+      {/* ears, two upright triangles with a valley between */}
+      <path d="M72 18 L75 3 L83 16 Z" />
+      <path d="M85 16 L90 3 L94 18 Z" />
+      {/* legs, mid-stride */}
+      <rect x="24" y="44" width="7" height="15" rx="3.5" />
+      <rect x="40" y="45" width="7" height="14" rx="3.5" />
+      <rect x="62" y="45" width="7" height="14" rx="3.5" />
+      <rect x="76" y="44" width="7" height="15" rx="3.5" />
+    </svg>
+  )
+}
+
+function WalkingCat() {
   return (
     <motion.div
-      className="absolute z-20 pointer-events-none"
-      style={{
-        bottom: '25%',
-        width: '90px',
-        height: '70px',
-      }}
+      className="absolute bottom-2 z-20 pointer-events-none text-[oklch(0.78_0.13_78)]"
+      style={{ width: '52px', height: '30px' }}
       animate={{
-        x: ['-100px', 'calc(100vw + 100px)'],
-        y: [0, -6, 0, -4, 0, -6, 0, -4, 0],
+        x: ['-80px', 'calc(100vw + 80px)'],
+        y: [0, -4, 0, -3, 0, -4, 0, -3, 0],
       }}
       transition={{
-        x: {
-          duration: 14,
-          repeat: Infinity,
-          ease: 'linear',
-        },
-        y: {
-          duration: 0.6,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        },
+        x: { duration: 16, repeat: Infinity, ease: 'linear' },
+        y: { duration: 0.6, repeat: Infinity, ease: 'easeInOut' },
       }}
     >
-      <img
-        src={KOALA_WALK_SPRITE}
-        alt="Koala walking"
-        className="w-full h-full object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
-      />
+      <CatSilhouette className="w-full h-full drop-shadow-[0_3px_5px_rgba(0,0,0,0.5)]" />
     </motion.div>
   )
 }
@@ -343,8 +356,8 @@ function WalkingKoala() {
 function OrganicEdge() {
   return (
     <div className="relative w-full h-24 sm:h-32 lg:h-40 -mb-1">
-      {/* Koala walking along the wave */}
-      <WalkingKoala />
+      {/* Koala trotting along the wave */}
+      <WalkingCat />
       {/* Back wave — slower, offset animation */}
       <svg
         viewBox="0 0 1440 120"
