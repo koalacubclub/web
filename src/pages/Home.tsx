@@ -111,7 +111,7 @@ function ReelCard({
       style={{ transformOrigin: 'center bottom' }}
     >
       {/* Poster with organic shadow */}
-      <div className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
+      <div className="relative aspect-[9/16] rounded-2xl overflow-hidden transform-gpu isolate [clip-path:inset(0_round_1rem)] bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
         <img
           src={reelPoster(code)}
           alt={caption}
