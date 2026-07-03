@@ -61,6 +61,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@koala/shared': fileURLToPath(
+        new URL('../shared/protocol.ts', import.meta.url),
+      ),
     },
   },
   test: {

@@ -1,0 +1,13 @@
+{
+  "name": "@koala/shared",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Wire protocol and shared constants for Koala's Park, imported by both client and server as TypeScript source.",
+  "main": "./protocol.ts",
+  "types": "./protocol.ts",
+  "exports": {
+    ".": "./protocol.ts",
+    "./protocol": "./protocol.ts"
+  }
+}

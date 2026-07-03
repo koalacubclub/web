@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "koala-park-game",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-02-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "GAME_WORLD", "class_name": "GameWorld" }]
+  },
+  // SQLite-backed Durable Object (required for new classes on the free plan,
+  // and gives us attached SQLite storage when we add purchases/likes later).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameWorld"] }],
+  // Local-development defaults. SESSION_SECRET comes from `.dev.vars`.
+  "vars": {
+    "ENVIRONMENT": "development",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:4173"
+  },
+  "env": {
+    "production": {
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": "https://www.koalacub.club,https://koalacub.club"
+      },
+      // Bind the game backend to its own subdomain.
+      "routes": [{ "pattern": "game.koalacub.club", "custom_domain": true }],
+      "durable_objects": {
+        "bindings": [{ "name": "GAME_WORLD", "class_name": "GameWorld" }]
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameWorld"] }]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+packages:
+  - client
+  - server
+  - shared
+
+# Native postinstall scripts we trust (workerd/esbuild download binaries, sharp
+# builds image bindings). Kept at the workspace root so every package inherits it.
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - sharp

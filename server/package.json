@@ -1,0 +1,25 @@
+{
+  "name": "koala-park-server",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Cloudflare Worker + Durable Object multiplayer backend for Koala's Park.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --env production",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@koala/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.9.9",
+    "@cloudflare/workers-types": "^5.20260703.1",
+    "typescript": "~6.0.2",
+    "vitest": "~3.2.0",
+    "wrangler": "^4.42.0"
+  }
+}
