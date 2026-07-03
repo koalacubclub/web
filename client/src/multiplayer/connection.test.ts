@@ -1,0 +1,193 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Multiplayer } from './connection'
+
+// Minimal controllable WebSocket stand-in (jsdom has no WebSocket). Tests grab
+// the instance the client creates and drive its lifecycle by hand.
+class FakeWebSocket {
+  static OPEN = 1
+  static instances: FakeWebSocket[] = []
+  url: string
+  readyState = 0
+  sent: string[] = []
+  private listeners: Record<string, ((e: unknown) => void)[]> = {}
+
+  constructor(url: string) {
+    this.url = url
+    FakeWebSocket.instances.push(this)
+  }
+  addEventListener(type: string, cb: (e: unknown) => void) {
+    ;(this.listeners[type] ??= []).push(cb)
+  }
+  send(data: string) {
+    this.sent.push(data)
+  }
+  close() {
+    if (this.readyState === 3) return
+    this.readyState = 3
+    this.emit('close', {})
+  }
+  private emit(type: string, e: unknown) {
+    for (const cb of this.listeners[type] ?? []) cb(e)
+  }
+  // test helpers
+  fireOpen() {
+    this.readyState = FakeWebSocket.OPEN
+    this.emit('open', {})
+  }
+  receive(msg: unknown) {
+    this.emit('message', { data: JSON.stringify(msg) })
+  }
+}
+
+// Import the module fresh each test so its module-level env reads pick up the
+// stubbed VITE_GAME_* values.
+async function startConnected(): Promise<{
+  mp: Multiplayer
+  ws: FakeWebSocket
+}> {
+  const { createMultiplayer } = await import('./connection')
+  const mp = createMultiplayer()
+  expect(mp).not.toBeNull()
+  await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+  const ws = FakeWebSocket.instances[0]
+  ws.fireOpen()
+  return { mp: mp as Multiplayer, ws }
+}
+
+const player = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  name: `Koala ${id}`,
+  x: 1,
+  y: 1,
+  dir: 'right',
+  pose: 'standing',
+  interacting: false,
+  ...over,
+})
+
+describe('createMultiplayer', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_GAME_HTTP_URL', 'http://localhost:8787')
+    vi.stubEnv('VITE_GAME_WS_URL', 'ws://localhost:8787')
+    FakeWebSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('returns null when no backend is configured', async () => {
+    vi.unstubAllEnvs()
+    vi.stubEnv('VITE_GAME_HTTP_URL', '')
+    vi.stubEnv('VITE_GAME_WS_URL', '')
+    vi.stubEnv('DEV', false) // force the prod-without-config path
+    vi.resetModules()
+    const { createMultiplayer } = await import('./connection')
+    expect(createMultiplayer()).toBeNull()
+  })
+
+  it('connects, records self, and adds the initial roster (excluding self)', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('a'), player('self')], // self must be filtered out
+      now: 0,
+    })
+    expect(mp.connected).toBe(true)
+    expect(mp.self?.id).toBe('self')
+    expect(mp.players.has('a')).toBe(true)
+    expect(mp.players.has('self')).toBe(false)
+  })
+
+  it('handles join, state, and leave for remote players', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+
+    ws.receive({ t: 'join', p: player('b') })
+    expect(mp.players.has('b')).toBe(true)
+
+    ws.receive({
+      t: 'state',
+      id: 'b',
+      s: player('b', { x: 5, y: 6, dir: 'left' }),
+    })
+    const b = mp.players.get('b')
+    expect(b?.x).toBe(5)
+    expect(b?.y).toBe(6)
+    expect(b?.dir).toBe('left')
+
+    ws.receive({ t: 'leave', id: 'b' })
+    expect(mp.players.has('b')).toBe(false)
+  })
+
+  it('ignores state echoed back for self', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+    ws.receive({ t: 'state', id: 'self', s: player('self', { x: 9 }) })
+    expect(mp.players.has('self')).toBe(false)
+    expect(mp.players.size).toBe(0)
+  })
+
+  it('throttles sends but lets a pose/dir change through immediately', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+
+    const s = {
+      x: 1,
+      y: 1,
+      dir: 'right' as const,
+      pose: 'standing' as const,
+      interacting: false,
+    }
+    mp.sendState(s)
+    mp.sendState({ ...s }) // identical + within interval → dropped
+    expect(ws.sent.length).toBe(1)
+
+    mp.sendState({ ...s, pose: 'lying' }) // pose change bypasses the throttle
+    expect(ws.sent.length).toBe(2)
+  })
+
+  it('does not send while the socket is not open', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const mp = createMultiplayer() as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    // never fired open → readyState 0
+    mp.sendState({
+      x: 1,
+      y: 1,
+      dir: 'right',
+      pose: 'standing',
+      interacting: false,
+    })
+    expect(FakeWebSocket.instances[0].sent.length).toBe(0)
+  })
+
+  it('clears players and marks disconnected when the socket closes', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('a')],
+      now: 0,
+    })
+    expect(mp.players.size).toBe(1)
+    ws.close()
+    expect(mp.connected).toBe(false)
+    expect(mp.players.size).toBe(0)
+  })
+
+  it('close() tears down the socket and stops reconnecting', async () => {
+    const { mp, ws } = await startConnected()
+    mp.close()
+    expect(mp.connected).toBe(false)
+    expect(ws.readyState).toBe(3)
+  })
+})

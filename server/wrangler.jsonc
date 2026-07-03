@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "koala-game",
+  // Account is not secret; it lets CI deploy with just a CLOUDFLARE_API_TOKEN.
+  "account_id": "7e5c2ad6e64b556dc2de01c38e0af1e4",
   "main": "src/worker.ts",
   "compatibility_date": "2025-02-01",
   "observability": { "enabled": true },
