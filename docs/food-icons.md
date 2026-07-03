@@ -1,5 +1,12 @@
 # Koala's Park — Food Collectibles Icon Spec
 
+> ⚠️ **Legacy / not currently wired up.** Food is now drawn **procedurally** as
+> flat basic-shape art (`drawFoodShape()` in `ParkGame.tsx`) to match the rest of
+> the park; the drop-in PNG loader and the shipped PNGs were removed. This spec is
+> kept only as a reference in case raster art is reintroduced later — doing so
+> would require re-adding the `g.foodImages` preload and the PNG override branch
+> in `drawFoods()`. See [decisions.md](./decisions.md) §11.
+
 Authoritative art spec for the collectible food icons in the `ParkGame` mini-game
 (`src/components/ParkGame.tsx`). Hand this to whoever generates the icons.
 

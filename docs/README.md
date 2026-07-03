@@ -11,7 +11,7 @@ _not_ exhaustive — read the code for details. Start here so you don't re-deriv
 | [decisions.md](./decisions.md)                         | The **why** — short ADR-style entries for each key decision. Read this first.                                                |
 | [content-workflows.md](./content-workflows.md)         | How to refresh the reel feed and the followers ("club") wall — a deliberately semi-manual, agent-assisted process.           |
 | [game.md](./game.md)                                   | The `ParkGame` canvas mini-game: coordinate system, controls (incl. mobile gestures), food/scoring, rendering & performance. |
-| [food-icons.md](./food-icons.md)                       | Art spec + generation prompts for the collectible food sprites.                                                              |
+| [food-icons.md](./food-icons.md)                       | _(Legacy)_ Raster food-sprite art spec — the PNG pipeline was removed; food is drawn procedurally now.                       |
 | [perf-main-thread-plan.md](./perf-main-thread-plan.md) | Main-thread performance analysis + a ranked, verified fix plan (measure prod first; canvas/CSS paint costs).                 |
 
 Conventions: [Conventional Commits](https://www.conventionalcommits.org/); the

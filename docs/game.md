@@ -80,10 +80,14 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 - **Score:** shown in an on-canvas HUD pill that sits just above the ground line
   (pinned against the camera pan via `g.hudShift`); the **best score persists** in
   `localStorage` under `kcc-park-best`.
-- **Art:** each food renders its **emoji as a fallback**, and automatically uses
-  `public/game/food/<key>.png` (256px, transparent) once that file exists — images
-  are preloaded into `g.foodImages`. To add real art, drop the PNGs in; no code
-  change. Full sprite spec + generation prompts: [food-icons.md](./food-icons.md).
+- **Art:** each food is drawn **procedurally with `ctx` primitives**
+  (`drawFoodShape()`) as flat basic-shape art, matching the park's other objects
+  instead of looking like pasted-in emoji. Colours are bright because food is
+  drawn **above** the purple night wash (unlike the objects beneath it) so it
+  reads as collectible. The item's emoji is only a last-resort fallback for an
+  unknown key. (There is **no PNG sprite pipeline** anymore — the old drop-in
+  `public/game/food/<key>.png` loader was removed; see the legacy note in
+  [food-icons.md](./food-icons.md) if you ever want to reintroduce raster art.)
 
 ## Rendering & performance
 

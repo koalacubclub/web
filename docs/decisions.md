@@ -87,12 +87,19 @@ explicitly `Allow`s the major AI/search bots. The apex→www redirect lives in t
 **Vercel dashboard**, not the repo — if the canonical host ever changes, update
 `index.html`, `robots.txt`, and `sitemap.xml` together.
 
-## 11. Food sprites are drop-in with an emoji fallback
+## 11. Food is procedural basic-shape art (no PNG pipeline)
 
-The game's collectible food renders each item's **emoji** until a real sprite
-exists at `public/game/food/<key>.png` (256px, transparent). Drop the PNGs in and
-they're picked up automatically — no code change. Spec + prompts in
-[food-icons.md](./food-icons.md).
+The game's collectible food is drawn **procedurally with `ctx` primitives**
+(`drawFoodShape()` in `ParkGame.tsx`) so it matches the park's other
+basic-shape objects rather than looking like pasted-in emoji or raster stickers.
+The item's emoji is only a last-resort fallback for an unknown key.
+
+An earlier version supported a **drop-in PNG override** (`public/game/food/<key>.png`,
+256px, preloaded into `g.foodImages`), but the shipped PNGs clashed with the
+game's flat-shape art, so the loader and the PNGs were **removed** in favour of
+procedural drawing. The art spec is kept as a legacy reference in
+[food-icons.md](./food-icons.md); reintroducing raster art would mean re-adding
+the loader + override branch.
 
 ## 12. Render the game canvas at device resolution (no pixelated upscale)
 
