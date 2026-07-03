@@ -1629,6 +1629,13 @@ export default function ParkGame() {
     <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
       <canvas
         ref={canvasRef}
+        // Set the drawing-buffer size on the element itself so the canvas has
+        // its real intrinsic ratio (960x816) from first paint. Without these,
+        // the canvas renders at the default 300x150 until the effect resizes it,
+        // and under CPU throttling that resize repaints taller *after* first
+        // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
