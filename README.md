@@ -55,13 +55,35 @@ poster image** (`public/reels/<shortcode>.jpg`) that links out to the reel on
 instagram.com — no third-party embed scripts, so it stays fast. The list is a
 point-in-time snapshot defined by the `REELS` array in `src/pages/Home.tsx`.
 
-To refresh when new reels are posted:
+Refreshing is a **semi-manual, agent-assisted process** — deliberately not an
+automated script. Instagram blocks headless / logged-out scraping, so it needs a
+real, logged-in browser session driven interactively (the same browser-automation
+tooling used to seed the feed originally). Steps:
 
-1. Open the profile and collect each reel's shortcode (the `…/reel/<shortcode>/`
-   segment) and its cover image.
-2. Save each cover as `public/reels/<shortcode>.jpg` (portrait 9:16 works best).
+1. Open [the profile](https://www.instagram.com/koalacubclub/) in a logged-in
+   browser and run this in the DevTools console (or via the browser-automation
+   tool's eval) to dump every reel's shortcode, cover URL, and caption:
+
+   ```js
+   JSON.stringify(
+     [...document.querySelectorAll('a[href*="/reel/"]')]
+       .map((a) => {
+         const img = a.querySelector('img')
+         return { href: a.getAttribute('href'), img: img?.src, alt: img?.alt }
+       })
+       .filter((x) => x.img),
+   )
+   ```
+
+2. For each entry, save the cover to `public/reels/<shortcode>.jpg` — the
+   shortcode is the `…/reel/<shortcode>/` segment (portrait 9:16 works best).
+   Instagram cover URLs are signed and expire, so download them promptly.
 3. Add/replace entries in the `REELS` array (`{ code, caption }`) in
-   `src/pages/Home.tsx`, newest first.
+   `src/pages/Home.tsx`, newest first. Keep captions short (they truncate to one
+   line); strip the hashtags.
+
+> Note: the header/footer still link to both Instagram and TikTok. TikTok
+> currently lags behind on uploads, so the feed is sourced from Instagram.
 
 ## Git hooks
 
