@@ -1,16 +1,16 @@
 import { expect, test } from '@playwright/test'
 
-test('home page shows greeting and counter works', async ({ page }) => {
+test('landing page renders hero and social links', async ({ page }) => {
   await page.goto('/')
 
-  await expect(
-    page.getByRole('heading', { name: /hello, koala cub club/i }),
-  ).toBeVisible()
+  await expect(page).toHaveTitle(/koala cub club/i)
 
-  const button = page.getByRole('button', { name: /clicked 0 times/i })
-  await button.click()
+  const heading = page.getByRole('heading', { level: 1 })
+  await expect(heading).toContainText(/she sees/i)
+
+  await expect(page.getByText(/a tabby with opinions/i).first()).toBeVisible()
 
   await expect(
-    page.getByRole('button', { name: /clicked 1 time/i }),
-  ).toBeVisible()
+    page.getByRole('link', { name: /instagram/i }).first(),
+  ).toHaveAttribute('href', 'https://www.instagram.com/koalacubclub/')
 })
