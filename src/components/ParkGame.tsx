@@ -13,10 +13,14 @@ import { useEffect, useRef, useCallback } from 'react'
 
 const SCALE = 3
 const MAP_COLS = 20
-const MAP_ROWS = 13
+const GROUND_ROWS = 13 // the playable park (unchanged game logic)
+const SKY_ROWS = 4 // extra sky rows on top; the world is shifted down by these
+const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 const PIXEL = 16 * SCALE
 const CANVAS_WIDTH = MAP_COLS * PIXEL
 const CANVAS_HEIGHT = MAP_ROWS * PIXEL
+const GROUND_HEIGHT = GROUND_ROWS * PIXEL
+const WORLD_OFFSET = SKY_ROWS * PIXEL // px the park is pushed down for more sky
 
 const COLORS = {
   // Near-black night sky matched to the site background (--background token)
@@ -238,7 +242,8 @@ export default function ParkGame() {
       const cy = Math.min(Math.max(e.clientY, rect.top), rect.bottom)
       const px = ((cx - rect.left) / rect.width) * CANVAS_WIDTH
       const py = ((cy - rect.top) / rect.height) * CANVAS_HEIGHT
-      g.target = { x: px / PIXEL - 0.5, y: py / PIXEL - 0.5 }
+      // py is screen space; subtract the world offset to get a park tile coord.
+      g.target = { x: px / PIXEL - 0.5, y: (py - WORLD_OFFSET) / PIXEL - 0.5 }
     }
     const handlePointerDown = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect()
@@ -275,12 +280,7 @@ export default function ParkGame() {
 
     function drawGround() {
       if (!ctx) return
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, PIXEL * 1.8)
-      skyGrad.addColorStop(0, COLORS.sky)
-      skyGrad.addColorStop(0.6, COLORS.skyLight)
-      skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
-      ctx.fillStyle = skyGrad
-      ctx.fillRect(0, 0, CANVAS_WIDTH, PIXEL * 1.8)
+      // Sky is drawn separately (screen space) in the game loop.
 
       // Sand base
       ctx.fillStyle = '#E8D5A8'
@@ -683,7 +683,7 @@ export default function ParkGame() {
         b.y += b.vy + Math.cos(b.timer * 1.3) * 0.3
         if (b.x > CANVAS_WIDTH) b.x = -10
         if (b.x < -10) b.x = CANVAS_WIDTH
-        if (b.y > CANVAS_HEIGHT - PIXEL * 2) b.vy = -Math.abs(b.vy)
+        if (b.y > GROUND_HEIGHT - PIXEL * 2) b.vy = -Math.abs(b.vy)
         if (b.y < PIXEL * 2) b.vy = Math.abs(b.vy)
         const wingFlap = Math.sin(g.frameCount * 0.3 + b.timer) * 3
         ctx.fillStyle = b.color
@@ -1140,7 +1140,7 @@ export default function ParkGame() {
       }
 
       newX = Math.max(0, Math.min(MAP_COLS - 1, newX))
-      newY = Math.max(1, Math.min(MAP_ROWS - 1.5, newY))
+      newY = Math.max(1, Math.min(GROUND_ROWS - 1.5, newY))
 
       let blocked = false
       g.objects.forEach((obj) => {
@@ -1193,11 +1193,25 @@ export default function ParkGame() {
     function gameLoop() {
       g.frameCount++
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+      // Sky fills the top of the canvas down to the horizon (screen space).
+      const horizon = WORLD_OFFSET + PIXEL * 1.8
+      const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
+      skyGrad.addColorStop(0, COLORS.sky)
+      skyGrad.addColorStop(0.6, COLORS.skyLight)
+      skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
+      ctx!.fillStyle = skyGrad
+      ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
+
+      // The park world is pushed down so the sky has room above it.
+      ctx!.save()
+      ctx!.translate(0, WORLD_OFFSET)
       drawGround()
       drawObjects()
       drawButterflies()
       updateCat()
       drawCat()
+      ctx!.restore()
 
       // Purple overlay with blend mode
       ctx!.save()
@@ -1206,10 +1220,14 @@ export default function ParkGame() {
       ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       ctx!.restore()
 
-      // Draw above overlay: stars, moon, popups
+      // Above overlay, all in the shifted world space so the stars/moon sit
+      // just above the ground rather than at the very top of the canvas.
+      ctx!.save()
+      ctx!.translate(0, WORLD_OFFSET)
       drawStarsAndMoon()
       drawDreamBubble()
       drawPopups()
+      ctx!.restore()
 
       animId = requestAnimationFrame(gameLoop)
     }
@@ -1232,11 +1250,15 @@ export default function ParkGame() {
       <canvas
         ref={canvasRef}
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer."
-        className="block cursor-pointer drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+        className="block cursor-pointer select-none drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
           // Recognize taps immediately (no double-tap-zoom delay) on touch.
           touchAction: 'manipulation',
+          // Don't let a press/drag select or highlight the canvas.
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTapHighlightColor: 'transparent',
           // Cover the header on any screen size: scale up so the game fills both
           // width and height (whichever needs more), keeping the map ratio.
           // The flex parent centers it and clips the overflow.

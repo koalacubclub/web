@@ -201,8 +201,12 @@ function FixedHero() {
         <motion.div
           animate={{ y: [0, 6, 0] }}
           transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+          className="flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20"
         >
-          <ArrowDown className="w-4 h-4 text-white/25" strokeWidth={1} />
+          <ArrowDown
+            className="h-5 w-5 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]"
+            strokeWidth={2}
+          />
         </motion.div>
       </motion.div>
     </div>
