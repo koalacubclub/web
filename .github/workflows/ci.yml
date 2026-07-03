@@ -137,3 +137,30 @@ jobs:
         run: pnpm dlx vercel@latest build --prod --token="$VERCEL_TOKEN"
       - name: Deploy prebuilt output to Vercel
         run: pnpm dlx vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  deploy-server:
+    # Production deploy of the Cloudflare Worker + Durable Object (the multiplayer
+    # backend at game.koalacub.club). Mirrors the Vercel deploy: gated on all
+    # checks, main-push only, so backend and frontend ship together from main.
+    # Requires the repo secret CLOUDFLARE_API_TOKEN (account_id is in
+    # server/wrangler.jsonc). SESSION_SECRET persists across deploys, so it is
+    # NOT re-set here.
+    name: deploy server (production)
+    needs: [static, test, build, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://game.koalacub.club
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Deploy Worker with Wrangler
+        run: pnpm --filter @koala/server exec wrangler deploy --env production
