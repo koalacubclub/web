@@ -1,138 +1,74 @@
 # Koala Cub Club — web
 
-Front-end for Koala Cub Club — a single-page landing site for the tabby.
-Built with **Vite + React + TypeScript**, styled with **Tailwind CSS v4**,
-animated with **framer-motion**, icons from **lucide-react**. The page lives in
-`src/pages/Home.tsx`; the `@/` import alias maps to `src/`.
+The landing site for **Koala Cub Club**, a tabby cat's corner of the internet.
+Live at **https://www.koalacub.club**.
 
-Motion respects `prefers-reduced-motion` (via `MotionConfig` + a CSS fallback).
+It's a single-page, client-rendered SPA: a canvas **mini-game** hero you can play,
+a **feed** of Instagram reels, and a **wall of followers** — all wrapped in a
+cozy, animated, dark-and-gold theme.
 
-## Requirements
+Built with **Vite 8 · React 19 · TypeScript**, styled with **Tailwind CSS v4**,
+animated with **framer-motion**. Icons from **lucide-react**; responsive images
+via **vite-imagetools**; linting with **oxlint**.
 
-- Node.js 24+
-- [pnpm](https://pnpm.io/) 10+ (`corepack enable` or `npm i -g pnpm`)
+> **New here (human or AI)? Read [`docs/`](./docs) first** — especially
+> [`docs/decisions.md`](./docs/decisions.md). It captures the _why_ behind the
+> non-obvious choices so you don't accidentally undo them.
 
-## Getting started
+## Quick start
 
 ```bash
 pnpm install
-pnpm dev          # start the dev server (http://localhost:5173)
+pnpm dev          # dev server at http://localhost:5173
+pnpm build        # type-check + production build
+pnpm preview      # serve the production build
 ```
+
+Requires **Node.js 24+** and **pnpm 10+** (`corepack enable`).
+
+## Project map
+
+```
+src/pages/Home.tsx        # the whole page (hero game + feed + club + footer)
+src/components/ParkGame.tsx# canvas mini-game hero
+src/data/reels.ts          # feed content — single source of truth
+src/data/followers.ts      # club content — single source of truth
+src/assets/reels/          # pristine poster sources (optimized at build)
+public/game/food/          # drop-in food sprites for the game
+vite.config.ts             # react, tailwind, imagetools + build-time <noscript> for crawlers
+```
+
+The `@/` import alias maps to `src/`. See [`docs/architecture.md`](./docs/architecture.md).
 
 ## Scripts
 
-| Script               | What it does                                   |
-| -------------------- | ---------------------------------------------- |
-| `pnpm dev`           | Start the Vite dev server with HMR             |
-| `pnpm build`         | Type-check (`tsc -b`) and build for production |
-| `pnpm preview`       | Serve the production build locally             |
-| `pnpm typecheck`     | Type-check without emitting                    |
-| `pnpm lint`          | Lint with oxlint                               |
-| `pnpm lint:fix`      | Lint and auto-fix                              |
-| `pnpm format`        | Format with Prettier                           |
-| `pnpm format:check`  | Check formatting (used in CI)                  |
-| `pnpm test`          | Run unit tests once (Vitest)                   |
-| `pnpm test:watch`    | Run unit tests in watch mode                   |
-| `pnpm test:coverage` | Run unit tests with coverage                   |
-| `pnpm test:e2e`      | Run Playwright end-to-end tests                |
-| `pnpm test:e2e:ui`   | Run Playwright in UI mode                      |
+| Script                                       | What it does                                   |
+| -------------------------------------------- | ---------------------------------------------- |
+| `pnpm dev` / `preview`                       | Dev server (HMR) / serve the production build  |
+| `pnpm build`                                 | `tsc -b` + `vite build`                        |
+| `pnpm typecheck`                             | Types only, no emit                            |
+| `pnpm lint` / `lint:fix`                     | oxlint                                         |
+| `pnpm format` / `format:check`               | Prettier                                       |
+| `pnpm test` / `test:watch` / `test:coverage` | Vitest unit tests                              |
+| `pnpm test:e2e` / `test:e2e:ui`              | Playwright (self-contained; builds + previews) |
 
-## Testing
+## Documentation
 
-- **Unit / component** tests use [Vitest](https://vitest.dev/) +
-  [Testing Library](https://testing-library.com/) with a jsdom environment.
-  Files live next to the code as `*.test.tsx`.
-- **End-to-end** tests use [Playwright](https://playwright.dev/) and live in
-  `e2e/`. The Playwright config builds the app and serves the production
-  bundle before running, so `pnpm test:e2e` is self-contained (run
-  `pnpm exec playwright install chromium` once first).
+| Doc                                                      |                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------- |
+| [docs/decisions.md](./docs/decisions.md)                 | **Why** the key choices were made (read first)          |
+| [docs/architecture.md](./docs/architecture.md)           | Stack, structure, data-source-of-truth + build pipeline |
+| [docs/content-workflows.md](./docs/content-workflows.md) | Refreshing the reel feed & followers wall               |
+| [docs/game.md](./docs/game.md)                           | The `ParkGame` mini-game & food-collectible system      |
+| [docs/food-icons.md](./docs/food-icons.md)               | Food sprite art spec + generation prompts               |
 
-## Updating the reel feed
+## Conventions & CI
 
-The "feed" section shows Instagram reels from
-[@koalacubclub](https://www.instagram.com/koalacubclub/). Each card links out to
-the reel on instagram.com — no third-party embed scripts, so it stays fast. The
-poster is a **pristine JPEG source** in `src/assets/reels/<shortcode>.jpg` that
-[vite-imagetools](https://github.com/JonasKruckenberg/imagetools) turns into
-right-sized, responsive **WebP** variants (240/480/640-wide `srcset`) at build —
-the raw sources are never shipped, and the browser downloads only the size it
-needs. The list is a point-in-time snapshot defined by the `REELS` array in
-`src/data/reels.ts` (the single source of truth — the React feed and the
-build-time crawlable `<noscript>` in `vite.config.ts` both read from it, so they
-never drift; posters are matched to reels by the `<shortcode>` filename).
-
-Refreshing is a **semi-manual, agent-assisted process** — deliberately not an
-automated script. Instagram blocks headless / logged-out scraping, so it needs a
-real, logged-in browser session driven interactively (the same browser-automation
-tooling used to seed the feed originally). Steps:
-
-1. Open [the profile](https://www.instagram.com/koalacubclub/) in a logged-in
-   browser and run this in the DevTools console (or via the browser-automation
-   tool's eval) to dump every reel's shortcode, cover URL, and caption:
-
-   ```js
-   JSON.stringify(
-     [...document.querySelectorAll('a[href*="/reel/"]')]
-       .map((a) => {
-         const img = a.querySelector('img')
-         return { href: a.getAttribute('href'), img: img?.src, alt: img?.alt }
-       })
-       .filter((x) => x.img),
-   )
-   ```
-
-2. For each entry, save the full-res cover to
-   `src/assets/reels/<shortcode>.jpg` — the shortcode is the
-   `…/reel/<shortcode>/` segment (portrait 9:16 works best). Save the largest
-   available (≈640–720px wide is plenty); the build downscales/compresses it. No
-   need to optimize by hand — Instagram cover URLs are signed and expire, so
-   download them promptly.
-3. Add/replace entries in the `REELS` array (`{ code, caption }`) in
-   `src/data/reels.ts`, newest first. Keep captions short (they truncate to one
-   line); strip the hashtags. The crawlable `<noscript>` regenerates from this on
-   the next build — no other edits needed.
-
-> Note: the header/footer still link to both Instagram and TikTok. TikTok
-> currently lags behind on uploads, so the feed is sourced from Instagram.
-
-## Updating the club
-
-The "club" section (**Meet the cubs**) is a wall of
-[@koalacubclub](https://www.instagram.com/koalacubclub/)'s Instagram followers —
-newest first, paginated. Like the feed, each avatar is a **local image**
-(`public/followers/<username>.jpg`) that links out to the follower's Instagram
-profile, so there are no third-party embeds. The list is a point-in-time
-snapshot defined by the `FOLLOWERS` array in `src/data/followers.ts` (the single
-source of truth — the React club wall and the build-time crawlable `<noscript>`
-in `vite.config.ts` both read from it, so they never drift).
-
-Refreshing follows the same **agent-assisted, logged-in browser** flow as the
-feed (Instagram blocks logged-out access to a followers list):
-
-1. In a logged-in browser, open the followers dialog
-   (`https://www.instagram.com/koalacubclub/followers/`) and scroll it to the
-   bottom so every row lazy-loads. Then dump each follower's username, avatar
-   URL, and DOM order (top = newest) from the dialog's `<a href="/…/">` rows.
-2. Download each avatar to `public/followers/<username>.jpg` — Instagram avatar
-   URLs are signed and expire, so download them promptly. A follower whose
-   avatar can't be fetched (e.g. no profile picture) can be omitted from
-   `public/followers/`; the UI falls back to a monogram automatically.
-3. Replace the `FOLLOWERS` array (`src/data/followers.ts`) with the usernames in
-   newest-first order. Page size is controlled by `MEMBERS_PER_PAGE`. The
-   crawlable `<noscript>` regenerates from this on the next build — no other
-   edits needed.
-
-## Git hooks
-
-Managed by [husky](https://typicode.github.io/husky/):
-
-- **pre-commit** — runs `lint-staged` (oxlint + Prettier on staged files)
-- **commit-msg** — enforces [Conventional Commits](https://www.conventionalcommits.org/) via commitlint
-- **pre-push** — runs `pnpm typecheck` and `pnpm test`
-
-## CI / Deploy
-
-- **CI** — GitHub Actions (`.github/workflows/ci.yml`) runs lint, typecheck,
-  format check, unit tests, build, and Playwright e2e on every push/PR to `main`.
-- **Deploy** — [Vercel](https://vercel.com/) (`vercel.json`), auto-detected as a
-  Vite SPA with a catch-all rewrite to `index.html` for client-side routing.
+- **Commits:** [Conventional Commits](https://www.conventionalcommits.org/),
+  enforced by commitlint. Husky hooks run lint-staged (pre-commit) and
+  typecheck + tests (pre-push).
+- **CI:** GitHub Actions runs lint, typecheck, format-check, unit tests, build,
+  and Playwright e2e on every push/PR to `main` (Node 24). `main` is often busy —
+  rebase before pushing, or use a feature branch + PR.
+- **Deploy:** Vercel (Vite SPA, catch-all rewrite to `index.html`; apex→www
+  redirect is set in the Vercel dashboard).
