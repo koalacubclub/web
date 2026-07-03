@@ -16,8 +16,10 @@ test('landing page renders hero, reel feed and social links', async ({
   await expect(reelLinks).toHaveCount(12)
   await expect(reelLinks.first()).toHaveAttribute('target', '_blank')
 
+  // The profile link, named exactly "Instagram" — reel cards are also named
+  // "Watch on Instagram: …", so a loose /instagram/i match resolves to a reel.
   await expect(
-    page.getByRole('link', { name: /instagram/i }).first(),
+    page.getByRole('link', { name: 'Instagram', exact: true }).first(),
   ).toHaveAttribute('href', 'https://www.instagram.com/koalacubclub/')
 
   // The club: paginated followers wall with member avatars linking to profiles

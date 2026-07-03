@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
+import { cameraPan } from './parkCamera'
 
 /**
  * ParkGame - A Neko Atsume-inspired pixel-art park where Koala the tabby cat
@@ -138,6 +139,18 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 const BEST_SCORE_KEY = 'kcc-park-best'
 
+// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
+// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
+function makeRng(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 interface GameObject {
   type: string
   x: number
@@ -205,11 +218,11 @@ export default function ParkGame() {
     butterflies: [] as Butterfly[],
     popups: [] as Popup[],
     foods: [] as Food[],
-    foodImages: {} as Record<string, HTMLImageElement>,
     score: 0,
     best: 0,
     nextFoodAt: 180,
-    hudShift: 0, // canvas-px offset to keep the HUD pinned against the camera pan
+    hudShift: 0, // canvas-px X offset to keep the HUD pinned against the camera pan
+    hudShiftY: 0, // canvas-px Y offset (vertical camera), same purpose
     frameCount: 0,
   })
 
@@ -340,17 +353,12 @@ export default function ParkGame() {
       state: 'standing',
     }
 
-    // Restore best score; preload food sprites (emoji fallback until PNGs exist).
+    // Restore best score. (Food is drawn procedurally — see drawFoodShape.)
     try {
       g.best = Number(localStorage.getItem(BEST_SCORE_KEY)) || 0
     } catch {
       /* localStorage unavailable — ignore */
     }
-    FOODS.forEach((f) => {
-      const img = new Image()
-      img.src = `/game/food/${f.key}.png`
-      g.foodImages[f.key] = img
-    })
 
     // Offscreen canvas holding the fully static sky + ground. Rendered once,
     // then blitted each frame instead of recomputing the grass blobs, sand
@@ -721,18 +729,48 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
+      // Keep the original clean 3-blob canopy, but nudge scale + blob offsets a
+      // little per tree (seeded by tile position) so they aren't all identical.
+      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 1)
+      const s = 0.9 + rng() * 0.22 // overall canopy scale
+      const jx = (rng() - 0.5) * PIXEL * 0.16 // main-blob jitter
+      const jy = (rng() - 0.5) * PIXEL * 0.12
+
+      // Trunk (original fixed shape).
       ctx.fillStyle = COLORS.treeTrunk
-      ctx.fillRect(x + PIXEL * 0.7, y + PIXEL * 1, PIXEL * 0.6, PIXEL * 1)
+      ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
+
+      // Main (darker) canopy blob.
       ctx.fillStyle = COLORS.treeLeaves
       ctx.beginPath()
-      ctx.arc(x + PIXEL, y + PIXEL * 0.6, PIXEL * 0.9, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL + jx,
+        y + PIXEL * 0.6 + jy,
+        PIXEL * 0.9 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
+
+      // Two lighter blobs (upper-left + upper-right), each slightly jittered.
       ctx.fillStyle = COLORS.treeLeavesLight
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.7, y + PIXEL * 0.5, PIXEL * 0.5, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
+        y + PIXEL * (0.5 + (rng() - 0.5) * 0.12),
+        PIXEL * 0.5 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 1.3, y + PIXEL * 0.4, PIXEL * 0.55, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL * (1.3 + (rng() - 0.5) * 0.16),
+        y + PIXEL * (0.4 + (rng() - 0.5) * 0.12),
+        PIXEL * 0.55 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
     }
 
@@ -754,21 +792,35 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
-      const colors = [COLORS.flower1, COLORS.flower2, COLORS.flower3]
+      // Per-patch randomness (seeded by tile position) so each flower cluster has
+      // its own count / colours / sizes / scatter instead of all looking alike.
+      const palette = [
+        COLORS.flower1,
+        COLORS.flower2,
+        COLORS.flower3,
+        COLORS.heart,
+        COLORS.butterfly,
+      ]
+      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
       const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
-      for (let i = 0; i < 3; i++) {
-        const fx = x + i * SCALE * 5
-        const fy = y + PIXEL * 0.4 + bobOffset
+      const count = 3 + Math.floor(rng() * 2) // 3–4 blooms
+      let fx = x + PIXEL * 0.08
+      for (let i = 0; i < count; i++) {
+        const cxp = fx + SCALE * 2.5
+        const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
+        const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
+        const stemH = SCALE * 4
         ctx.fillStyle = COLORS.grassDark
-        ctx.fillRect(fx + SCALE * 2, fy + SCALE * 3, SCALE, SCALE * 4)
-        ctx.fillStyle = colors[i]
+        ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
+        ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
-        ctx.arc(fx + SCALE * 2.5, fy + SCALE * 2, SCALE * 2.5, 0, Math.PI * 2)
+        ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = COLORS.fishBowl
         ctx.beginPath()
-        ctx.arc(fx + SCALE * 2.5, fy + SCALE * 2, SCALE, 0, Math.PI * 2)
+        ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
         ctx.fill()
+        fx += SCALE * (3.6 + rng() * 1.8)
       }
     }
 
@@ -910,18 +962,39 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
+      // Stem first, tall enough that the cap dome overlaps its top (so they read
+      // as one piece rather than a floating cap above a separate foot).
       ctx.fillStyle = '#F5F5DC'
-      ctx.fillRect(x + PIXEL * 0.35, y + PIXEL * 0.5, PIXEL * 0.3, PIXEL * 0.4)
+      ctx.fillRect(
+        x + PIXEL * 0.38,
+        y + PIXEL * 0.42,
+        PIXEL * 0.24,
+        PIXEL * 0.5,
+      )
+      // Cap: a wide dome whose flat base sits at y+0.5, overlapping the stem top.
       ctx.fillStyle = '#FF6B6B'
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.45, PIXEL * 0.35, Math.PI, 0)
+      ctx.ellipse(
+        x + PIXEL * 0.5,
+        y + PIXEL * 0.5,
+        PIXEL * 0.42,
+        PIXEL * 0.34,
+        0,
+        Math.PI,
+        Math.PI * 2,
+      )
+      ctx.closePath()
       ctx.fill()
+      // White spots on the cap.
       ctx.fillStyle = COLORS.white
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.35, SCALE, 0, Math.PI * 2)
+      ctx.arc(x + PIXEL * 0.37, y + PIXEL * 0.4, SCALE, 0, Math.PI * 2)
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.6, y + PIXEL * 0.38, SCALE * 0.8, 0, Math.PI * 2)
+      ctx.arc(x + PIXEL * 0.62, y + PIXEL * 0.42, SCALE * 0.8, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.3, SCALE * 0.7, 0, Math.PI * 2)
       ctx.fill()
     }
 
@@ -1322,7 +1395,10 @@ export default function ParkGame() {
       g.popups.forEach((p) => {
         p.life -= f
         p.y -= 0.5 * f
-        const alpha = Math.min(1, p.life / 30)
+        // Clamp to [0,1]: once life goes negative this would be negative, and
+        // `ctx.globalAlpha = <out-of-range>` is silently ignored by canvas —
+        // leaving alpha at 1 for the final frame, which read as a blink.
+        const alpha = Math.max(0, Math.min(1, p.life / 30))
         ctx.globalAlpha = alpha
         ctx.font = "600 16px 'Cormorant Garamond', Georgia, serif"
         ctx.textAlign = 'center'
@@ -1406,6 +1482,213 @@ export default function ParkGame() {
       })
     }
 
+    // Collectible food drawn as flat, basic-shape art with `ctx` primitives so
+    // it matches the park's other procedurally-drawn objects (tree, bench,
+    // flowers, …) rather than looking like pasted-in emoji. Centered at (cx, cy)
+    // and sized to fit `size` px; `emoji` is only a last-resort fallback for an
+    // unknown key. Colours are bright because food is drawn above the purple
+    // night wash (unlike the objects beneath it) so it reads as collectible.
+    function drawFoodShape(
+      key: string,
+      cx: number,
+      cy: number,
+      size: number,
+      emoji: string,
+    ) {
+      if (!ctx) return
+      const u = size / 2 // half extent
+      const dot = (dx: number, dy: number, r: number, color: string) => {
+        ctx!.fillStyle = color
+        ctx!.beginPath()
+        ctx!.arc(dx, dy, r, 0, Math.PI * 2)
+        ctx!.fill()
+      }
+      ctx.save()
+      ctx.translate(cx, cy)
+
+      switch (key) {
+        case 'treat': {
+          // Choc-chip cookie
+          dot(0, 0, u * 0.85, '#CD9557')
+          dot(-u * 0.28, -u * 0.28, u * 0.34, '#DBA870') // highlight
+          const chips: [number, number][] = [
+            [-0.34, -0.18],
+            [0.28, -0.32],
+            [0.36, 0.2],
+            [-0.06, 0.34],
+            [-0.42, 0.26],
+            [0.04, -0.02],
+          ]
+          chips.forEach(([dx, dy]) => dot(dx * u, dy * u, u * 0.12, '#7A4A25'))
+          break
+        }
+        case 'fish':
+        case 'goldfish': {
+          const gold = key === 'goldfish'
+          const body = gold ? '#FFCB2E' : '#5AA9E6'
+          const belly = gold ? '#FFE27A' : '#93C9F2'
+          const fin = gold ? '#F5A623' : '#3D8FD6'
+          // Tail (left)
+          ctx.fillStyle = fin
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.5, 0)
+          ctx.lineTo(-u * 0.95, -u * 0.45)
+          ctx.lineTo(-u * 0.95, u * 0.45)
+          ctx.closePath()
+          ctx.fill()
+          // Body
+          ctx.fillStyle = body
+          ctx.beginPath()
+          ctx.ellipse(u * 0.08, 0, u * 0.6, u * 0.44, 0, 0, Math.PI * 2)
+          ctx.fill()
+          // Belly
+          ctx.fillStyle = belly
+          ctx.beginPath()
+          ctx.ellipse(u * 0.12, u * 0.16, u * 0.44, u * 0.24, 0, 0, Math.PI * 2)
+          ctx.fill()
+          // Top fin
+          ctx.fillStyle = fin
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.05, -u * 0.38)
+          ctx.lineTo(u * 0.26, -u * 0.62)
+          ctx.lineTo(u * 0.3, -u * 0.28)
+          ctx.closePath()
+          ctx.fill()
+          // Eye
+          dot(u * 0.4, -u * 0.1, u * 0.13, '#FFFFFF')
+          dot(u * 0.43, -u * 0.1, u * 0.07, '#2A2A2A')
+          break
+        }
+        case 'cheese': {
+          // Wedge
+          ctx.fillStyle = '#FFD23D'
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.7, u * 0.5)
+          ctx.lineTo(u * 0.78, u * 0.12)
+          ctx.lineTo(-u * 0.08, -u * 0.6)
+          ctx.closePath()
+          ctx.fill()
+          // Top face (lighter)
+          ctx.fillStyle = '#FFE474'
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.08, -u * 0.6)
+          ctx.lineTo(u * 0.78, u * 0.12)
+          ctx.lineTo(u * 0.22, u * 0.02)
+          ctx.closePath()
+          ctx.fill()
+          // Holes
+          dot(-u * 0.14, u * 0.24, u * 0.12, '#E8B92E')
+          dot(u * 0.26, u * 0.04, u * 0.08, '#E8B92E')
+          dot(-u * 0.36, u * 0.36, u * 0.07, '#E8B92E')
+          break
+        }
+        case 'drumstick': {
+          ctx.save()
+          ctx.rotate(-0.5)
+          // Bone
+          ctx.strokeStyle = '#FFF3DE'
+          ctx.lineCap = 'round'
+          ctx.lineWidth = u * 0.26
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.05, u * 0.05)
+          ctx.lineTo(-u * 0.65, u * 0.68)
+          ctx.stroke()
+          dot(-u * 0.72, u * 0.6, u * 0.13, '#FFF3DE')
+          dot(-u * 0.58, u * 0.76, u * 0.13, '#FFF3DE')
+          // Meat
+          dot(u * 0.18, -u * 0.18, u * 0.5, '#C0803F')
+          dot(u * 0.04, -u * 0.32, u * 0.2, '#D2965A') // highlight
+          ctx.restore()
+          break
+        }
+        case 'shrimp': {
+          // Fried tempura shrimp — arc of batter lobes with a red tail fan
+          const lobes: [number, number, number][] = [
+            [-0.45, 0.35, 0.34],
+            [-0.15, 0.1, 0.34],
+            [0.15, -0.12, 0.3],
+            [0.4, -0.35, 0.24],
+          ]
+          lobes.forEach(([dx, dy, r]) => dot(dx * u, dy * u, r * u, '#E89A5C'))
+          lobes.forEach(([dx, dy, r]) =>
+            dot(
+              dx * u - r * u * 0.25,
+              dy * u - r * u * 0.25,
+              r * u * 0.4,
+              '#F6BC86',
+            ),
+          )
+          ctx.fillStyle = '#FF6B5C'
+          ctx.beginPath()
+          ctx.moveTo(u * 0.48, -u * 0.42)
+          ctx.lineTo(u * 0.85, -u * 0.68)
+          ctx.lineTo(u * 0.78, -u * 0.32)
+          ctx.closePath()
+          ctx.fill()
+          ctx.beginPath()
+          ctx.moveTo(u * 0.48, -u * 0.42)
+          ctx.lineTo(u * 0.82, -u * 0.16)
+          ctx.lineTo(u * 0.58, -u * 0.12)
+          ctx.closePath()
+          ctx.fill()
+          break
+        }
+        case 'tin': {
+          // Cat-food can (cylinder)
+          const w = u * 1.1
+          const h = u * 1.25
+          const ex = w / 2
+          const ey = u * 0.22
+          ctx.fillStyle = '#AEB9C1'
+          ctx.fillRect(-ex, -h / 2, w, h)
+          ctx.fillStyle = '#96A2AB' // side shading
+          ctx.fillRect(ex - w * 0.26, -h / 2, w * 0.26, h)
+          ctx.fillStyle = '#F26D5B' // label band
+          ctx.fillRect(-ex, -u * 0.24, w, u * 0.48)
+          dot(0, 0, u * 0.15, '#FFE0B2') // emblem
+          ctx.fillStyle = '#CDD6DC' // top lid
+          ctx.beginPath()
+          ctx.ellipse(0, -h / 2, ex, ey, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#E6ECEF'
+          ctx.beginPath()
+          ctx.ellipse(0, -h / 2, ex * 0.68, ey * 0.6, 0, 0, Math.PI * 2)
+          ctx.fill()
+          break
+        }
+        case 'sushi': {
+          // Nigiri — rice mound + salmon slab + a nori band
+          ctx.fillStyle = '#F6F1E7' // rice
+          ctx.beginPath()
+          ctx.ellipse(0, u * 0.3, u * 0.72, u * 0.4, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.fillStyle = '#FF9E6B' // salmon
+          ctx.beginPath()
+          ctx.ellipse(0, -u * 0.12, u * 0.78, u * 0.34, 0, 0, Math.PI * 2)
+          ctx.fill()
+          ctx.strokeStyle = '#FFC6A3' // salmon marbling
+          ctx.lineWidth = u * 0.09
+          ctx.beginPath()
+          ctx.moveTo(-u * 0.5, -u * 0.2)
+          ctx.lineTo(u * 0.5, -u * 0.28)
+          ctx.moveTo(-u * 0.46, -u * 0.02)
+          ctx.lineTo(u * 0.5, -u * 0.08)
+          ctx.stroke()
+          ctx.fillStyle = '#37503B' // nori
+          ctx.fillRect(-u * 0.18, -u * 0.22, u * 0.36, u * 0.78)
+          break
+        }
+        default: {
+          ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(emoji, 0, 0)
+          ctx.textBaseline = 'alphabetic'
+        }
+      }
+      ctx.restore()
+    }
+
     function drawFoods() {
       if (!ctx) return
       g.foods.forEach((f) => {
@@ -1446,17 +1729,8 @@ export default function ParkGame() {
         )
         ctx.fill()
 
-        // Sprite if the PNG loaded, else emoji fallback.
-        const img = g.foodImages[f.key]
-        if (img && img.complete && img.naturalWidth > 0) {
-          ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size)
-        } else {
-          ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(def.emoji, cx, cy)
-          ctx.textBaseline = 'alphabetic'
-        }
+        // Flat basic-shape sprite, matching the rest of the park's art.
+        drawFoodShape(f.key, cx, cy, size, def.emoji)
 
         // Twinkle sparkle.
         const tw = (Math.sin(g.frameCount * 0.15 + f.x) + 1) / 2
@@ -1478,7 +1752,7 @@ export default function ParkGame() {
     function drawHUD() {
       if (!ctx) return
       ctx.save()
-      ctx.translate(g.hudShift, 0)
+      ctx.translate(g.hudShift, g.hudShiftY)
       const pad = PIXEL * 0.28
       const pillH = 46
       // Sit the score pill just above the ground line rather than at the very
@@ -1612,6 +1886,9 @@ export default function ParkGame() {
           )
           if (dist < 1.5) {
             cat.interacting = true
+            // Show the reaction once per approach: pop it when the cat enters
+            // range, then stay quiet until it leaves and comes back (the else
+            // below re-arms it) — instead of re-popping on a timer while lingering.
             if (!obj._shown) {
               obj._shown = true
               g.popups.push({
@@ -1620,24 +1897,38 @@ export default function ParkGame() {
                 y: obj.y * PIXEL - 20,
                 life: 90,
               })
-              setTimeout(() => {
-                obj._shown = false
-              }, 3000)
             }
+          } else {
+            obj._shown = false
           }
         }
       })
     }
 
-    // Camera measurements are cached and only refreshed on resize, so panning
-    // doesn't force a layout reflow (offsetWidth read) every frame.
-    let viewportW = window.innerWidth
-    let displayW = canvas.offsetWidth
+    // Camera measurements are cached and refreshed on resize / any canvas box
+    // change (see the ResizeObserver below), so panning doesn't force a layout
+    // reflow (offsetWidth read) every frame.
+    //
+    // viewportW is measured from the canvas's parent (the fixed hero fills the
+    // viewport), NOT window.innerWidth: innerWidth *includes* the vertical
+    // scrollbar, but the canvas is centered inside the scrollbar-excluded
+    // content box. Using innerWidth made the right-edge clamp (viewportW -
+    // displayW) overshoot by the scrollbar width, so the camera stopped short of
+    // the right edge and Koala could slide off-screen to the right.
+    let viewportW = 0
+    let displayW = 0
+    let viewportH = 0
+    let displayH = 0
     let lastTx = NaN
+    let lastTy = NaN
     const measure = () => {
-      viewportW = window.innerWidth
+      const parent = canvas.parentElement
+      viewportW = parent?.clientWidth || window.innerWidth
       displayW = canvas.offsetWidth
+      viewportH = parent?.clientHeight || window.innerHeight
+      displayH = canvas.offsetHeight
     }
+    measure()
 
     // Render the canvas near device resolution (capped) and draw in logical
     // 960x816 coords via a context scale. This replaces the old low-res backing
@@ -1654,31 +1945,34 @@ export default function ParkGame() {
       ctx.imageSmoothingEnabled = true
     }
 
-    // Horizontal camera: when the canvas is wider than the viewport (its sides
-    // are cropped), pan it to keep the cat centered — clamped so we never scroll
-    // past the map's left/right edge. No-op when the whole width already fits.
+    // Follow camera: when the (scaled) canvas is larger than the viewport, pan it
+    // via CSS transform to keep the cat centered — clamped so we never scroll past
+    // the map edges. Horizontal handles wide canvases on narrow viewports;
+    // vertical handles tall canvases on short viewports (e.g. a wide/short window
+    // where the canvas is sized by its `100%` width and ends up taller than the
+    // viewport). The cat's on-canvas Y sits below the sky rows (WORLD_OFFSET),
+    // hence the SKY_ROWS term. See parkCamera.ts for the (unit-tested) math.
     function updateCamera() {
       if (!canvas) return
-      let tx = 0
-      if (displayW - viewportW > 0.5) {
-        const catDisplayX = ((g.cat.x + 0.5) / MAP_COLS) * displayW
-        const centeredLeft = (viewportW - displayW) / 2
-        // Put the cat at viewport center, clamped so the canvas still covers it.
-        const desiredLeft = Math.min(
-          0,
-          Math.max(viewportW - displayW, viewportW / 2 - catDisplayX),
-        )
-        tx = desiredLeft - centeredLeft
-        // Shift the HUD by the canvas left edge (in canvas px) so it stays
-        // pinned to the viewport's left.
-        g.hudShift = -desiredLeft * (CANVAS_WIDTH / displayW)
-      } else {
-        g.hudShift = 0
-      }
+      const h = cameraPan(
+        (g.cat.x + 0.5) / MAP_COLS,
+        viewportW,
+        displayW,
+        CANVAS_WIDTH,
+      )
+      const v = cameraPan(
+        (SKY_ROWS + g.cat.y + 0.5) / MAP_ROWS,
+        viewportH,
+        displayH,
+        CANVAS_HEIGHT,
+      )
+      g.hudShift = h.hudShift
+      g.hudShiftY = v.hudShift
       // Only touch the DOM when the pan actually changes.
-      if (tx !== lastTx) {
-        canvas.style.transform = `translateX(${tx}px)`
-        lastTx = tx
+      if (h.translate !== lastTx || v.translate !== lastTy) {
+        canvas.style.transform = `translate(${h.translate}px, ${v.translate}px)`
+        lastTx = h.translate
+        lastTy = v.translate
       }
     }
 
@@ -1820,6 +2114,23 @@ export default function ParkGame() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', handleResize)
 
+    // Refresh the cached camera measurements on ANY change to the canvas box —
+    // not just window 'resize'. A scrollbar appearing, a DPR change, or the
+    // mobile URL-bar / svh re-resolving all change displayW without firing
+    // 'resize', which would otherwise leave a stale measurement and make the
+    // camera pan the wrong amount. The observer only writes cached values (and
+    // re-sizes the backing store); it triggers no per-frame reflow. Changing the
+    // drawing-buffer size in sizeBacking() doesn't alter the element's CSS box,
+    // so this can't feed back into the observer.
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            measure()
+            sizeBacking()
+          })
+        : null
+    ro?.observe(canvas)
+
     ensureRunning()
 
     return () => {
@@ -1838,6 +2149,7 @@ export default function ParkGame() {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      ro?.disconnect()
       clearHold()
       document.body.classList.remove('kcc-dragging')
       mp?.close()
