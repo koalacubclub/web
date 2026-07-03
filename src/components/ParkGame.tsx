@@ -1,5 +1,7 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { cameraPan } from './parkCamera'
+import { IG_PROFILE } from '@/data/reels'
 
 /**
  * ParkGame - A Neko Atsume-inspired pixel-art park where Koala the tabby cat
@@ -138,6 +140,10 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 const BEST_SCORE_KEY = 'kcc-park-best'
 
+// Interactive on-grass hotspots.
+const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
+const HERO_PHOTO = '/hero.webp' // Koala photo for the polaroid + lightbox
+
 // Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
 // (seeded by tile position) yet stay identical frame-to-frame — no flicker.
 function makeRng(seed: number) {
@@ -159,6 +165,10 @@ interface GameObject {
   interactMsg?: string
   solid?: boolean
   _shown?: boolean
+  // Interactive hotspots (hover tooltip + click), hit-tested by pointer:
+  href?: string // 'social' → opens this URL
+  channel?: 'instagram' | 'tiktok' // 'social' → which glyph + tooltip
+  photo?: boolean // 'photo' → hover shows the picture, click enlarges
 }
 
 interface Butterfly {
@@ -187,6 +197,19 @@ interface Food {
 
 export default function ParkGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Interactive-hotspot UI (driven from the canvas hit-testing in the effect).
+  const [hover, setHover] = useState<{
+    kind: 'text' | 'photo'
+    label: string
+    sx: number
+    sy: number
+  } | null>(null)
+  const [lightbox, setLightbox] = useState(false)
+  const lightboxRef = useRef(false) // mirror of `lightbox` readable inside the effect
+  const closeLightbox = useCallback(() => {
+    lightboxRef.current = false
+    setLightbox(false)
+  }, [])
   const gameRef = useRef({
     cat: {
       x: 9,
@@ -265,14 +288,6 @@ export default function ParkGame() {
         interactMsg: '✿ So colorful!',
       },
       {
-        type: 'foodbowl',
-        x: 12,
-        y: 7,
-        w: 1,
-        h: 1,
-        interactMsg: '♥ Yummy chicken!',
-      },
-      {
         type: 'pond',
         x: 14,
         y: 4,
@@ -282,14 +297,29 @@ export default function ParkGame() {
       },
       { type: 'ball', x: 8, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       { type: 'stone', x: 1, y: 9, w: 1, h: 1, interactMsg: '... A warm rock' },
+      // A second bench for balance now the map is less cluttered.
+      { type: 'bench', x: 12, y: 10, w: 2, h: 1, interactMsg: '♥ Comfy!' },
+      // Interactive hotspots (hover tooltip + click) — non-solid, no interactMsg
+      // so the cat's proximity popups skip them; handled by pointer hit-testing.
       {
-        type: 'mushroom',
-        x: 17,
-        y: 8,
+        type: 'social',
+        channel: 'instagram',
+        href: IG_PROFILE,
+        x: 10,
+        y: 7,
         w: 1,
         h: 1,
-        interactMsg: '? Mysterious...',
       },
+      {
+        type: 'social',
+        channel: 'tiktok',
+        href: TIKTOK_PROFILE,
+        x: 12,
+        y: 7,
+        w: 1,
+        h: 1,
+      },
+      { type: 'photo', photo: true, x: 17, y: 8, w: 1, h: 1 },
     ]
     g.butterflies = [
       { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
@@ -312,6 +342,16 @@ export default function ParkGame() {
     ]
   }, [])
 
+  // Close the photo lightbox on Escape (only while it's open).
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeLightbox()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox, closeLightbox])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -330,6 +370,10 @@ export default function ParkGame() {
     } catch {
       /* localStorage unavailable — ignore */
     }
+
+    // Preload the Koala photo used by the on-grass polaroid + its lightbox.
+    const heroImg = new Image()
+    heroImg.src = HERO_PHOTO
 
     // Offscreen canvas holding the fully static sky + ground. Rendered once,
     // then blitted each frame instead of recomputing the grass blobs, sand
@@ -401,18 +445,109 @@ export default function ParkGame() {
       document.body.classList.remove('kcc-dragging')
     }
 
+    // ── Interactive hotspots: social icons + the Koala photo ──
+    // Map a screen point to a tile coord (same math as aimAt; the rect already
+    // reflects the camera transform) and return the hotspot object under it.
+    let hoveredObj: GameObject | null = null
+    let pressedHotspot: GameObject | null = null
+    let touchHotspot: GameObject | null = null
+    const hotspotAt = (clientX: number, clientY: number): GameObject | null => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return null
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      )
+        return null
+      const tx = (((clientX - rect.left) / rect.width) * CANVAS_WIDTH) / PIXEL
+      const py = ((clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      const ty = (py - WORLD_OFFSET) / PIXEL
+      for (const o of g.objects) {
+        if (
+          (o.type === 'social' || o.type === 'photo') &&
+          tx >= o.x &&
+          tx <= o.x + o.w &&
+          ty >= o.y &&
+          ty <= o.y + o.h
+        )
+          return o
+      }
+      return null
+    }
+    const activateHotspot = (o: GameObject) => {
+      if (o.type === 'social' && o.href) {
+        window.open(o.href, '_blank', 'noopener,noreferrer')
+      } else if (o.type === 'photo') {
+        hoveredObj = null
+        setHover(null)
+        lightboxRef.current = true
+        setLightbox(true)
+      }
+    }
+    // Mouse-only hover → tooltip. Positions the tooltip at the hotspot's on-screen
+    // spot (canvas rect + tile→canvas→screen), deduped so we only setState on
+    // change.
+    const updateHover = (clientX: number, clientY: number) => {
+      const o = hotspotAt(clientX, clientY)
+      if (o === hoveredObj) return
+      hoveredObj = o
+      if (!o) {
+        setHover(null)
+        return
+      }
+      const rect = canvas.getBoundingClientRect()
+      const sx =
+        rect.left + (((o.x + o.w / 2) * PIXEL) / CANVAS_WIDTH) * rect.width
+      const sy =
+        rect.top + ((WORLD_OFFSET + o.y * PIXEL) / CANVAS_HEIGHT) * rect.height
+      if (o.type === 'photo') {
+        setHover({ kind: 'photo', label: 'Koala', sx, sy })
+      } else {
+        setHover({
+          kind: 'text',
+          label:
+            o.channel === 'instagram'
+              ? 'Follow on Instagram'
+              : '@koalacubclub on TikTok',
+          sx,
+          sy,
+        })
+      }
+    }
+
     // ── Mouse / pen: engage immediately (no page-scroll gesture to conflict). ──
     const handlePointerDown = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return // touch handled below (hold-to-grab)
+      if (lightboxRef.current) return
       if (!canEngageAt(e.target, e.clientX, e.clientY)) return
+      // A press on a hotspot is a click, not a walk — don't engage the cat.
+      const hs = hotspotAt(e.clientX, e.clientY)
+      if (hs) {
+        pressedHotspot = hs
+        return
+      }
       engage(e.clientX, e.clientY)
     }
     const handlePointerMove = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return
-      if (pointerActive) aimAt(e.clientX, e.clientY)
+      if (pointerActive) {
+        aimAt(e.clientX, e.clientY)
+        return
+      }
+      updateHover(e.clientX, e.clientY)
     }
     const handlePointerUp = (e: PointerEvent) => {
       if (e.pointerType === 'touch') return
+      if (pressedHotspot) {
+        // Fire only if released on the same hotspot (a real click, not a drag).
+        if (hotspotAt(e.clientX, e.clientY) === pressedHotspot) {
+          activateHotspot(pressedHotspot)
+        }
+        pressedHotspot = null
+        return
+      }
       disengage()
     }
 
@@ -440,6 +575,7 @@ export default function ParkGame() {
     }
     const handleTouchStart = (e: TouchEvent) => {
       if (touchId !== null) return // already tracking one touch
+      if (lightboxRef.current) return
       const t = e.changedTouches[0]
       if (!t || !canEngageAt(e.target, t.clientX, t.clientY)) return
       touchId = t.identifier
@@ -447,6 +583,9 @@ export default function ParkGame() {
       touchStartY = t.clientY
       touchMoved = false
       touchEngaged = false
+      // Tapping a hotspot acts on touchend — don't start the hold-to-grab timer.
+      touchHotspot = hotspotAt(t.clientX, t.clientY)
+      if (touchHotspot) return
       holdTimer = window.setTimeout(() => {
         holdTimer = 0
         // Held still long enough → grab the cat.
@@ -481,10 +620,20 @@ export default function ParkGame() {
       touchId = null
       touchMoved = false
       touchEngaged = false
+      touchHotspot = null
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
-      if (!touchById(e.changedTouches)) return
+      const t = touchById(e.changedTouches)
+      if (!t) return
+      // A quick tap on a hotspot (no scroll) opens the channel / photo lightbox.
+      if (
+        touchHotspot &&
+        !touchMoved &&
+        hotspotAt(t.clientX, t.clientY) === touchHotspot
+      ) {
+        activateHotspot(touchHotspot)
+      }
       endTouch()
     }
 
@@ -587,12 +736,6 @@ export default function ParkGame() {
       drawBlobPatch(PIXEL * 1, PIXEL * 7, PIXEL * 1.3, PIXEL * 1, 13.1)
       drawBlobPatch(PIXEL * 9, PIXEL * 8, PIXEL * 1.5, PIXEL * 1.2, 15.8)
       drawBlobPatch(PIXEL * 19, PIXEL * 5, PIXEL * 1.2, PIXEL * 0.9, 17.3)
-
-      // Dirt path
-      ctx.fillStyle = '#D4A574'
-      ctx.fillRect(PIXEL * 5, PIXEL * 6, PIXEL * 10, PIXEL * 0.4)
-      ctx.fillStyle = '#C4A06A'
-      ctx.fillRect(PIXEL * 5, PIXEL * 6.15, PIXEL * 10, PIXEL * 0.2)
     }
 
     function drawStarsAndMoon() {
@@ -795,49 +938,6 @@ export default function ParkGame() {
       }
     }
 
-    function drawFoodBowl(obj: GameObject) {
-      if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      ctx.fillStyle = COLORS.catOrange
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.6,
-        PIXEL * 0.4,
-        PIXEL * 0.25,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      ctx.fillStyle = COLORS.fishBowl
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.5,
-        PIXEL * 0.2,
-        PIXEL * 0.12,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      ctx.strokeStyle = COLORS.catDark
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.45,
-        PIXEL * 0.4,
-        PIXEL * 0.15,
-        0,
-        0,
-        Math.PI,
-      )
-      ctx.stroke()
-    }
-
     function drawPond(obj: GameObject) {
       if (!ctx) return
       const x = obj.x * PIXEL
@@ -929,44 +1029,132 @@ export default function ParkGame() {
       ctx.fill()
     }
 
-    function drawMushroom(obj: GameObject) {
+    // Interactive social sign on the grass: a short post + a rounded badge with a
+    // simple procedural glyph (IG or TikTok). Hover/click handled by hit-testing.
+    function drawSocialSign(obj: GameObject) {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
-      // Stem first, tall enough that the cap dome overlaps its top (so they read
-      // as one piece rather than a floating cap above a separate foot).
-      ctx.fillStyle = '#F5F5DC'
-      ctx.fillRect(
-        x + PIXEL * 0.38,
-        y + PIXEL * 0.42,
-        PIXEL * 0.24,
-        PIXEL * 0.5,
-      )
-      // Cap: a wide dome whose flat base sits at y+0.5, overlapping the stem top.
-      ctx.fillStyle = '#FF6B6B'
+      const cx = x + PIXEL * 0.5
+      const ig = obj.channel === 'instagram'
+      // Ground shadow + short post.
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'
       ctx.beginPath()
       ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.5,
-        PIXEL * 0.42,
-        PIXEL * 0.34,
+        cx,
+        y + PIXEL * 0.92,
+        PIXEL * 0.2,
+        PIXEL * 0.06,
         0,
-        Math.PI,
+        0,
         Math.PI * 2,
       )
-      ctx.closePath()
       ctx.fill()
-      // White spots on the cap.
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = COLORS.treeTrunk
+      ctx.fillRect(cx - SCALE * 0.7, y + PIXEL * 0.52, SCALE * 1.4, PIXEL * 0.4)
+      // Rounded badge.
+      const bs = PIXEL * 0.52
+      const bx = cx - bs / 2
+      const by = y + PIXEL * 0.06
+      ctx.fillStyle = ig ? '#E1306C' : '#111318'
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.37, y + PIXEL * 0.4, SCALE, 0, Math.PI * 2)
+      ctx.roundRect(bx, by, bs, bs, bs * 0.28)
       ctx.fill()
+      if (ig) {
+        // Instagram: rounded-square outline + ring + corner dot.
+        ctx.strokeStyle = COLORS.white
+        ctx.lineWidth = SCALE * 0.9
+        const inset = bs * 0.22
+        ctx.beginPath()
+        ctx.roundRect(
+          bx + inset,
+          by + inset,
+          bs - inset * 2,
+          bs - inset * 2,
+          bs * 0.18,
+        )
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(bx + bs / 2, by + bs / 2, bs * 0.15, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.fillStyle = COLORS.white
+        ctx.beginPath()
+        ctx.arc(bx + bs * 0.72, by + bs * 0.28, SCALE * 0.7, 0, Math.PI * 2)
+        ctx.fill()
+      } else {
+        // TikTok: a music note with a cyan offset head.
+        ctx.strokeStyle = COLORS.white
+        ctx.lineWidth = SCALE * 1.1
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.moveTo(bx + bs * 0.6, by + bs * 0.26)
+        ctx.lineTo(bx + bs * 0.6, by + bs * 0.64)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(bx + bs * 0.6, by + bs * 0.26)
+        ctx.quadraticCurveTo(
+          bx + bs * 0.86,
+          by + bs * 0.24,
+          bx + bs * 0.8,
+          by + bs * 0.44,
+        )
+        ctx.stroke()
+        ctx.fillStyle = 'rgba(37,244,238,0.9)'
+        ctx.beginPath()
+        ctx.arc(bx + bs * 0.48, by + bs * 0.66, bs * 0.13, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = COLORS.white
+        ctx.beginPath()
+        ctx.arc(bx + bs * 0.54, by + bs * 0.64, bs * 0.13, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    // Interactive Koala photo: a small tilted polaroid on the grass. Hover shows
+    // the picture; click opens the full lightbox (both handled in React).
+    function drawPhoto(obj: GameObject) {
+      if (!ctx) return
+      const cx = obj.x * PIXEL + PIXEL * 0.5
+      const cy = obj.y * PIXEL + PIXEL * 0.5
+      ctx.save()
+      ctx.translate(cx, cy)
+      ctx.rotate(-0.12)
+      const w = PIXEL * 0.82
+      const h = PIXEL * 0.8
+      // Drop shadow.
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.62, y + PIXEL * 0.42, SCALE * 0.8, 0, Math.PI * 2)
+      ctx.ellipse(0, h * 0.5, w * 0.5, PIXEL * 0.08, 0, 0, Math.PI * 2)
       ctx.fill()
+      // Polaroid frame.
+      ctx.fillStyle = '#FBFBF7'
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.3, SCALE * 0.7, 0, Math.PI * 2)
+      ctx.roundRect(-w / 2, -h / 2, w, h, SCALE)
       ctx.fill()
+      // Photo (cover-fit) or a placeholder until it loads.
+      const pad = SCALE * 1.2
+      const ix = -w / 2 + pad
+      const iy = -h / 2 + pad
+      const iw = w - pad * 2
+      const ih = h - pad * 2 - SCALE * 2 // wider bottom border = polaroid look
+      if (heroImg.complete && heroImg.naturalWidth > 0) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(ix, iy, iw, ih)
+        ctx.clip()
+        const scale = Math.max(
+          iw / heroImg.naturalWidth,
+          ih / heroImg.naturalHeight,
+        )
+        const dw = heroImg.naturalWidth * scale
+        const dh = heroImg.naturalHeight * scale
+        ctx.drawImage(heroImg, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh)
+        ctx.restore()
+      } else {
+        ctx.fillStyle = '#DDD7C8'
+        ctx.fillRect(ix, iy, iw, ih)
+      }
+      ctx.restore()
     }
 
     function drawButterflies(f: number) {
@@ -1324,9 +1512,6 @@ export default function ParkGame() {
           case 'flowers':
             drawFlowers(obj)
             break
-          case 'foodbowl':
-            drawFoodBowl(obj)
-            break
           case 'pond':
             drawPond(obj)
             break
@@ -1336,8 +1521,11 @@ export default function ParkGame() {
           case 'stone':
             drawStone(obj)
             break
-          case 'mushroom':
-            drawMushroom(obj)
+          case 'social':
+            drawSocialSign(obj)
+            break
+          case 'photo':
+            drawPhoto(obj)
             break
         }
       })
@@ -1931,6 +2119,70 @@ export default function ParkGame() {
     }
 
     // Bake the fully static sky + ground into the offscreen canvas once.
+    // A single pressed-grass paw print (pad + 4 toe beans), baked into the bg.
+    function drawPawStamp(px: number, py: number, angle: number, s: number) {
+      if (!ctx) return
+      ctx.save()
+      ctx.translate(px, py)
+      ctx.rotate(angle)
+      ctx.fillStyle = 'rgba(110,165,110,0.4)'
+      ctx.beginPath()
+      ctx.ellipse(0, s * 0.55, s * 0.9, s * 0.7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      const toes: [number, number][] = [
+        [-0.7, -0.5],
+        [-0.25, -0.85],
+        [0.25, -0.85],
+        [0.7, -0.5],
+      ]
+      toes.forEach(([tx, ty]) => {
+        ctx!.beginPath()
+        ctx!.ellipse(tx * s, ty * s, s * 0.32, s * 0.4, 0, 0, Math.PI * 2)
+        ctx!.fill()
+      })
+      ctx.restore()
+    }
+    // A short wandering trail of paw prints across the lower grass (world coords).
+    function drawPawTrail() {
+      const trail: [number, number, number][] = [
+        [PIXEL * 3.2, PIXEL * 11.2, 0.5],
+        [PIXEL * 4.3, PIXEL * 10.7, 0.4],
+        [PIXEL * 5.4, PIXEL * 10.3, 0.5],
+        [PIXEL * 6.6, PIXEL * 10.0, 0.45],
+        [PIXEL * 7.8, PIXEL * 9.8, 0.5],
+      ]
+      trail.forEach(([px, py, a]) => drawPawStamp(px, py, a, SCALE * 1.6))
+    }
+    // Rolling grass ridges over the (otherwise straight) sky/ground seam so the
+    // horizon reads as soft hills against the night sky rather than a hard line.
+    function drawWavyHorizon() {
+      if (!ctx) return
+      const seam = WORLD_OFFSET + PIXEL // where the straight sand top used to read
+      const amp = PIXEL * 0.5
+      const ridge = (
+        color: string,
+        base: number,
+        wob: number,
+        phase: number,
+        freq: number,
+      ) => {
+        ctx!.fillStyle = color
+        ctx!.beginPath()
+        ctx!.moveTo(0, seam + PIXEL * 0.8)
+        for (let i = 0; i <= CANVAS_WIDTH; i += 6) {
+          const t = i / CANVAS_WIDTH
+          const yy =
+            seam - amp * (base + wob * Math.sin(t * Math.PI * freq + phase))
+          ctx!.lineTo(i, yy)
+        }
+        ctx!.lineTo(CANVAS_WIDTH, seam + PIXEL * 0.8)
+        ctx!.closePath()
+        ctx!.fill()
+      }
+      ridge(COLORS.grassDark, 0.75, 0.4, 2.1, 5) // darker back ridge (taller)
+      ridge(COLORS.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
+    }
+
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -1941,9 +2193,13 @@ export default function ParkGame() {
       skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
       ctx!.fillStyle = skyGrad
       ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
+      // Ridge on the sky FIRST, so the textured grass patches drawn by
+      // drawGround() render on top of the wave rather than being covered by it.
+      drawWavyHorizon()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
+      drawPawTrail()
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
     }
@@ -2024,7 +2280,10 @@ export default function ParkGame() {
       tabVisible = !document.hidden
       ensureRunning()
     }
-    const handleScroll = () => updateOnScreen()
+    const handleScroll = () => {
+      updateOnScreen()
+      setHover(null) // don't leave a tooltip stranded while scrolling away
+    }
     const handleResize = () => {
       measure()
       sizeBacking()
@@ -2110,6 +2369,56 @@ export default function ParkGame() {
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
       />
+      {/* Hotspot tooltip + photo lightbox are portalled to <body>: the fixed hero
+          sits in a z-0 stacking context, so rendering them here would trap them
+          below the scrolling content. */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            {hover && (
+              <div
+                className="pointer-events-none fixed z-40 -translate-x-1/2 -translate-y-full"
+                style={{ left: hover.sx, top: hover.sy - 10 }}
+              >
+                {hover.kind === 'photo' ? (
+                  <img
+                    src={HERO_PHOTO}
+                    alt="Koala"
+                    className="w-40 rounded-lg border-2 border-white/80 shadow-[0_10px_30px_rgba(0,0,0,0.5)] sm:w-52"
+                  />
+                ) : (
+                  <span className="whitespace-nowrap rounded-full bg-black/80 px-3 py-1 text-xs text-white shadow-lg backdrop-blur-sm">
+                    {hover.label}
+                  </span>
+                )}
+              </div>
+            )}
+            {lightbox && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Koala photo"
+                onClick={closeLightbox}
+                className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+              >
+                <img
+                  src={HERO_PHOTO}
+                  alt="Koala"
+                  className="max-h-[90vh] max-w-[92vw] rounded-xl shadow-2xl"
+                />
+                <button
+                  type="button"
+                  onClick={closeLightbox}
+                  aria-label="Close"
+                  className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-lg text-white transition-colors hover:bg-white/25"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </>,
+          document.body,
+        )}
     </div>
   )
 }
