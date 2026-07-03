@@ -1630,7 +1630,7 @@ export default function ParkGame() {
       <canvas
         ref={canvasRef}
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
-        className="block cursor-pointer select-none drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
           // Recognize taps immediately (no double-tap-zoom delay) on touch.

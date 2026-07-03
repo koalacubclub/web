@@ -368,18 +368,16 @@ function FixedHero() {
 // ─── ANIMATED ORGANIC WAVE EDGE ─────────────────────────────────────────────
 function OrganicEdge() {
   return (
-    <div className="relative w-full h-24 sm:h-32 lg:h-40 -mb-1">
-      {/* Back wave — slower, offset animation */}
+    <div className="relative w-full h-24 sm:h-32 lg:h-40 -mb-1 [content-visibility:auto]">
+      {/* Back wave — static layer (path morphing is expensive; the mid + front
+          waves carry the motion) */}
       <svg
         viewBox="0 0 1440 120"
         preserveAspectRatio="none"
         className="absolute bottom-0 left-0 w-full h-full opacity-40"
         fill="oklch(0.15 0.008 60)"
       >
-        <path
-          d="M0,120 L0,85 C180,65 300,100 480,80 C660,55 780,95 960,70 C1140,50 1260,85 1440,65 L1440,120 Z"
-          className="animate-[wave-back_8s_ease-in-out_infinite]"
-        />
+        <path d="M0,120 L0,85 C180,65 300,100 480,80 C660,55 780,95 960,70 C1140,50 1260,85 1440,65 L1440,120 Z" />
       </svg>
 
       {/* Middle wave */}
@@ -422,8 +420,10 @@ function ContentPanel() {
       {/* Organic wave transition */}
       <OrganicEdge />
 
-      {/* Main content area — with subtle color-shifting background */}
-      <div className="relative animate-[bg-shift_20s_ease-in-out_infinite]">
+      {/* Main content area — with subtle color-shifting background.
+          content-visibility pauses its paint + bg-shift animation while it's
+          scrolled out of view. */}
+      <div className="relative animate-[bg-shift_20s_ease-in-out_infinite] [contain-intrinsic-size:auto_1200px] [content-visibility:auto]">
         {/* Scattered paw prints as decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <PawPrint className="absolute top-[8%] right-[12%] w-5 h-5 text-white/[0.03] rotate-12" />
