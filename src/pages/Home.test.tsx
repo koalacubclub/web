@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest'
 import Home from './Home'
 
 describe('Home', () => {
-  it('renders the hero headline', () => {
-    render(<Home />)
-    const heading = screen.getByRole('heading', { level: 1 })
-    expect(heading).toHaveTextContent(/she sees/i)
-    expect(heading).toHaveTextContent(/you\./i)
+  it('renders the mini game in the header', () => {
+    const { container } = render(<Home />)
+    const canvas = container.querySelector('canvas')
+    expect(canvas).toBeInTheDocument()
+    expect(canvas).toHaveAttribute(
+      'aria-label',
+      expect.stringMatching(/koala's park/i),
+    )
   })
 
   it('renders the feed section', () => {
