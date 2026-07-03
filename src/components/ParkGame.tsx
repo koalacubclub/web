@@ -431,7 +431,7 @@ export default function ParkGame() {
       ctx.stroke()
 
       // Zzz text inside bubble
-      ctx.font = `bold ${s * 2.5}px "Press Start 2P"`
+      ctx.font = `italic 600 ${s * 4}px 'Cormorant Garamond', Georgia, serif`
       ctx.textAlign = 'center'
       const zzAlpha = 0.6 + Math.sin(g.frameCount * 0.05) * 0.4
       ctx.fillStyle = `rgba(150, 130, 200, ${zzAlpha})`
@@ -1028,7 +1028,7 @@ export default function ParkGame() {
         p.y -= 0.5
         const alpha = Math.min(1, p.life / 30)
         ctx.globalAlpha = alpha
-        ctx.font = '10px "Press Start 2P"'
+        ctx.font = "600 16px 'Cormorant Garamond', Georgia, serif"
         ctx.textAlign = 'center'
         const metrics = ctx.measureText(p.text)
         const padding = 8
@@ -1203,6 +1203,8 @@ export default function ParkGame() {
         className="block cursor-pointer drop-shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           imageRendering: 'pixelated',
+          // Recognize taps immediately (no double-tap-zoom delay) on touch.
+          touchAction: 'manipulation',
           // Cover the header on any screen size: scale up so the game fills both
           // width and height (whichever needs more), keeping the map ratio.
           // The flex parent centers it and clips the overflow.

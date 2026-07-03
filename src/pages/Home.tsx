@@ -259,8 +259,9 @@ function OrganicEdge() {
 function ContentPanel() {
   return (
     <div id="main-content" className="relative z-10">
-      {/* Spacer for hero */}
-      <div className="h-dvh" />
+      {/* Spacer for hero — pointer-events-none so taps/clicks reach the game
+          canvas (and hero social icons) sitting behind it. */}
+      <div className="h-dvh pointer-events-none" />
 
       {/* Organic wave transition */}
       <OrganicEdge />
