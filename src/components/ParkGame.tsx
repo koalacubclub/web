@@ -1490,6 +1490,21 @@ export default function ParkGame() {
       displayW = canvas.offsetWidth
     }
 
+    // Render the canvas near device resolution (capped) and draw in logical
+    // 960x816 coords via a context scale. This replaces the old low-res backing
+    // + image-rendering:pixelated (nearest-neighbor) upscale, so moving sprites
+    // are smooth instead of blocky/crawling. RS = backing / logical scale.
+    let RS = 1
+    const sizeBacking = () => {
+      if (!canvas || !ctx) return
+      const dpr = window.devicePixelRatio || 1
+      const cssW = canvas.clientWidth || CANVAS_WIDTH
+      RS = Math.max(1, Math.min(2, (cssW * dpr) / CANVAS_WIDTH))
+      canvas.width = Math.round(CANVAS_WIDTH * RS)
+      canvas.height = Math.round(CANVAS_HEIGHT * RS)
+      ctx.imageSmoothingEnabled = true
+    }
+
     // Horizontal camera: when the canvas is wider than the viewport (its sides
     // are cropped), pan it to keep the cat centered — clamped so we never scroll
     // past the map's left/right edge. No-op when the whole width already fits.
@@ -1536,6 +1551,8 @@ export default function ParkGame() {
       bgCtx.drawImage(canvas, 0, 0)
     }
     renderStaticBackground()
+    // Bake runs at logical size (above); now upsize the visible canvas backing.
+    sizeBacking()
 
     // Only animate while the game is on screen and the tab is visible.
     let onScreen = window.scrollY < window.innerHeight
@@ -1545,9 +1562,11 @@ export default function ParkGame() {
     function gameLoop() {
       animId = 0
       g.frameCount++
+      // Draw in logical 960x816 coords scaled up to the high-res backing.
+      ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
-      // Pre-rendered static sky + ground.
+      // Pre-rendered static sky + ground (blitted, smoothly upscaled).
       ctx!.drawImage(bgCanvas, 0, 0)
 
       // Dynamic world, pushed down so the sky has room above it.
@@ -1602,6 +1621,7 @@ export default function ParkGame() {
     const handleScroll = () => updateOnScreen()
     const handleResize = () => {
       measure()
+      sizeBacking()
       updateOnScreen()
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -1639,7 +1659,8 @@ export default function ParkGame() {
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
-          imageRendering: 'pixelated',
+          // Canvas is rendered near device resolution (see sizeBacking), so let
+          // the browser scale it smoothly — no nearest-neighbor pixelation.
           // Recognize taps immediately (no double-tap-zoom delay) on touch.
           touchAction: 'manipulation',
           // Don't let a press/drag select or highlight the canvas.
