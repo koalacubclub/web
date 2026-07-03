@@ -138,6 +138,18 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 const BEST_SCORE_KEY = 'kcc-park-best'
 
+// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
+// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
+function makeRng(seed: number) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 interface GameObject {
   type: string
   x: number
@@ -688,18 +700,48 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
+      // Keep the original clean 3-blob canopy, but nudge scale + blob offsets a
+      // little per tree (seeded by tile position) so they aren't all identical.
+      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 1)
+      const s = 0.9 + rng() * 0.22 // overall canopy scale
+      const jx = (rng() - 0.5) * PIXEL * 0.16 // main-blob jitter
+      const jy = (rng() - 0.5) * PIXEL * 0.12
+
+      // Trunk (original fixed shape).
       ctx.fillStyle = COLORS.treeTrunk
-      ctx.fillRect(x + PIXEL * 0.7, y + PIXEL * 1, PIXEL * 0.6, PIXEL * 1)
+      ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
+
+      // Main (darker) canopy blob.
       ctx.fillStyle = COLORS.treeLeaves
       ctx.beginPath()
-      ctx.arc(x + PIXEL, y + PIXEL * 0.6, PIXEL * 0.9, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL + jx,
+        y + PIXEL * 0.6 + jy,
+        PIXEL * 0.9 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
+
+      // Two lighter blobs (upper-left + upper-right), each slightly jittered.
       ctx.fillStyle = COLORS.treeLeavesLight
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.7, y + PIXEL * 0.5, PIXEL * 0.5, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
+        y + PIXEL * (0.5 + (rng() - 0.5) * 0.12),
+        PIXEL * 0.5 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 1.3, y + PIXEL * 0.4, PIXEL * 0.55, 0, Math.PI * 2)
+      ctx.arc(
+        x + PIXEL * (1.3 + (rng() - 0.5) * 0.16),
+        y + PIXEL * (0.4 + (rng() - 0.5) * 0.12),
+        PIXEL * 0.55 * s,
+        0,
+        Math.PI * 2,
+      )
       ctx.fill()
     }
 
@@ -721,21 +763,35 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
-      const colors = [COLORS.flower1, COLORS.flower2, COLORS.flower3]
+      // Per-patch randomness (seeded by tile position) so each flower cluster has
+      // its own count / colours / sizes / scatter instead of all looking alike.
+      const palette = [
+        COLORS.flower1,
+        COLORS.flower2,
+        COLORS.flower3,
+        COLORS.heart,
+        COLORS.butterfly,
+      ]
+      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
       const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
-      for (let i = 0; i < 3; i++) {
-        const fx = x + i * SCALE * 5
-        const fy = y + PIXEL * 0.4 + bobOffset
+      const count = 3 + Math.floor(rng() * 2) // 3–4 blooms
+      let fx = x + PIXEL * 0.08
+      for (let i = 0; i < count; i++) {
+        const cxp = fx + SCALE * 2.5
+        const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
+        const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
+        const stemH = SCALE * 4
         ctx.fillStyle = COLORS.grassDark
-        ctx.fillRect(fx + SCALE * 2, fy + SCALE * 3, SCALE, SCALE * 4)
-        ctx.fillStyle = colors[i]
+        ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
+        ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
-        ctx.arc(fx + SCALE * 2.5, fy + SCALE * 2, SCALE * 2.5, 0, Math.PI * 2)
+        ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = COLORS.fishBowl
         ctx.beginPath()
-        ctx.arc(fx + SCALE * 2.5, fy + SCALE * 2, SCALE, 0, Math.PI * 2)
+        ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
         ctx.fill()
+        fx += SCALE * (3.6 + rng() * 1.8)
       }
     }
 
@@ -877,18 +933,39 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
+      // Stem first, tall enough that the cap dome overlaps its top (so they read
+      // as one piece rather than a floating cap above a separate foot).
       ctx.fillStyle = '#F5F5DC'
-      ctx.fillRect(x + PIXEL * 0.35, y + PIXEL * 0.5, PIXEL * 0.3, PIXEL * 0.4)
+      ctx.fillRect(
+        x + PIXEL * 0.38,
+        y + PIXEL * 0.42,
+        PIXEL * 0.24,
+        PIXEL * 0.5,
+      )
+      // Cap: a wide dome whose flat base sits at y+0.5, overlapping the stem top.
       ctx.fillStyle = '#FF6B6B'
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.45, PIXEL * 0.35, Math.PI, 0)
+      ctx.ellipse(
+        x + PIXEL * 0.5,
+        y + PIXEL * 0.5,
+        PIXEL * 0.42,
+        PIXEL * 0.34,
+        0,
+        Math.PI,
+        Math.PI * 2,
+      )
+      ctx.closePath()
       ctx.fill()
+      // White spots on the cap.
       ctx.fillStyle = COLORS.white
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.35, SCALE, 0, Math.PI * 2)
+      ctx.arc(x + PIXEL * 0.37, y + PIXEL * 0.4, SCALE, 0, Math.PI * 2)
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.6, y + PIXEL * 0.38, SCALE * 0.8, 0, Math.PI * 2)
+      ctx.arc(x + PIXEL * 0.62, y + PIXEL * 0.42, SCALE * 0.8, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.3, SCALE * 0.7, 0, Math.PI * 2)
       ctx.fill()
     }
 
@@ -1272,7 +1349,10 @@ export default function ParkGame() {
       g.popups.forEach((p) => {
         p.life -= f
         p.y -= 0.5 * f
-        const alpha = Math.min(1, p.life / 30)
+        // Clamp to [0,1]: once life goes negative this would be negative, and
+        // `ctx.globalAlpha = <out-of-range>` is silently ignored by canvas —
+        // leaving alpha at 1 for the final frame, which read as a blink.
+        const alpha = Math.max(0, Math.min(1, p.life / 30))
         ctx.globalAlpha = alpha
         ctx.font = "600 16px 'Cormorant Garamond', Georgia, serif"
         ctx.textAlign = 'center'
@@ -1393,7 +1473,7 @@ export default function ParkGame() {
             [-0.42, 0.26],
             [0.04, -0.02],
           ]
-          chips.forEach(([dx, dy]) => dot(dx * u, dy * u, u * 0.12, '#5A3A1E'))
+          chips.forEach(([dx, dy]) => dot(dx * u, dy * u, u * 0.12, '#7A4A25'))
           break
         }
         case 'fish':
@@ -1760,6 +1840,9 @@ export default function ParkGame() {
           )
           if (dist < 1.5) {
             cat.interacting = true
+            // Show the reaction once per approach: pop it when the cat enters
+            // range, then stay quiet until it leaves and comes back (the else
+            // below re-arms it) — instead of re-popping on a timer while lingering.
             if (!obj._shown) {
               obj._shown = true
               g.popups.push({
@@ -1768,10 +1851,9 @@ export default function ParkGame() {
                 y: obj.y * PIXEL - 20,
                 life: 90,
               })
-              setTimeout(() => {
-                obj._shown = false
-              }, 3000)
             }
+          } else {
+            obj._shown = false
           }
         }
       })
