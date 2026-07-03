@@ -896,12 +896,12 @@ export default function ParkGame() {
       ctx.fill()
     }
 
-    function drawButterflies() {
+    function drawButterflies(f: number) {
       if (!ctx) return
       g.butterflies.forEach((b) => {
-        b.timer += 0.05
-        b.x += b.vx + Math.sin(b.timer) * 0.5
-        b.y += b.vy + Math.cos(b.timer * 1.3) * 0.3
+        b.timer += 0.05 * f
+        b.x += (b.vx + Math.sin(b.timer) * 0.5) * f
+        b.y += (b.vy + Math.cos(b.timer * 1.3) * 0.3) * f
         if (b.x > CANVAS_WIDTH) b.x = -10
         if (b.x < -10) b.x = CANVAS_WIDTH
         if (b.y > GROUND_HEIGHT - PIXEL * 2) b.vy = -Math.abs(b.vy)
@@ -1270,12 +1270,12 @@ export default function ParkGame() {
       })
     }
 
-    function drawPopups() {
+    function drawPopups(f: number) {
       if (!ctx) return
       g.popups = g.popups.filter((p) => p.life > 0)
       g.popups.forEach((p) => {
-        p.life--
-        p.y -= 0.5
+        p.life -= f
+        p.y -= 0.5 * f
         const alpha = Math.min(1, p.life / 30)
         ctx.globalAlpha = alpha
         ctx.font = "600 16px 'Cormorant Garamond', Georgia, serif"
@@ -1462,9 +1462,12 @@ export default function ParkGame() {
       ctx.restore()
     }
 
-    function updateCat() {
+    function updateCat(dt: number) {
       const cat = g.cat
-      const speed = 0.035
+      // Time-based speed so the cat walks at the same real-world pace regardless
+      // of frame rate (mobile often runs below 60fps). 0.0021 tiles/ms ≈ the old
+      // 0.035 tiles/frame at 60fps.
+      const speed = 0.0021 * dt
       let moving = false
       let newX = cat.x
       let newY = cat.y
@@ -1513,8 +1516,9 @@ export default function ParkGame() {
         cat.idleFrames = 0
         cat.state = 'standing'
       } else {
-        cat.idleFrames++
-        // ~10 seconds at 60fps = 600 frames
+        // Accumulate in 60fps-frame units (dt * 0.06) so idle timing is
+        // frame-rate-independent: ~10s to lie, ~20s to sleep.
+        cat.idleFrames += dt * 0.06
         if (cat.idleFrames > 1200) {
           cat.state = 'sleeping'
         } else if (cat.idleFrames > 600) {
@@ -1654,9 +1658,18 @@ export default function ParkGame() {
     let tabVisible = !document.hidden
     const active = () => onScreen && tabVisible
 
-    function gameLoop() {
+    let lastNow = 0
+    function gameLoop(now = 0) {
       animId = 0
-      g.frameCount++
+      // Elapsed ms since last frame, clamped so a tab-resume / stall can't make
+      // the cat teleport. First frame assumes ~60fps.
+      const dt = lastNow ? Math.min(now - lastNow, 100) : 1000 / 60
+      lastNow = now
+      // Elapsed time in 60fps-frame units. Scales every animation (the
+      // frameCount clock below + per-frame integrations like butterflies/popups/
+      // idle) so they run at the same pace regardless of frame rate.
+      const f = dt * 0.06
+      g.frameCount += f
       // Draw in logical 960x816 coords scaled up to the high-res backing.
       ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -1668,8 +1681,8 @@ export default function ParkGame() {
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawObjects()
-      drawButterflies()
-      updateCat()
+      drawButterflies(f)
+      updateCat(dt)
       updateFoods()
       drawCat()
       ctx!.restore()
@@ -1687,7 +1700,7 @@ export default function ParkGame() {
       drawStarsAndMoon()
       drawDreamBubble()
       drawFoods()
-      drawPopups()
+      drawPopups(f)
       ctx!.restore()
 
       updateCamera()
