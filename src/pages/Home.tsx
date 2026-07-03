@@ -10,7 +10,7 @@
  */
 
 import { useRef, useMemo, type ReactNode } from 'react'
-import { motion, useInView } from 'framer-motion'
+import { motion, useInView, MotionConfig } from 'framer-motion'
 import { Instagram, Mail, ArrowDown, Github } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 
@@ -106,7 +106,7 @@ function VideoCard({
           className="w-full h-full"
           allow="fullscreen"
           loading="lazy"
-          title={caption}
+          title={`TikTok video: ${caption}`}
         />
       </div>
 
@@ -175,7 +175,7 @@ function FloatingParticles() {
 // ─── FIXED HERO ─────────────────────────────────────────────────────────────
 function FixedHero() {
   return (
-    <div className="fixed inset-0 w-full h-screen z-0">
+    <div className="fixed inset-0 w-full h-dvh z-0">
       <img
         src={HERO_IMAGE}
         alt="Koala lounging on her window perch"
@@ -361,9 +361,9 @@ function OrganicEdge() {
 // ─── CONTENT PANEL ──────────────────────────────────────────────────────────
 function ContentPanel() {
   return (
-    <div className="relative z-10">
+    <div id="main-content" className="relative z-10">
       {/* Spacer for hero */}
-      <div className="h-screen" />
+      <div className="h-dvh" />
 
       {/* Organic wave transition */}
       <OrganicEdge />
@@ -415,7 +415,7 @@ function ContentPanel() {
 
           {/* Mobile-first video feed — 2 columns on mobile, scrollable */}
           <div className="container">
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
               {VIDEO_EMBEDS.map((video, index) => (
                 <VideoCard
                   key={`${video.embedId}-${index}`}
@@ -530,9 +530,17 @@ function ContentPanel() {
 // ─── MAIN PAGE ──────────────────────────────────────────────────────────────
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[oklch(0.12_0.008_60)]">
-      <FixedHero />
-      <ContentPanel />
-    </div>
+    <MotionConfig reducedMotion="user">
+      <div className="min-h-screen bg-[oklch(0.12_0.008_60)]">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-black"
+        >
+          Skip to content
+        </a>
+        <FixedHero />
+        <ContentPanel />
+      </div>
+    </MotionConfig>
   )
 }
