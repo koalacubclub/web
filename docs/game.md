@@ -123,3 +123,34 @@ Spawn cadence, max on screen, lifespan, collect radius, and the `FOODS` table
 (items/points/weights) are all constants near the top of `ParkGame.tsx`. The unit
 test (`src/pages/Home.test.tsx`) asserts the game canvas renders with its
 `aria-label`; keep that label containing "Koala's Park".
+
+## Multiplayer
+
+The park is shared: other visitors appear as koalas that move in real time. The
+backend is a Cloudflare Worker + Durable Object at `game.koalacub.club` (code in
+`server/`, wire protocol in `shared/protocol.ts`); the architecture and rationale
+are in [decisions.md](./decisions.md) (#14) and [multiplayer-deploy.md](./multiplayer-deploy.md).
+
+How it plugs into the game loop (all inside the one canvas `useEffect`):
+
+- **Connection** (`src/multiplayer/connection.ts`) is framework-agnostic. It does
+  the session handshake (`POST /session`, credentialed), opens the WebSocket with
+  backoff reconnect, and keeps a `Map<id, RemotePlayer>` the loop reads each
+  frame. `createMultiplayer()` returns `null` when no backend is configured, so
+  the game runs solo — the whole feature is behind one `if (mp)`.
+- **Sending:** after `updateCat`, the loop calls `mp.sendState({x,y,dir,pose,
+interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
+  pose/dir/interacting change through immediately. Only that minimal state travels
+  — leg/tail/idle animation is derived locally from the shared `frameCount`, so it
+  never needs sending.
+- **Drawing:** `drawCat(cat = g.cat, label?)` is generalized — the local koala is
+  drawn unlabelled, each remote one is drawn from a reused scratch object with a
+  name tag, depth-sorted by `y`. Remote positions are interpolated toward their
+  latest target (`rx/ry` lerp) so they glide between updates instead of teleporting.
+- **Presence:** a small `data-testid="mp-presence"` badge (`● N in the park`) is
+  updated imperatively from the loop to avoid per-frame React re-renders.
+
+The camera transform (`parkCamera.ts`, CSS transform on the `<canvas>`) is
+camera-agnostic for remotes — they're drawn in world space and pan with everyone
+else. Tests: `src/multiplayer/connection.test.ts` (client) and
+`server/test/world.test.ts` (the Durable Object, in real `workerd`).

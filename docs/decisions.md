@@ -123,10 +123,54 @@ backgrounded tab can't teleport the cat on resume. The loop also **pauses** when
 tab is hidden or the hero is scrolled out of view (a scroll check, since the fixed
 hero always intersects the viewport). See [game.md](./game.md).
 
+## 14. Multiplayer on Cloudflare (Worker + Durable Object), frontend stays on Vercel
+
+The park is a shared world: every visitor is a koala and sees the others move in
+real time. The backend is a **Cloudflare Worker + one Durable Object**
+(`server/`, at `game.koalacub.club`); the site stays a Vite SPA on Vercel
+(`client/`). The repo is a pnpm workspace: `client` + `server` +
+`shared` (the wire protocol, imported by both).
+
+**Why a Durable Object, not a Node server or a plain Worker.** A Worker is
+stateless and can be evicted between requests, so it can't hold "who's in the
+park". A Durable Object is a single addressable, stateful instance — all players
+route to `world-main`, one authority coordinates presence and relays movement.
+It keeps long-lived (hibernatable) WebSockets, so it costs nothing while the park
+is empty yet doesn't drop connections. A always-on Node box (Railway/Colyseus)
+would work too but adds a process + DB to run and pay for; the DO needs neither
+for v1. See [multiplayer-deploy.md](./multiplayer-deploy.md).
+
+**No game tick.** The DO is event-driven (relay on message), never a
+`setInterval`/`alarm` loop — that's what lets it hibernate when idle. Positions
+are ephemeral (broadcast, not stored); only a player's last-known position rides
+in the socket attachment so a hibernation wake doesn't snap idle koalas to spawn.
+
+**Identity + anti-cheat are best-effort.** An anonymous, HMAC-signed session
+cookie (`POST /session`) is the identity — no accounts. The Worker gates the
+WebSocket on Origin + a valid session and passes the _verified_ id to the DO
+(clients can't spoof it). Inbound is rate-limited **per session** (not per
+socket, so extra tabs can't multiply the budget) and positions are clamped
+server-side. Sessions are freely mintable, so this bounds abuse rather than
+preventing it.
+
+**Fails soft.** The client only enables multiplayer when `VITE_GAME_HTTP_URL` /
+`VITE_GAME_WS_URL` are set; otherwise (and if the backend is unreachable) the
+game runs solo. A backend outage never breaks the site.
+
+**Deploy.** Both halves ship from `main` via CI (Vercel git auto-deploy is off —
+see the `deploy` and `deploy-server` jobs). `wrangler deploy` uses
+`account_id` from `wrangler.jsonc` + the `CLOUDFLARE_API_TOKEN` repo secret;
+`SESSION_SECRET` is a Worker secret that persists across deploys.
+
 ## Testing notes
 
 - Unit: Vitest + Testing Library (jsdom). `src/test/setup.ts` stubs
   `IntersectionObserver` (framer-motion `useInView` needs it — the stub reports
-  in-view so reveal/animate paths run) and `matchMedia`.
+  in-view so reveal/animate paths run) and `matchMedia`. The multiplayer client
+  (`src/multiplayer/connection.test.ts`) mocks `WebSocket`/`fetch` to test roster
+  handling, self-filtering, throttling and reconnect.
+- Server: the Durable Object is tested in real `workerd` via
+  `@cloudflare/vitest-pool-workers` (`server/test/world.test.ts`) — auth, origin
+  gate, relay, position clamp, and the per-session rate limit.
 - e2e: Playwright; its `webServer` builds + previews the production bundle, so
   `pnpm test:e2e` is self-contained.

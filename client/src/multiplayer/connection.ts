@@ -1,0 +1,234 @@
+// Browser side of Koala's Park multiplayer.
+//
+// Responsibilities, kept deliberately small:
+//   1. establish the anonymous session cookie (POST /session, credentialed)
+//   2. hold a WebSocket to the shared world, reconnecting with backoff
+//   3. keep a Map of remote players that the game loop reads each frame
+//   4. throttle outgoing position updates to CLIENT_SEND_HZ
+//
+// It is framework-agnostic (no React) so ParkGame can create it inside its
+// existing canvas effect and tear it down in the same cleanup. It never throws
+// for network reasons — if the backend is down the game simply runs solo.
+
+import type {
+  Dir,
+  CatPose,
+  Player,
+  PlayerState,
+  ServerMessage,
+} from '@koala/shared'
+import { CLIENT_SEND_HZ } from '@koala/shared'
+
+export interface RemotePlayer {
+  id: string
+  name: string
+  // Latest authoritative position from the server (the interpolation target).
+  x: number
+  y: number
+  dir: Dir
+  pose: CatPose
+  interacting: boolean
+  // Smoothed on-screen position, advanced toward x/y by the game loop so remote
+  // koalas glide between the ~12Hz updates instead of teleporting.
+  rx: number
+  ry: number
+}
+
+export interface Multiplayer {
+  /** Remote players only (never includes self), keyed by session id. */
+  readonly players: Map<string, RemotePlayer>
+  self: Player | null
+  connected: boolean
+  /** Send local koala state; internally throttled to CLIENT_SEND_HZ. */
+  sendState(s: PlayerState): void
+  close(): void
+}
+
+const DEV = import.meta.env.DEV
+const HTTP_BASE: string | undefined =
+  import.meta.env.VITE_GAME_HTTP_URL ??
+  (DEV ? 'http://localhost:8787' : undefined)
+const WS_BASE: string | undefined =
+  import.meta.env.VITE_GAME_WS_URL ?? (DEV ? 'ws://localhost:8787' : undefined)
+
+/** Whether a multiplayer backend is configured for this build. */
+export const MULTIPLAYER_ENABLED = Boolean(HTTP_BASE && WS_BASE)
+
+/**
+ * Start a multiplayer session. Returns null when no backend is configured
+ * (e.g. a production build before the Worker is deployed), so callers can fall
+ * back to solo play with a single `if`.
+ */
+export function createMultiplayer(
+  opts: {
+    onStatus?: (connected: boolean) => void
+  } = {},
+): Multiplayer | null {
+  if (!HTTP_BASE || !WS_BASE) return null
+
+  const players = new Map<string, RemotePlayer>()
+  let ws: WebSocket | null = null
+  let closed = false
+  let retry = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  const handle: Multiplayer = {
+    players,
+    self: null,
+    connected: false,
+    sendState,
+    close,
+  }
+
+  const setConnected = (v: boolean) => {
+    if (handle.connected !== v) {
+      handle.connected = v
+      opts.onStatus?.(v)
+    }
+  }
+
+  function upsert(p: Player) {
+    if (handle.self && p.id === handle.self.id) return
+    const existing = players.get(p.id)
+    if (existing) {
+      existing.x = p.x
+      existing.y = p.y
+      existing.dir = p.dir
+      existing.pose = p.pose
+      existing.interacting = p.interacting
+      existing.name = p.name
+    } else {
+      players.set(p.id, { ...p, rx: p.x, ry: p.y })
+    }
+  }
+
+  function onMessage(raw: string) {
+    let msg: ServerMessage
+    try {
+      msg = JSON.parse(raw) as ServerMessage
+    } catch {
+      return
+    }
+    switch (msg.t) {
+      case 'welcome':
+        handle.self = msg.self
+        players.clear()
+        for (const p of msg.players) upsert(p)
+        break
+      case 'join':
+        upsert(msg.p)
+        break
+      case 'leave':
+        players.delete(msg.id)
+        break
+      case 'state': {
+        if (handle.self && msg.id === handle.self.id) break
+        const p = players.get(msg.id)
+        if (p) {
+          p.x = msg.s.x
+          p.y = msg.s.y
+          p.dir = msg.s.dir
+          p.pose = msg.s.pose
+          p.interacting = msg.s.interacting
+        }
+        break
+      }
+    }
+  }
+
+  function openSocket() {
+    if (closed) return
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(`${WS_BASE}/world/main`)
+    } catch {
+      scheduleReconnect()
+      return
+    }
+    ws = socket
+    socket.addEventListener('open', () => {
+      retry = 0
+      setConnected(true)
+    })
+    socket.addEventListener('message', (e) => onMessage(e.data as string))
+    socket.addEventListener('close', () => {
+      if (ws === socket) ws = null
+      setConnected(false)
+      players.clear()
+      scheduleReconnect()
+    })
+    // 'error' is always followed by 'close'; let close handle reconnection.
+    socket.addEventListener('error', () => {})
+  }
+
+  function scheduleReconnect() {
+    if (closed || reconnectTimer) return
+    // Exponential backoff, capped at 10s.
+    const delay = Math.min(1000 * 2 ** retry, 10_000)
+    retry++
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      void connect()
+    }, delay)
+  }
+
+  async function connect() {
+    if (closed) return
+    try {
+      // Establish / refresh the session cookie before upgrading.
+      await fetch(`${HTTP_BASE}/session`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch {
+      scheduleReconnect()
+      return
+    }
+    openSocket()
+  }
+
+  // ---- outbound throttling ----
+  const minInterval = 1000 / CLIENT_SEND_HZ
+  let lastSentAt = 0
+  let lastSent: PlayerState | null = null
+
+  function sendState(s: PlayerState) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const now = performance.now()
+    if (now - lastSentAt < minInterval && !poseOrDirChanged(lastSent, s)) return
+    lastSentAt = now
+    lastSent = s
+    try {
+      ws.send(JSON.stringify({ t: 'state', s }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  function close() {
+    closed = true
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = null
+    setConnected(false)
+    players.clear()
+    if (ws) {
+      const s = ws
+      ws = null
+      try {
+        s.close()
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  void connect()
+  return handle
+}
+
+// Send immediately (bypassing the rate throttle) when the pose or facing flips,
+// so a remote koala's sit/sleep/turn shows up without waiting for the next tick.
+function poseOrDirChanged(a: PlayerState | null, b: PlayerState): boolean {
+  if (!a) return true
+  return a.pose !== b.pose || a.dir !== b.dir || a.interacting !== b.interacting
+}

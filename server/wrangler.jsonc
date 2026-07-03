@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "koala-game",
+  // Account is not secret; it lets CI deploy with just a CLOUDFLARE_API_TOKEN.
+  "account_id": "7e5c2ad6e64b556dc2de01c38e0af1e4",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-02-01",
+  "observability": { "enabled": true },
+  // We serve only via the game.koalacub.club custom domain, so no workers.dev
+  // route is needed (also avoids requiring a workers.dev subdomain on the acct).
+  "workers_dev": false,
+  "durable_objects": {
+    "bindings": [{ "name": "GAME_WORLD", "class_name": "GameWorld" }],
+  },
+  // SQLite-backed Durable Object (required for new classes on the free plan,
+  // and gives us attached SQLite storage when we add purchases/likes later).
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameWorld"] }],
+  // Local-development defaults. SESSION_SECRET comes from `.dev.vars`.
+  "vars": {
+    "ENVIRONMENT": "development",
+    "ALLOWED_ORIGINS": "http://localhost:5173,http://localhost:4173",
+  },
+  "env": {
+    "production": {
+      // Explicit name so the deploy is "koala-game", not "koala-game-production".
+      "name": "koala-game",
+      "workers_dev": false,
+      "vars": {
+        "ENVIRONMENT": "production",
+        "ALLOWED_ORIGINS": "https://www.koalacub.club,https://koalacub.club",
+      },
+      // Bind the game backend to its own subdomain.
+      "routes": [{ "pattern": "game.koalacub.club", "custom_domain": true }],
+      "durable_objects": {
+        "bindings": [{ "name": "GAME_WORLD", "class_name": "GameWorld" }],
+      },
+      "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameWorld"] }],
+    },
+  },
+}

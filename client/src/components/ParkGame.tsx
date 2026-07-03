@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
 
@@ -195,6 +196,18 @@ interface Food {
   life: number
 }
 
+// The minimal shape drawCat needs. Both the local cat (g.cat) and the scratch
+// object used to render each remote koala are structurally this.
+type DrawableCat = {
+  x: number
+  y: number
+  dir: 'left' | 'right'
+  idle: boolean
+  interacting: boolean
+  idleFrames: number
+  state: 'standing' | 'lying' | 'sleeping'
+}
+
 export default function ParkGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   // Interactive-hotspot UI (driven from the canvas hit-testing in the effect).
@@ -210,6 +223,7 @@ export default function ParkGame() {
     lightboxRef.current = false
     setLightbox(false)
   }, [])
+  const presenceRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef({
     cat: {
       x: 9,
@@ -363,6 +377,21 @@ export default function ParkGame() {
     initObjects()
 
     const g = gameRef.current
+
+    // Multiplayer: connect to the shared park (null when no backend is
+    // configured — e.g. a prod build before the Worker is deployed — in which
+    // case the game just runs solo). Torn down in this effect's cleanup.
+    const mp: Multiplayer | null = createMultiplayer()
+    // Scratch object reused each frame to render remote koalas without churn.
+    const remoteCat: DrawableCat = {
+      x: 0,
+      y: 0,
+      dir: 'right',
+      idle: true,
+      interacting: false,
+      idleFrames: 0,
+      state: 'standing',
+    }
 
     // Restore best score. (Food is drawn procedurally — see drawFoodShape.)
     try {
@@ -1180,13 +1209,30 @@ export default function ParkGame() {
       })
     }
 
-    function drawCat() {
+    // Draws a koala. Defaults to the local cat; pass a remote player's state
+    // (and name) to render other players in the same world space.
+    function drawCat(cat: DrawableCat = g.cat, label?: string) {
       if (!ctx) return
-      const cat = g.cat
       const x = cat.x * PIXEL
       const y = cat.y * PIXEL
       const flip = cat.dir === 'left' ? -1 : 1
       const s = SCALE
+
+      // Floating name tag for remote players (drawn above the head, unflipped).
+      if (label) {
+        ctx.save()
+        ctx.font = `${s * 4}px "Inter", system-ui, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        ctx.lineWidth = s
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)'
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'
+        const lx = x + PIXEL * 0.5
+        const ly = y - PIXEL * 0.15
+        ctx.strokeText(label, lx, ly)
+        ctx.fillText(label, lx, ly)
+        ctx.restore()
+      }
 
       // Different poses based on idle state
       if (cat.state === 'lying' || cat.state === 'sleeping') {
@@ -2238,7 +2284,34 @@ export default function ParkGame() {
       drawButterflies(f)
       updateCat(dt)
       updateFoods()
+      // Publish our position (throttled inside sendState).
+      mp?.sendState({
+        x: g.cat.x,
+        y: g.cat.y,
+        dir: g.cat.dir,
+        pose: g.cat.state,
+        interacting: g.cat.interacting,
+      })
       drawCat()
+      // Remote koalas, interpolated toward their latest target and depth-sorted
+      // with each other (drawn after the local cat, like all other players).
+      if (mp && mp.players.size) {
+        const lerp = Math.min(1, dt / 90)
+        const remotes = [...mp.players.values()].sort((a, b) => a.ry - b.ry)
+        for (const p of remotes) {
+          p.rx += (p.x - p.rx) * lerp
+          p.ry += (p.y - p.ry) * lerp
+          const moving =
+            Math.abs(p.x - p.rx) > 0.02 || Math.abs(p.y - p.ry) > 0.02
+          remoteCat.x = p.rx
+          remoteCat.y = p.ry
+          remoteCat.dir = p.dir
+          remoteCat.state = p.pose
+          remoteCat.idle = !moving && p.pose === 'standing'
+          remoteCat.interacting = p.interacting
+          drawCat(remoteCat, p.name)
+        }
+      }
       ctx!.restore()
 
       // Purple overlay with blend mode
@@ -2260,6 +2333,13 @@ export default function ParkGame() {
       updateCamera()
       // HUD last, pinned against the horizontal camera pan (see updateCamera).
       drawHUD()
+
+      // Bare-minimum presence readout (imperative to avoid per-frame React
+      // re-renders). Empty string hides it when solo / disconnected.
+      if (presenceRef.current) {
+        presenceRef.current.textContent =
+          mp && mp.connected ? `● ${mp.players.size + 1} in the park` : ''
+      }
 
       if (active()) animId = requestAnimationFrame(gameLoop)
     }
@@ -2331,6 +2411,7 @@ export default function ParkGame() {
       ro?.disconnect()
       clearHold()
       document.body.classList.remove('kcc-dragging')
+      mp?.close()
     }
   }, [initObjects])
 
@@ -2368,6 +2449,13 @@ export default function ParkGame() {
           height: 'auto',
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
+      />
+      {/* Presence badge — updated imperatively by the game loop. Bare-minimum
+          UI to prove the multiplayer session is live. */}
+      <div
+        ref={presenceRef}
+        data-testid="mp-presence"
+        className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 tabular-nums backdrop-blur-sm empty:hidden"
       />
       {/* Hotspot tooltip + photo lightbox are portalled to <body>: the fixed hero
           sits in a z-0 stacking context, so rendering them here would trap them
