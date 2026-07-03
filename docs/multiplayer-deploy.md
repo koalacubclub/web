@@ -1,5 +1,10 @@
 # Multiplayer deploy runbook
 
+> **Status (2026-07-03):** Cloudflare backend is DEPLOYED and verified live.
+> Worker `koala-game` serves `https://game.koalacub.club` (custom domain, no
+> workers.dev route). `SESSION_SECRET` is set. Account workers.dev subdomain
+> registered as `koalacub`. **Remaining: the Vercel side (section 2).**
+
 The multiplayer backend is a **Cloudflare Worker + Durable Object** in `server/`.
 The frontend stays on **Vercel** (`client/`). They share the wire protocol in
 `shared/`. This is a `pnpm` workspace: `client` + `server` + `shared`.
