@@ -14,28 +14,7 @@ import { motion, useInView, MotionConfig } from 'framer-motion'
 import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
-
-// Instagram reels. Posters live in /public/reels (downloaded from @koalacubclub);
-// each card links out to the reel on instagram.com. This is a point-in-time
-// snapshot — see README ("Updating the reel feed") to refresh when new reels post.
-const IG_PROFILE = 'https://www.instagram.com/koalacubclub/'
-const reelUrl = (code: string) => `https://www.instagram.com/reel/${code}/`
-const reelPoster = (code: string) => `/reels/${code}.jpg`
-
-const REELS = [
-  { code: 'DaGvXqFRQmV', caption: 'Brushing Koala’s teeth' },
-  { code: 'DZ0zua6RSu7', caption: 'First time touching grass' },
-  { code: 'DZisOcxxiGj', caption: 'Would your cat love this?' },
-  { code: 'DZQqudUxfag', caption: 'TV time for Koala' },
-  { code: 'DY-pGuuxxZi', caption: 'Opinions on her walk' },
-  { code: 'DYsvinMRbTs', caption: 'Doorman approves' },
-  { code: 'DYNuk02xQqY', caption: 'Outdoor training, day 3' },
-  { code: 'DYVcXI-xFH8', caption: 'She can open every door' },
-  { code: 'DXxZTGAxU8O', caption: 'Defeating a powerful monster' },
-  { code: 'DXu0dxIh3nN', caption: 'My little baby' },
-  { code: 'DXcy9xyhpqp', caption: 'First time outside' },
-  { code: 'DW_2W9AjWoy', caption: 'Nail trim, no problem' },
-]
+import { IG_PROFILE, REELS, reelPoster, reelUrl } from '@/data/reels'
 
 // Playful paw SVG
 function PawPrint({ className = '' }: { className?: string }) {

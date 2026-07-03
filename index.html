@@ -18,7 +18,7 @@
       name="robots"
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
-    <link rel="canonical" href="https://koalacub.club/" />
+    <link rel="canonical" href="https://www.koalacub.club/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Koala Cub Club" />
     <meta property="og:title" content="Koala Cub Club" />
@@ -26,15 +26,15 @@
       property="og:description"
       content="Koala Cub Club — a cinematic window into one tabby's world."
     />
-    <meta property="og:url" content="https://koalacub.club/" />
-    <meta property="og:image" content="https://koalacub.club/hero.webp" />
+    <meta property="og:url" content="https://www.koalacub.club/" />
+    <meta property="og:image" content="https://www.koalacub.club/hero.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Koala Cub Club" />
     <meta
       name="twitter:description"
       content="Koala Cub Club — a cinematic window into one tabby's world."
     />
-    <meta name="twitter:image" content="https://koalacub.club/hero.webp" />
+    <meta name="twitter:image" content="https://www.koalacub.club/hero.webp" />
     <meta name="theme-color" content="#1a1712" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -53,31 +53,8 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- Crawlable content for robots / AI crawlers that do not execute JavaScript. -->
-    <noscript>
-      <h1>Koala Cub Club</h1>
-      <p>
-        A tabby with opinions and zero regard for personal space — a cinematic
-        window into one cat's world. Follow Koala's adventures: outdoor walks,
-        first time touching grass, stroller training, and everyday chaos.
-      </p>
-      <ul>
-        <li>
-          <a href="https://www.instagram.com/koalacubclub/"
-            >Instagram — @koalacubclub</a
-          >
-        </li>
-        <li>
-          <a href="https://tiktok.com/@koalacubclub">TikTok — @koalacubclub</a>
-        </li>
-        <li><a href="mailto:hello@koalacub.club">hello@koalacub.club</a></li>
-        <li>
-          <a href="https://github.com/koalacubclub/web"
-            >Source code on GitHub</a
-          >
-        </li>
-      </ul>
-    </noscript>
+    <!-- A crawlable <noscript> mirror of the content is injected at build time
+         from the shared reel data (see vite.config.ts / src/data/reels.ts). -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

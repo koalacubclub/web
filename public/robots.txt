@@ -36,4 +36,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://koalacub.club/sitemap.xml
+Sitemap: https://www.koalacub.club/sitemap.xml
