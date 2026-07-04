@@ -80,7 +80,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
           aria-label={`${snap.coins} likes`}
         >
           <span className="text-[oklch(0.82_0.13_78)]" aria-hidden="true">
-            ★
+            ♥
           </span>
           <span className="text-xl tabular-nums">{snap.coins}</span>
         </div>
