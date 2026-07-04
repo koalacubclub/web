@@ -2758,7 +2758,9 @@ export default function ParkGame() {
                             </kbd>
                           ))}
                         </span>
-                        <span className="hidden text-white/30 sm:inline">/</span>
+                        <span className="hidden text-white/30 sm:inline">
+                          /
+                        </span>
                         <span className="inline-flex items-center gap-1">
                           {['W', 'A', 'S', 'D'].map((k) => (
                             <kbd
