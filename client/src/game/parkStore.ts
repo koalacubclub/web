@@ -1,4 +1,4 @@
-// parkStore — the single source of truth for the game economy (the score is a
+// parkStore — the client-side bridge for the game economy (the score is a
 // spendable coin wallet), the shop-placed decorations, and their persistence.
 //
 // It's a framework-agnostic module singleton so the two sides that need it can
@@ -8,9 +8,14 @@
 //     re-render churn on the 60fps loop), and
 //   • the React shop UI subscribes via `useSyncExternalStore` for a live balance.
 //
-// Persistence is local-first behind a small `sync` seam: today localStorage is
-// the store of record; later a server can be layered in here (cache-then-network
-// on load, best-effort optimistic writes on mutate) WITHOUT changing any caller.
+// Source of truth:
+//   • Multiplayer (a backend is configured): the SERVER owns the economy. This
+//     store runs in a server-fed mode — setServerBuyer/applyServerWallet/
+//     applyServerPlaced mirror the server's coins + placed, purchase() routes a
+//     `buy` to the server, and nothing is written to localStorage. See
+//     docs/decisions.md #15.
+//   • Solo (no backend): this store IS the source of truth, persisted to
+//     localStorage behind the small `sync` seam below.
 
 import type { PlacedItem as ServerPlacedItem } from '@koala/shared'
 import { GROUND_ROWS, MAP_COLS } from './constants'
