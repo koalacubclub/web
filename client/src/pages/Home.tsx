@@ -11,15 +11,7 @@
 
 import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence, useInView, MotionConfig } from 'framer-motion'
-import {
-  Instagram,
-  Mail,
-  ArrowDown,
-  Github,
-  Play,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
@@ -252,45 +244,23 @@ function ClubSection() {
         </AnimatePresence>
       </div>
 
-      {/* Pagination — prev / dots / next, cat's-eye gold accent */}
+      {/* Pagination — clickable dots (active page = a wider cat's-eye gold dash) */}
       {pageCount > 1 && (
-        <Reveal className="container mt-10 flex items-center justify-center gap-4">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={page === 0}
-            aria-label="Previous members"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/50 transition-all duration-300 hover:border-[oklch(0.75_0.12_80)]/30 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-white/[0.08] disabled:hover:text-white/50"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-
-          <div className="flex items-center gap-2">
-            {Array.from({ length: pageCount }).map((_, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setPage(i)}
-                aria-label={`Go to page ${i + 1}`}
-                aria-current={i === page ? 'true' : undefined}
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  i === page
-                    ? 'w-6 bg-[oklch(0.75_0.12_80)]'
-                    : 'w-2 bg-white/15 hover:bg-white/30'
-                }`}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-            disabled={page === pageCount - 1}
-            aria-label="More members"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] text-white/50 transition-all duration-300 hover:border-[oklch(0.75_0.12_80)]/30 hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-white/[0.08] disabled:hover:text-white/50"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        <Reveal className="container mt-10 flex items-center justify-center gap-2">
+          {Array.from({ length: pageCount }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setPage(i)}
+              aria-label={`Go to page ${i + 1}`}
+              aria-current={i === page ? 'true' : undefined}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                i === page
+                  ? 'w-6 bg-[oklch(0.75_0.12_80)]'
+                  : 'w-2 bg-white/15 hover:bg-white/30'
+              }`}
+            />
+          ))}
         </Reveal>
       )}
     </>

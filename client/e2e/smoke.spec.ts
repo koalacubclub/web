@@ -30,7 +30,7 @@ test('landing page renders hero, reel feed and social links', async ({
   await expect(memberLinks.first()).toBeVisible()
   await expect(memberLinks.first()).toHaveAttribute('target', '_blank')
   await expect(
-    page.getByRole('button', { name: /more members/i }),
+    page.getByRole('button', { name: /go to page 2/i }),
   ).toBeVisible()
 
   await expect(
