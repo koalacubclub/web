@@ -129,7 +129,14 @@ so the React UI and the imperative canvas never fight.
   now lives in the shared protocol so the **server** validates purchases against
   the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
   Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
-  plus three shop-only sprites: `snowcat`, `cardbox`, and a 4×4 `house`.
+  plus shop-only sprites: `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
+- **Boombox (interactive):** the 2×1 `radio` sprite plays a gentle looping
+  chiptune when Koala walks within ~2.5 tiles of it — its speakers pulse and music
+  notes drift up. The tune is a quiet C-pentatonic loop synthesised with the Web
+  Audio API in `client/src/game/radio.ts` (created lazily after a user gesture,
+  per autoplay rules; a no-op where Web Audio is unavailable). The game loop
+  reports the _local_ koala's proximity each frame (`radio.setNear`), fading the
+  sound in/out; it's silenced when the loop pauses (scroll away / tab hidden).
 - **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
   primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
   art so a bought tree looks like a park tree. The shop renders the **real item
