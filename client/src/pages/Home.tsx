@@ -303,7 +303,7 @@ function ClubSection() {
 function FixedHero() {
   return (
     <div
-      className="fixed inset-0 w-full h-dvh z-0 select-none bg-[oklch(0.12_0.008_60)]"
+      className="fixed inset-0 w-full h-[100lvh] z-0 select-none bg-[oklch(0.12_0.008_60)]"
       style={{ WebkitUserSelect: 'none', WebkitTouchCallout: 'none' }}
     >
       {/* Ambient depth behind the letterboxed game canvas */}
@@ -488,8 +488,9 @@ function ContentPanel() {
   return (
     <div className="relative z-10">
       {/* Spacer for hero — pointer-events-none so taps/clicks reach the game
-          canvas (and hero social icons) sitting behind it. */}
-      <div className="h-dvh pointer-events-none" />
+          canvas (and hero social icons) sitting behind it. svh (stable) so the
+          content doesn't jump as the mobile toolbar shows/hides on scroll. */}
+      <div className="h-[100svh] pointer-events-none" />
 
       {/* Scroll anchor for the hero's down-arrow and the skip link. It sits
           AFTER the full-viewport hero spacer, so scrolling to it lands at the

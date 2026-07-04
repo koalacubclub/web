@@ -710,18 +710,19 @@ export default function ParkGame() {
       disengage()
     }
 
-    // ── Touch: a quick swipe scrolls the page; a brief hold "grabs" the cat,
-    // after which dragging steers her and the page won't scroll. ──
-    const HOLD_MS = 150 // press this long (without moving) to grab the cat
-    const MOVE_TOL = 10 // px of movement before the hold that counts as a swipe
+    // ── Touch: a TAP walks the cat to that spot; a drag/swipe just scrolls the
+    // page (native — we never preventDefault). A double-tap jumps; a tap on a
+    // hotspot opens it. There is deliberately no hold-to-steer: separating
+    // "move" (tap) from "scroll" (drag) by gesture TYPE removes the old
+    // ambiguity where an eager drag-to-move was mistaken for a scroll (and vice
+    // versa), and lets the page scroll smoothly for scanning. ──
+    const MOVE_TOL = 10 // px of movement that turns a tap into a scroll
     const DOUBLE_TAP_MS = 300 // two quick taps within this window = jump
     const TAP_TOL = 28 // px the two taps must land within
     let touchId: number | null = null
     let touchStartX = 0
     let touchStartY = 0
     let touchMoved = false
-    let touchEngaged = false
-    let holdTimer = 0
     // Double-tap tracking (kept in the outer scope so it survives per-touch resets).
     let lastTapAt = 0
     let lastTapX = 0
@@ -732,12 +733,6 @@ export default function ParkGame() {
       }
       return null
     }
-    const clearHold = () => {
-      if (holdTimer) {
-        clearTimeout(holdTimer)
-        holdTimer = 0
-      }
-    }
     const handleTouchStart = (e: TouchEvent) => {
       if (touchId !== null) return // already tracking one touch
       if (lightboxRef.current) return
@@ -747,62 +742,42 @@ export default function ParkGame() {
       touchStartX = t.clientX
       touchStartY = t.clientY
       touchMoved = false
-      touchEngaged = false
-      // Tapping a hotspot acts on touchend — don't start the hold-to-grab timer.
       touchHotspot = hotspotAt(t.clientX, t.clientY)
-      if (touchHotspot) return
-      holdTimer = window.setTimeout(() => {
-        holdTimer = 0
-        // Held still long enough → grab the cat.
-        if (!touchMoved && touchId !== null) {
-          touchEngaged = true
-          engage(touchStartX, touchStartY)
-        }
-      }, HOLD_MS)
     }
     const handleTouchMove = (e: TouchEvent) => {
-      if (touchId === null) return
+      if (touchId === null || touchMoved) return
       const t = touchById(e.changedTouches)
       if (!t) return
-      if (touchEngaged) {
-        e.preventDefault() // steering the cat — don't let the page scroll
-        aimAt(t.clientX, t.clientY)
-        return
-      }
-      // Not engaged yet: real movement means it's a scroll gesture — bail so the
-      // browser scrolls normally.
+      // Any real movement means this is a scroll, not a tap. We do NOT
+      // preventDefault, so the browser scrolls the page natively/smoothly.
       if (
         Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
         Math.abs(t.clientY - touchStartY) > MOVE_TOL
       ) {
         touchMoved = true
-        clearHold()
       }
     }
     const endTouch = () => {
-      clearHold()
-      if (touchEngaged) disengage()
       touchId = null
       touchMoved = false
-      touchEngaged = false
       touchHotspot = null
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
-      if (!t) return
-      // A quick tap on a hotspot (no scroll) opens the channel / photo lightbox.
-      if (
-        touchHotspot &&
-        !touchMoved &&
-        hotspotAt(t.clientX, t.clientY) === touchHotspot
-      ) {
+      if (!t || touchMoved) {
+        // No touch, or it turned into a scroll — nothing to do.
+        endTouch()
+        return
+      }
+      // A clean tap (the finger didn't travel).
+      if (touchHotspot && hotspotAt(t.clientX, t.clientY) === touchHotspot) {
+        // Tap on a channel sign / photo → open it.
         activateHotspot(touchHotspot)
-      } else if (!touchHotspot && !touchMoved && !touchEngaged) {
-        // A clean single-finger tap (not a swipe, hold-drag, or hotspot). Two of
-        // these close together = a double-tap → jump. This can't fire during a
-        // scroll (touchMoved) or a grab-steer (touchEngaged), so both gestures
-        // are preserved.
+      } else if (!touchHotspot) {
+        // Tap on the park → walk Koala to that spot. Two quick taps at the same
+        // place also jump (to grab floating food).
+        aimAt(t.clientX, t.clientY)
         const now = Date.now()
         if (
           now - lastTapAt < DOUBLE_TAP_MS &&
@@ -832,7 +807,8 @@ export default function ParkGame() {
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerUp)
     window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    window.addEventListener('touchmove', handleTouchMove, { passive: false })
+    // passive: we never preventDefault on touch, so the page scrolls natively.
+    window.addEventListener('touchmove', handleTouchMove, { passive: true })
     window.addEventListener('touchend', handleTouchEnd)
     window.addEventListener('touchcancel', handleTouchEnd)
     document.addEventListener('selectstart', handleSelectStart)
@@ -2822,7 +2798,6 @@ export default function ParkGame() {
       window.removeEventListener('resize', handleResize)
       ro?.disconnect()
       radio.dispose()
-      clearHold()
       document.body.classList.remove('kcc-dragging')
       mp?.close()
       parkStore.setServerBuyer(null) // back to solo/localStorage economy
@@ -2841,7 +2816,7 @@ export default function ParkGame() {
         // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or tap where she should walk, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
@@ -2937,7 +2912,7 @@ export default function ParkGame() {
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[oklch(0.82_0.13_78)] shadow-[0_0_8px_oklch(0.82_0.13_78_/_0.6)]" />
                     {isTouch ? (
                       <span>
-                        {'Press & hold, then drag '}
+                        {'Tap '}
                         <span className="text-white/55">to move Koala</span>
                       </span>
                     ) : (
