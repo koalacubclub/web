@@ -18,13 +18,15 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   wash over everything, then stars/moon/**food**/popups/HUD on top (true colors,
   above the wash).
 - **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
-  toward the pointer (release to stop). Mouse/pen engage immediately.
+  toward the pointer (release to stop). Mouse/pen engage immediately. **Space** =
+  jump (see Multiplayer → Jump ability).
 - **Controls (touch):** gesture-disambiguated so the full-screen hero doesn't
   hijack the page scroll — a **quick swipe scrolls the page**, while a **~150ms
   hold** (finger still, moved < ~10px) "grabs" Koala and the subsequent drag steers
-  her, calling `preventDefault` so the page won't scroll. There is **no on-screen
-  D-pad**. During a drag a `kcc-dragging` class on `<body>` disables text selection
-  / the iOS long-press callout (the rest of the page stays selectable).
+  her, calling `preventDefault` so the page won't scroll. A **double-tap** (two
+  quick, still, non-hotspot taps) jumps. There is **no on-screen D-pad**. During a
+  drag a `kcc-dragging` class on `<body>` disables text selection / the iOS
+  long-press callout (the rest of the page stays selectable).
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
@@ -203,10 +205,23 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   pose/dir/interacting change through immediately. Only that minimal state travels
   — leg/tail/idle animation is derived locally from the shared `frameCount`, so it
   never needs sending.
-- **Drawing:** `drawCat(cat = g.cat, label?)` is generalized — the local koala is
-  drawn unlabelled, each remote one is drawn from a reused scratch object with a
-  name tag, depth-sorted by `y`. Remote positions are interpolated toward their
-  latest target (`rx/ry` lerp) so they glide between updates instead of teleporting.
+- **Drawing:** `drawCat(cat = g.cat, label?, jumpPx?)` is generalized — the local
+  koala is drawn unlabelled, each remote one is drawn from a reused scratch object
+  with a name tag, depth-sorted by `y`. Remote positions are interpolated toward
+  their latest target (`rx/ry` lerp) so they glide between updates instead of
+  teleporting.
+- **Jump ability:** space bar (desktop) or a double-tap (touch) triggers a hop —
+  a purely visual parabola offset (`jumpOffsetPx`, peaking mid-flight); the tile
+  `x/y` never change, so collision/camera/position stay grounded. It's a transient
+  broadcast event: `mp.sendJump()` → the server opens a per-session jump window and
+  rebroadcasts `jumped` → each peer sets `RemotePlayer.jumpAt` and the loop renders
+  their hop. `JUMP_COOLDOWN_MS` gates spam; the space handler only `preventDefault`s
+  (blocking page scroll) when the hero is on-screen and no field is focused.
+  **Airborne food** floats above its tile (drawn lifted with a grounded, shrinking
+  shadow) and can **only** be collected mid-jump — the client suppresses the collect
+  request off-jump and the **server enforces** it against its jump window. Airborne
+  food is a separate small pool (`MAX_AIR_FOOD`/`AIR_SPAWN_COOLDOWN_MS`) worth
+  `AIR_POINTS_MULT`× so it never starves the single ground slot (`MAX_FOOD`).
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside

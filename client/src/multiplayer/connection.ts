@@ -43,6 +43,10 @@ export interface RemotePlayer {
   // koalas glide between the ~12Hz updates instead of teleporting.
   rx: number
   ry: number
+  // performance.now() when this player's most recent jump started (set on a
+  // `jumped` message); the game loop reads it to animate the hop arc. Undefined
+  // until they've jumped.
+  jumpAt?: number
 }
 
 export interface Multiplayer {
@@ -72,6 +76,9 @@ export interface Multiplayer {
   sendBuy(key: string, x: number, y: number): void
   /** Change this session's display name; server validates + persists + broadcasts. */
   sendName(name: string): void
+  /** Tell the server this player jumped (opens the airborne-collect window and
+   *  broadcasts the hop to others). The caller animates its own hop locally. */
+  sendJump(): void
   close(): void
 }
 
@@ -132,6 +139,7 @@ export function createMultiplayer(
     sendCollect,
     sendBuy,
     sendName,
+    sendJump,
     close,
   }
 
@@ -278,6 +286,12 @@ export function createMultiplayer(
         opts.onStats?.(next)
         break
       }
+      case 'jumped': {
+        // Kick off this remote player's hop animation locally.
+        const p = players.get(msg.id)
+        if (p) p.jumpAt = performance.now()
+        break
+      }
     }
   }
 
@@ -381,6 +395,17 @@ export function createMultiplayer(
     if (!clean) return
     try {
       ws.send(JSON.stringify({ t: 'setName', name: clean }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  // Fire-and-forget; the caller (game loop) already applies a local cooldown, and
+  // the server rate-limits jumps independently of the flood budget.
+  function sendJump() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'jump' }))
     } catch {
       /* socket closing; the reconnect path will recover */
     }

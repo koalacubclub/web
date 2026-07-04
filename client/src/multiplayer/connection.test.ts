@@ -546,6 +546,27 @@ describe('createMultiplayer — presence + stats', () => {
     mp.close()
   })
 
+  it('sendJump emits a jump request on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+    mp.sendJump()
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'jump' })
+  })
+
+  it('marks a remote player mid-jump on a jumped message', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('b')],
+      now: 0,
+    })
+    expect(mp.players.get('b')?.jumpAt).toBeUndefined()
+    ws.receive({ t: 'jumped', id: 'b' })
+    expect(typeof mp.players.get('b')?.jumpAt).toBe('number')
+  })
+
   it('exposes stats from welcome and merges stats updates, keeping yourVisits', async () => {
     const { createMultiplayer } = await import('./connection')
     const seen: WorldStats[] = []

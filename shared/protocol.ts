@@ -83,7 +83,28 @@ export interface Food {
   y: number
   points: number
   bornAt: number // epoch ms (server clock) — for TTL + client pop/blink timing
+  // Airborne food floats above (x,y) and can ONLY be collected mid-jump. Ground
+  // food (air falsy) is collected the normal way, by walking up to it.
+  air?: boolean
 }
+
+// ---- Jump ability + airborne food ----
+// Jump is a transient, broadcast action: press space (or double-tap on touch) to
+// hop. It's purely a vertical animation (x/y never change), but it unlocks a class
+// of AIRBORNE collectibles you can only grab while in the air — so the server must
+// know your jump window to validate those catches.
+export const JUMP_DURATION_MS = 620 // length of the hop arc
+export const JUMP_COOLDOWN_MS = 750 // min gap between jumps (anti-spam + feel)
+export const JUMP_PEAK_TILES = 1.5 // how high the koala rises, in tiles (render)
+
+// Airborne food lives in its own small pool alongside ground food, on a slower
+// cadence, so the single ground slot (MAX_FOOD) is never starved by it.
+export const MAX_AIR_FOOD = 1
+export const AIR_SPAWN_COOLDOWN_MS = 9000
+export const AIR_FOOD_TTL_MS = 20000
+export const AIR_COLLECT_RADIUS = 0.95 // a touch more forgiving (timing-gated)
+export const AIR_HEIGHT_TILES = 1.35 // how high air food floats above its tile
+export const AIR_POINTS_MULT = 2 // airborne food is worth double its base points
 
 // ---- Shop / economy (server-authoritative) ----
 // Coins == likes (earned from food). The catalog is the single source of truth
@@ -196,6 +217,9 @@ export type ClientMessage =
   | { t: 'buy'; key: string; x: number; y: number }
   // Change this session's display name (server validates + persists + broadcasts).
   | { t: 'setName'; name: string }
+  // Trigger a jump (no payload). Server rate-limits, opens this session's jump
+  // window (for airborne collects), and broadcasts a `jumped` to the others.
+  | { t: 'jump' }
 
 export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
@@ -226,6 +250,8 @@ export type ServerMessage =
   // Refreshed global stats, broadcast when a brand-new session joins (so open
   // Settings menus update). Per-viewer `yourVisits` only travels in `welcome`.
   | { t: 'stats'; active24h: number; totalSessions: number }
+  // A player jumped — broadcast to everyone else so they can play the hop.
+  | { t: 'jumped'; id: string }
 
 export const PROTOCOL_VERSION = 1
 

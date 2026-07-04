@@ -9,12 +9,19 @@ import type {
 } from '@koala/shared'
 import {
   ACTIVE_WINDOW_MS,
+  AIR_COLLECT_RADIUS,
+  AIR_FOOD_TTL_MS,
+  AIR_POINTS_MULT,
+  AIR_SPAWN_COOLDOWN_MS,
   COLLECT_RADIUS,
   FOOD_SPAWN_COOLDOWN_MS,
   FOOD_TTL_MS,
   FOODS,
   FOOD_TOTAL_WEIGHT,
   foodCap,
+  JUMP_COOLDOWN_MS,
+  JUMP_DURATION_MS,
+  MAX_AIR_FOOD,
   MAX_INBOUND_MSGS_PER_SEC,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
@@ -65,6 +72,11 @@ export class GameWorld extends DurableObject<Env> {
   // positions): a hibernation wake starts empty and refills via lazy top-up.
   private food = new Map<string, Food>()
   private lastSpawnAt = 0
+  private lastAirSpawnAt = 0
+
+  // When each session last started a jump (epoch ms). Ephemeral (jumps are
+  // transient): used to gate airborne-food collection to a live jump window.
+  private jumpAt = new Map<string, number>()
 
   // Server-owned placed decorations (bought with likes). Shared across players,
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
@@ -280,23 +292,41 @@ export class GameWorld extends DurableObject<Env> {
       return
     }
 
+    if (msg.t === 'jump') {
+      // Rate-limited (independent of the flood budget) + opens the airborne-food
+      // collect window; broadcast so everyone else can play the hop.
+      const last = this.jumpAt.get(a.id) ?? 0
+      if (now - last < JUMP_COOLDOWN_MS) return
+      this.jumpAt.set(a.id, now)
+      this.broadcast({ t: 'jumped', id: a.id }, a.id)
+      return
+    }
+
     if (msg.t === 'collect') {
       const c = sanitizeCollect(msg)
       if (!c) return
       const f = this.food.get(c.id)
       if (!f) return // already taken / unknown — dedupe no-op
-      if (now - f.bornAt > FOOD_TTL_MS) {
+      const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
+      if (now - f.bornAt > ttl) {
         // Stale; sweep it and tell everyone.
         this.food.delete(c.id)
         this.broadcast({ t: 'despawn', id: c.id, reason: 'expired' })
         return
       }
+      // Airborne food can only be grabbed during a live jump window — the whole
+      // point of the jump ability. (Ground food has no such gate.)
+      if (f.air) {
+        const ja = this.jumpAt.get(a.id)
+        if (ja == null || now - ja > JUMP_DURATION_MS) return
+      }
       // Validate against the SERVER-known position, never anything on the wire.
       const p = this.positions.get(a.id)
       if (!p) return
+      const reach = f.air ? AIR_COLLECT_RADIUS : COLLECT_RADIUS
       const dx = p.x - f.x
       const dy = p.y - f.y
-      if (dx * dx + dy * dy > COLLECT_RADIUS * COLLECT_RADIUS) return
+      if (dx * dx + dy * dy > reach * reach) return
       // Delete before awarding: the DO is single-threaded per turn, so this is
       // an atomic claim — a racing collect for the same id then hits `!f`.
       this.food.delete(c.id)
@@ -393,6 +423,7 @@ export class GameWorld extends DurableObject<Env> {
     if (!stillHere) {
       this.positions.delete(a.id)
       this.rate.delete(a.id)
+      this.jumpAt.delete(a.id)
       this.broadcast({ t: 'leave', id: a.id }, a.id)
     }
   }
@@ -478,23 +509,45 @@ export class GameWorld extends DurableObject<Env> {
 
   // ---- collectibles (no game tick: lazy top-up on player traffic) ----
 
-  /** Sweep expired food and spawn at most one, respecting the cooldown + cap. */
+  /** Sweep expired food and top up both pools (ground + airborne), each with its
+   *  own cap + cooldown so airborne food never starves the single ground slot. */
   private maybeSpawn(now: number): void {
     for (const [id, f] of this.food) {
-      if (now - f.bornAt > FOOD_TTL_MS) {
+      const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
+      if (now - f.bornAt > ttl) {
         this.food.delete(id)
         this.broadcast({ t: 'despawn', id, reason: 'expired' })
       }
     }
-    // Cap scales with the crowd: ~half the connected players, rounded up.
-    if (this.food.size >= foodCap(this.ctx.getWebSockets().length)) return
-    if (now - this.lastSpawnAt < FOOD_SPAWN_COOLDOWN_MS) return
-    this.lastSpawnAt = now
-    const f = this.spawnFood(now)
-    if (f) this.broadcast({ t: 'spawn', f })
+    // Two independent pools. Ground food's cap scales with the crowd (~half the
+    // connected players, rounded up); airborne food has its own small cap so it
+    // never starves the ground slot.
+    const playerCount = this.ctx.getWebSockets().length
+    let ground = 0
+    let air = 0
+    for (const f of this.food.values())
+      if (f.air) air++
+      else ground++
+
+    if (
+      ground < foodCap(playerCount) &&
+      now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS
+    ) {
+      this.lastSpawnAt = now
+      const f = this.spawnFood(now, false)
+      if (f) this.broadcast({ t: 'spawn', f })
+    }
+    if (
+      air < MAX_AIR_FOOD &&
+      now - this.lastAirSpawnAt >= AIR_SPAWN_COOLDOWN_MS
+    ) {
+      this.lastAirSpawnAt = now
+      const f = this.spawnFood(now, true)
+      if (f) this.broadcast({ t: 'spawn', f })
+    }
   }
 
-  private spawnFood(now: number): Food | null {
+  private spawnFood(now: number, air: boolean): Food | null {
     // Weighted pick over the shared FOODS table.
     let r = Math.random() * FOOD_TOTAL_WEIGHT
     let pick = FOODS[0]
@@ -525,8 +578,9 @@ export class GameWorld extends DurableObject<Env> {
         key: pick.key,
         x,
         y,
-        points: pick.points,
+        points: air ? pick.points * AIR_POINTS_MULT : pick.points,
         bornAt: now,
+        ...(air ? { air: true } : {}),
       }
       this.food.set(f.id, f)
       return f
