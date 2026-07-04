@@ -1541,8 +1541,8 @@ export default function ParkGame() {
         ctx.lineTo(s * 5, 0)
         ctx.fill()
 
-        // Inner ears
-        ctx.fillStyle = NIGHT.heart
+        // Inner ears (light pink)
+        ctx.fillStyle = NIGHT.catEar
         ctx.beginPath()
         ctx.moveTo(s * 3.8, -s * 1)
         ctx.lineTo(s * 4.8, 0)
@@ -1576,8 +1576,8 @@ export default function ParkGame() {
           ctx.fill()
         }
 
-        // Nose
-        ctx.fillStyle = NIGHT.heart
+        // Nose (brown, matching her back fur)
+        ctx.fillStyle = NIGHT.catOrange
         ctx.beginPath()
         ctx.moveTo(s * 5.1, s * 2.2)
         ctx.lineTo(s * 4.8, s * 2.6)
@@ -1695,8 +1695,8 @@ export default function ParkGame() {
       ctx.lineTo(s * 5, -s * 3)
       ctx.fill()
 
-      // Inner ears
-      ctx.fillStyle = night('#FFE4D6')
+      // Inner ears (light pink)
+      ctx.fillStyle = NIGHT.catEar
       ctx.beginPath()
       ctx.moveTo(s * 1.5, -s * 4.8)
       ctx.lineTo(s * 2.7, -s * 3.3)
@@ -1735,8 +1735,8 @@ export default function ParkGame() {
       ctx.arc(s * 5.9, -s * 0.7, s * 0.3, 0, Math.PI * 2)
       ctx.fill()
 
-      // Nose
-      ctx.fillStyle = NIGHT.heart
+      // Nose (brown, matching her back fur)
+      ctx.fillStyle = NIGHT.catOrange
       ctx.beginPath()
       ctx.moveTo(s * 4.3, s * 0.5)
       ctx.lineTo(s * 4, s * 1)
@@ -1802,25 +1802,41 @@ export default function ParkGame() {
         const hx = x + PIXEL * 0.5
         const hy = heartY
         const hs = s * 2
-        ctx.moveTo(hx, hy + hs * 0.3)
-        ctx.bezierCurveTo(hx, hy, hx - hs, hy, hx - hs, hy + hs * 0.3)
+        // Lobes rise above hy and the tip drops to ~1.75·hs, so the heart is
+        // about as tall as it is wide (was squashed at ~1.2·hs tall).
+        ctx.moveTo(hx, hy + hs * 0.35)
+        ctx.bezierCurveTo(
+          hx,
+          hy - hs * 0.25,
+          hx - hs,
+          hy - hs * 0.25,
+          hx - hs,
+          hy + hs * 0.35,
+        )
         ctx.bezierCurveTo(
           hx - hs,
-          hy + hs * 0.7,
+          hy + hs * 0.95,
           hx,
-          hy + hs,
+          hy + hs * 1.25,
           hx,
-          hy + hs * 1.2,
+          hy + hs * 1.75,
         )
         ctx.bezierCurveTo(
           hx,
-          hy + hs,
+          hy + hs * 1.25,
           hx + hs,
-          hy + hs * 0.7,
+          hy + hs * 0.95,
           hx + hs,
-          hy + hs * 0.3,
+          hy + hs * 0.35,
         )
-        ctx.bezierCurveTo(hx + hs, hy, hx, hy, hx, hy + hs * 0.3)
+        ctx.bezierCurveTo(
+          hx + hs,
+          hy - hs * 0.25,
+          hx,
+          hy - hs * 0.25,
+          hx,
+          hy + hs * 0.35,
+        )
         ctx.fill()
       }
     }
