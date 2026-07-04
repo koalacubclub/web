@@ -451,6 +451,38 @@ function OrganicEdge() {
   )
 }
 
+// Outbound social CTA pill — icon + label + arrow, matching the site's
+// understated outline-pill style. Shared so the Instagram/TikTok pills can't
+// drift apart.
+function SocialPill({
+  href,
+  icon,
+  label,
+}: {
+  href: string
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/[0.04] border border-white/[0.08] hover:border-[oklch(0.75_0.12_80)]/30 hover:bg-white/[0.06] transition-all duration-500"
+    >
+      <span className="flex text-white/50 transition-colors duration-500 group-hover:text-[oklch(0.75_0.12_80)]">
+        {icon}
+      </span>
+      <span className="text-xs uppercase tracking-[0.2em] text-white/50 transition-colors duration-500 group-hover:text-white/80">
+        {label}
+      </span>
+      <span className="text-white/30 transition-all duration-500 group-hover:translate-x-0.5 group-hover:text-[oklch(0.75_0.12_80)]">
+        →
+      </span>
+    </a>
+  )
+}
+
 // ─── CONTENT PANEL ──────────────────────────────────────────────────────────
 function ContentPanel() {
   return (
@@ -529,30 +561,23 @@ function ContentPanel() {
             </div>
           </div>
 
-          {/* "More" link with playful animation */}
-          <Reveal className="container mt-10 sm:mt-14 flex justify-center">
-            <a
-              href={IG_PROFILE}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group inline-flex items-center gap-3 px-6 py-3 rounded-full bg-white/[0.04] border border-white/[0.08] hover:border-[oklch(0.75_0.12_80)]/30 hover:bg-white/[0.06] transition-all duration-500"
-            >
-              <Instagram className="w-4 h-4 text-white/50 group-hover:text-[oklch(0.75_0.12_80)] transition-colors duration-500" />
-              <span className="text-xs uppercase tracking-[0.2em] text-white/50 group-hover:text-white/80 transition-colors duration-500">
-                See all on Instagram
-              </span>
-              <motion.span
-                className="text-white/30 group-hover:text-[oklch(0.75_0.12_80)] transition-colors duration-500"
-                animate={{ x: [0, 3, 0] }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                }}
-              >
-                →
-              </motion.span>
-            </a>
+          {/* Watch more — both platforms, side by side */}
+          <Reveal className="container mt-10 sm:mt-14 flex flex-col items-center gap-5">
+            <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] font-light text-white/35">
+              Watch the chaos everywhere
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+              <SocialPill
+                href={IG_PROFILE}
+                icon={<Instagram className="w-4 h-4" />}
+                label="Instagram"
+              />
+              <SocialPill
+                href="https://tiktok.com/@koalacubclub"
+                icon={<TikTokIcon className="w-4 h-4" />}
+                label="TikTok"
+              />
+            </div>
           </Reveal>
 
           {/* ─── The club: followers wall ─── */}
