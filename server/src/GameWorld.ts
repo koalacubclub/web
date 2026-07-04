@@ -511,9 +511,10 @@ export class GameWorld extends DurableObject<Env> {
 
   /** Sweep expired food and top up the map. One shared budget — foodCap(players)
    *  (~half the crowd, rounded up) — covers BOTH ground and airborne food, so the
-   *  total on the map never exceeds the cap. Ground is preferred; airborne only
-   *  spawns when there's spare budget (and its own smaller cap + slower cooldown
-   *  keep it occasional). */
+   *  total on the map never exceeds the cap. Any free slot can become ground OR
+   *  airborne: ground takes it on the normal cooldown, and airborne claims a free
+   *  slot on its own (slower) cooldown when ground isn't due — so even a solo park
+   *  (cap 1) sees an occasional airborne treat, never an extra one. */
   private maybeSpawn(now: number): void {
     for (const [id, f] of this.food) {
       const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
@@ -527,7 +528,7 @@ export class GameWorld extends DurableObject<Env> {
     let air = 0
     for (const f of this.food.values()) if (f.air) air++
 
-    // Ground food fills the budget first.
+    // Ground food takes a free slot on its normal cooldown.
     if (total < cap && now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS) {
       this.lastSpawnAt = now
       const f = this.spawnFood(now, false)
@@ -536,7 +537,9 @@ export class GameWorld extends DurableObject<Env> {
         total++
       }
     }
-    // Airborne food only when there's still room in the same budget.
+    // Airborne food claims a still-free slot on its own slower cooldown — so it
+    // shares the same budget (never adds beyond the cap) but can still appear
+    // when ground isn't due, including on a solo park after a slot frees up.
     if (
       total < cap &&
       air < MAX_AIR_FOOD &&

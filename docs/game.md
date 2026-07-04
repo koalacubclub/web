@@ -231,8 +231,10 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   request off-jump and the **server enforces** it against its jump window. Airborne
   food is worth `AIR_POINTS_MULT`× and has its own smaller cap (`MAX_AIR_FOOD`) +
   slower cadence (`AIR_SPAWN_COOLDOWN_MS`), but it **shares the `foodCap(players)`
-  budget** with ground food: ground fills the budget first and airborne only
-  spawns when there's room left, so the two together never exceed the cap.
+  budget** with ground food: any free slot can become ground or airborne (ground
+  on its normal cooldown, airborne on its slower one when ground isn't due), so
+  the two together never exceed the cap — even a solo park (cap 1) gets an
+  occasional airborne treat rather than an extra one.
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside
