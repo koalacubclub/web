@@ -34,7 +34,7 @@ const BASS = [_, _, A2, _, _, _, A2, _, _, _, A2, _, _, _, E2, _]
 // Sixteenth-note arp lead — a rising/falling A-minor figure.
 const LEAD = [A4, C5, E5, A5, E5, C5, A4, C5, E5, A5, E5, C5, A4, C5, E5, A5]
 
-const PEAK = 0.22 // master gain when playing (limiter catches the peaks)
+const PEAK = 0.14 // master gain when playing (limiter catches the peaks)
 const FADE = 0.3 // seconds to fade in / out
 
 class RadioAudio {
