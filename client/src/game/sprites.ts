@@ -386,7 +386,9 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   const wallLine = INK('#767A80')
   const roof = INK('#A6A29A')
   const roofLine = INK('#8C877E')
-  const glass = INK('#6E7E88')
+  // Windows glow: a warm lit pane drawn in a raw bright colour (not through INK),
+  // so it stays lit against the night-tinted house — "someone's home".
+  const glass = '#FFE39A'
   const door = INK('#E2D896')
   const brick = INK('#A5503F')
 
@@ -437,6 +439,17 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   const winY = wallY + wallH * 0.16
   for (const fx of [0.26, 0.42, 0.74]) {
     const wx = x + W * fx - winW / 2
+    // Soft warm glow spilling from the lit window.
+    ctx.save()
+    ctx.globalAlpha = 0.3
+    ctx.fillStyle = glass
+    ctx.fillRect(
+      wx - SCALE * 2.5,
+      winY - SCALE * 2.5,
+      winW + SCALE * 5,
+      winH + SCALE * 5,
+    )
+    ctx.restore()
     ctx.fillStyle = trim
     ctx.fillRect(wx - SCALE, winY - SCALE, winW + SCALE * 2, winH + SCALE * 2)
     ctx.fillStyle = glass
