@@ -112,7 +112,7 @@ export default function Shop({ atTop }: { atTop: boolean }) {
           <motion.div
             role="dialog"
             aria-label="Shop"
-            className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 bg-gradient-to-t from-[oklch(0.11_0.008_60_/_0.98)] from-30% to-[oklch(0.16_0.01_60_/_0)]"
+            className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 bg-gradient-to-t from-[oklch(0.11_0.008_60_/_0.98)] to-[oklch(0.16_0.01_60_/_0)]"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -123,6 +123,20 @@ export default function Shop({ atTop }: { atTop: boolean }) {
             onPointerDownCapture={(e: ReactPointerEvent) => e.stopPropagation()}
             onTouchStartCapture={(e: ReactTouchEvent) => e.stopPropagation()}
           >
+            {/* Grain — a subtle noise texture over the gradient, masked to fade
+                out toward the top with it (helps break up faint banding). */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 opacity-[0.07]"
+              style={{
+                backgroundImage:
+                  "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E\")",
+                maskImage: 'linear-gradient(to top, black 88%, transparent)',
+                WebkitMaskImage:
+                  'linear-gradient(to top, black 88%, transparent)',
+              }}
+            />
+
             {/* Close button — floats just above the sheet, over the park */}
             <button
               ref={closeRef}
