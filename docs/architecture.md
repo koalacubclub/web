@@ -39,11 +39,16 @@ client/                 # the Vite SPA (deployed to Vercel; Root Directory = cli
   src/
     pages/Home.tsx      # the entire page: hero(game) + feed + club + footer
     components/
-      ParkGame.tsx      # canvas 2D mini-game (see game.md); renders remote koalas
+      ParkGame.tsx      # canvas 2D mini-game (see game.md); remote koalas + server food/shop
       parkCamera.ts     # camera pan math (extracted, unit-tested)
+      Shop.tsx          # shop bottom-sheet UI (reads parkStore, sends buys)
       TikTokIcon.tsx
     multiplayer/
-      connection.ts     # WebSocket client: session, reconnect, throttle, roster
+      connection.ts     # WebSocket client: session, reconnect, roster + food + placed + wallet
+    game/
+      parkStore.ts      # economy bridge: server-fed in MP, localStorage in solo (see game.md)
+      shopItems.ts      # re-exports the shared SHOP_ITEMS catalog
+      sprites.ts        # procedural shop/decor sprites (drawShopSprite)
     data/
       reels.ts          # REELS = [{code, caption}] — SINGLE SOURCE OF TRUTH for the feed
       reelPosters.ts    # import.meta.glob → responsive WebP srcset (APP-ONLY, see below)
@@ -58,12 +63,14 @@ client/                 # the Vite SPA (deployed to Vercel; Root Directory = cli
     hero.webp           # OG/social preview image
 server/                 # Cloudflare Worker + Durable Object (deployed to game.koalacub.club)
   src/worker.ts         # routes: POST /session (signed cookie), /world/main (WS upgrade)
-  src/GameWorld.ts      # the Durable Object: presence + movement relay for one world
+  src/GameWorld.ts      # the Durable Object: presence/movement relay + server-owned
+                        #   economy (food, likes/coins, shop purchases + placed items in SQLite)
   src/session.ts        # HMAC-signed anonymous session cookie
   wrangler.jsonc        # Worker config (name, custom domain, DO migration, account_id)
   test/world.test.ts    # DO tests in real workerd (vitest-pool-workers)
 shared/
-  protocol.ts           # wire protocol + world bounds — imported by client AND server
+  protocol.ts           # wire protocol + world bounds + FOODS/SHOP_ITEMS catalogs +
+                        #   messages — imported by client AND server (single source of truth)
 ```
 
 ## Two patterns worth internalizing
