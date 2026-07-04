@@ -10,7 +10,7 @@ import Shop from './Shop'
 
 const DISPLAY_FONT = "'Cormorant Garamond', Georgia, serif"
 const PILL =
-  'flex h-9 items-center gap-2 rounded-full bg-white/10 px-4 text-white/80 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 hover:text-white'
+  'flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 hover:text-white'
 
 // The hero's bottom control cluster: the score/likes readout + the Shop trigger +
 // a Settings button, grouped on one line. Score/coins + the display name come
@@ -80,16 +80,10 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
     closeSettings()
   }
 
-  const barVisibility =
-    atTop && !shopOpen
-      ? 'pointer-events-auto opacity-100'
-      : 'pointer-events-none opacity-0'
-
   return (
     <>
-      <div
-        className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-end gap-3 transition-opacity duration-300 sm:bottom-7 ${barVisibility}`}
-      >
+      {/* Inline cluster — placed by Home in the top-right, next to the socials. */}
+      <div className="flex items-center gap-2">
         {/* Score / likes pill — also the shop trigger (consolidated; no separate
             Shop button). Current money only — the best is tracked, just not shown. */}
         <button
@@ -102,13 +96,13 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
           aria-haspopup="dialog"
           aria-expanded={shopOpen}
           aria-label={`${snap.coins} likes — open the shop`}
-          className="flex h-9 items-center gap-1.5 rounded-full bg-black/30 px-4 leading-none text-white ring-1 ring-white/10 backdrop-blur-md transition-colors hover:bg-black/50"
+          className="flex h-8 items-center gap-1 rounded-full bg-black/30 px-3 leading-none text-white ring-1 ring-white/10 backdrop-blur-md transition-colors hover:bg-black/50"
           style={{ fontFamily: DISPLAY_FONT }}
         >
           <span className="text-[oklch(0.82_0.13_78)]" aria-hidden="true">
             ♥
           </span>
-          <span className="text-xl tabular-nums">{snap.coins}</span>
+          <span className="text-base tabular-nums">{snap.coins}</span>
         </button>
 
         {/* Settings — always available (sound + gamer toggle); the rename + roster + stats
@@ -131,13 +125,13 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
               <motion.div
                 role="dialog"
                 aria-label="Settings"
-                initial={{ opacity: 0, y: 8 }}
+                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 8 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.18 }}
                 onPointerDownCapture={(e) => e.stopPropagation()}
                 onTouchStartCapture={(e) => e.stopPropagation()}
-                className="absolute bottom-[calc(100%+10px)] right-0 w-72 rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md"
+                className="absolute top-[calc(100%+10px)] right-0 w-72 rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span
