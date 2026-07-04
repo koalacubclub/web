@@ -1786,20 +1786,30 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs — front pair tucks up shorter mid-hop; rear pair stretches down.
+      // Legs — front pair tucks up shorter mid-hop.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
       ctx.fillStyle = NIGHT.white
       ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3 - frontTuck)
       ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3 - frontTuck)
-      ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3 + backStretch)
-      ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3 + backStretch)
-
-      // Paws (front paws ride up with the tuck; rear paws ride down)
-      ctx.fillStyle = NIGHT.white
+      // Front paws (ride up with the tuck).
       ctx.fillRect(s * 2, s * 6.5 + legOffset - frontTuck, s * 2, s * 1)
       ctx.fillRect(s * 4, s * 6.5 - legOffset - frontTuck, s * 2, s * 1)
-      ctx.fillRect(-s * 3, s * 6.5 - legOffset + backStretch, s * 2, s * 1)
-      ctx.fillRect(-s * 1, s * 6.5 + legOffset + backStretch, s * 2, s * 1)
+
+      // Rear legs — stretched down, and rotated back a touch mid-hop so they
+      // trail the torso (drawn about the hip pivot since fillRect can't rotate).
+      const backRot = airborne ? 0.5 : 0
+      const backLen = s * 3 + backStretch
+      for (const [pivotX, pivotY] of [
+        [-s * 2, s * 4 - legOffset],
+        [s * 0, s * 4 + legOffset],
+      ] as const) {
+        ctx.save()
+        ctx.translate(pivotX, pivotY)
+        ctx.rotate(backRot)
+        ctx.fillRect(-s * 1, 0, s * 2, backLen)
+        ctx.fillRect(-s * 1, backLen - s * 0.5, s * 2, s * 1) // paw
+        ctx.restore()
+      }
 
       ctx.restore()
 
