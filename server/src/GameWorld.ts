@@ -11,6 +11,7 @@ import {
   ACTIVE_WINDOW_MS,
   AIR_COLLECT_RADIUS,
   AIR_FOOD_TTL_MS,
+  AIR_PITY_MS,
   AIR_POINTS_MULT,
   AIR_SPAWN_SHARE,
   COLLECT_RADIUS,
@@ -71,6 +72,7 @@ export class GameWorld extends DurableObject<Env> {
   // positions): a hibernation wake starts empty and refills via lazy top-up.
   private food = new Map<string, Food>()
   private lastSpawnAt = 0
+  private lastAirSpawnAt = 0 // for the airborne pity timer
 
   // When each session last started a jump (epoch ms). Ephemeral (jumps are
   // transient): used to gate airborne-food collection to a live jump window.
@@ -510,7 +512,8 @@ export class GameWorld extends DurableObject<Env> {
   /** Sweep expired food and top up the map. One shared budget — foodCap(players)
    *  (~half the crowd, rounded up) — and one cooldown. Each spawn rolls
    *  AIR_SPAWN_SHARE to be airborne (else ground), so the total never exceeds the
-   *  cap and airborne food can appear at any player count (including solo). */
+   *  cap and airborne food can appear at any player count (including solo). A pity
+   *  timer (AIR_PITY_MS) forces airborne if it's been absent too long. */
   private maybeSpawn(now: number): void {
     for (const [id, f] of this.food) {
       const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
@@ -525,7 +528,14 @@ export class GameWorld extends DurableObject<Env> {
       now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS
     ) {
       this.lastSpawnAt = now
-      const f = this.spawnFood(now, Math.random() < AIR_SPAWN_SHARE)
+      // Start the pity clock on the first spawn, then force airborne if none has
+      // spawned within AIR_PITY_MS; otherwise a plain AIR_SPAWN_SHARE coin flip.
+      if (this.lastAirSpawnAt === 0) this.lastAirSpawnAt = now
+      const air =
+        now - this.lastAirSpawnAt >= AIR_PITY_MS ||
+        Math.random() < AIR_SPAWN_SHARE
+      if (air) this.lastAirSpawnAt = now
+      const f = this.spawnFood(now, air)
       if (f) this.broadcast({ t: 'spawn', f })
     }
   }

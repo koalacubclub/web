@@ -232,7 +232,9 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   food is worth `AIR_POINTS_MULT`× and **shares the `foodCap(players)` budget**
   with ground food: every spawn rolls `AIR_SPAWN_SHARE` (~⅓) to be airborne, else
   ground — so the two together never exceed the cap, and airborne food can appear
-  at any player count, including solo.
+  at any player count, including solo. A pity timer (`AIR_PITY_MS`) forces the
+  next spawn airborne if none has appeared for a while, so an unlucky run of
+  ground rolls can't leave airborne food absent.
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside

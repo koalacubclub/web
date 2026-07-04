@@ -102,6 +102,10 @@ export const JUMP_PEAK_TILES = 1.5 // how high the koala rises, in tiles (render
 // ~1/3 → roughly one airborne treat for every two ground ones, at any player
 // count (including solo).
 export const AIR_SPAWN_SHARE = 1 / 3
+// Pity timer: if no airborne food has spawned within this window, the next spawn
+// is forced airborne — so an unlucky run of ground flips can't leave airborne
+// food absent for long (and keeps it reliably reachable).
+export const AIR_PITY_MS = 12000
 export const AIR_FOOD_TTL_MS = 20000
 export const AIR_COLLECT_RADIUS = 0.95 // a touch more forgiving (timing-gated)
 export const AIR_HEIGHT_TILES = 1.35 // how high air food floats above its tile
