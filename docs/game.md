@@ -112,13 +112,13 @@ so the React UI and the imperative canvas never fight.
 > `buy` and the item appears when the server broadcasts it. The store details
 > below are how it works, with localStorage as the **solo** fallback.
 
-- **`client/src/game/parkStore.ts`** — the single source of truth for the wallet
-  (`coins`/`best`), the placed items, and persistence. React reads it via
-  `useSyncExternalStore` (live balance); the game loop reads/writes plain
-  imperative getters (`getCoins`, `getPlaced`, `setCatTile`) so the 60fps loop
-  never triggers a React re-render. `earn()` replaces the old inline score bump,
-  `purchase()` deducts coins + appends a placed item, `sweepExpired()` drops
-  expired ones.
+- **`client/src/game/parkStore.ts`** — the client-side bridge for the wallet
+  (`coins`/`best`) + placed items. React reads it via `useSyncExternalStore`
+  (live balance); the game loop reads/writes plain imperative getters (`getCoins`,
+  `getPlaced`, `setCatTile`) so the 60fps loop never triggers a React re-render.
+  In multiplayer it's **fed by the server** (`applyServerWallet`/`applyServerPlaced`)
+  and `purchase()` routes a `buy` to it (`setServerBuyer`); solo, `earn()` /
+  `purchase()` / `sweepExpired()` mutate it directly and persist to localStorage.
 - **`shared/protocol.ts` → `SHOP_ITEMS`** — the catalog (`key,label,type,w,h,price`)
   now lives in the shared protocol so the **server** validates purchases against
   the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
