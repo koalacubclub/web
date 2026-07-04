@@ -439,3 +439,58 @@ describe('createMultiplayer — names', () => {
     ;(mp as Multiplayer).close()
   })
 })
+
+describe('createMultiplayer — authors directory', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_GAME_HTTP_URL', 'http://localhost:8787')
+    vi.stubEnv('VITE_GAME_WS_URL', 'ws://localhost:8787')
+    FakeWebSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  const item = (id: string, ownerId: string) => ({
+    id,
+    key: 'flowers',
+    type: 'flowers',
+    x: 1,
+    y: 1,
+    w: 1,
+    h: 1,
+    ownerId,
+    placedAt: 0,
+    expiresAt: 0,
+  })
+
+  it('seeds authors from welcome and updates on placed + renamed', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [item('p1', 'u1')],
+      authors: { u1: 'Old' },
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.authors.get('u1')).toBe('Old')
+
+    // A new item by another owner brings its author name.
+    ws.receive({ t: 'placed', item: item('p2', 'u2'), authorName: 'Buyer' })
+    expect(mp.authors.get('u2')).toBe('Buyer')
+
+    // A rename relabels ALL of that owner's items via one map update.
+    ws.receive({ t: 'renamed', id: 'u1', name: 'Pixel' })
+    expect(mp.authors.get('u1')).toBe('Pixel')
+  })
+})

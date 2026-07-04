@@ -101,20 +101,11 @@ export class GameWorld extends DurableObject<Env> {
          w        INTEGER NOT NULL,
          h        INTEGER NOT NULL,
          placedAt INTEGER NOT NULL,
-         expiresAt INTEGER NOT NULL,
-         ownerName TEXT NOT NULL DEFAULT ''
+         expiresAt INTEGER NOT NULL
        )`,
     )
-    // Migration: add ownerName to a placed table created before authorship
-    // existed. Throws if the column is already there — ignore.
-    try {
-      sql.exec(
-        "ALTER TABLE placed ADD COLUMN ownerName TEXT NOT NULL DEFAULT ''",
-      )
-    } catch {
-      /* column already exists */
-    }
-    // Drop anything already expired, then load the rest into memory.
+    // Drop anything already expired, then load the rest into memory. The author
+    // name is NOT stored per item — it's resolved from the `names` table by owner.
     sql.exec('DELETE FROM placed WHERE expiresAt <= ?', Date.now())
     for (const r of sql.exec('SELECT * FROM placed').toArray()) {
       const item: PlacedItem = {
@@ -126,7 +117,6 @@ export class GameWorld extends DurableObject<Env> {
         w: Number(r.w),
         h: Number(r.h),
         ownerId: String(r.owner),
-        ownerName: String(r.ownerName ?? ''),
         placedAt: Number(r.placedAt),
         expiresAt: Number(r.expiresAt),
       }
@@ -151,8 +141,12 @@ export class GameWorld extends DurableObject<Env> {
     const id = url.searchParams.get('sid')
     if (!id) return new Response('missing sid', { status: 400 })
     // A stored username (set via the shop's Settings) wins over the Worker's
-    // default nameFor(id); first-timers get the default.
-    const name = this.getName(id) ?? url.searchParams.get('name') ?? 'Koala'
+    // default nameFor(id); first-timers get the default. Persist the default so
+    // the `names` table has a row for everyone who connects — that lets the
+    // authors directory resolve a name for any item owner, even offline ones.
+    const stored = this.getName(id)
+    const name = stored ?? url.searchParams.get('name') ?? 'Koala'
+    if (!stored) this.saveName(id, name)
 
     const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server)
@@ -184,12 +178,14 @@ export class GameWorld extends DurableObject<Env> {
     const nowJoin = Date.now()
     this.maybeSpawn(nowJoin)
     this.sweepPlaced(nowJoin)
+    const placedItems = [...this.placed.values()]
     this.sendTo(server, {
       t: 'welcome',
       self,
       players,
       food: [...this.food.values()],
-      placed: [...this.placed.values()],
+      placed: placedItems,
+      authors: this.authorsFor(placedItems),
       likes: this.getLikes(id),
       now: nowJoin,
     })
@@ -316,15 +312,14 @@ export class GameWorld extends DurableObject<Env> {
         w: b.item.w,
         h: b.item.h,
         ownerId: a.id,
-        ownerName: a.name, // snapshot the buyer's display name for authorship
         placedAt: now,
         expiresAt: now + PLACED_TTL_MS,
       }
       // Persist first, then mirror in memory — so an (unlikely) SQL throw rolls
       // back the whole turn (DO transaction) without leaving an orphan in memory.
       this.ctx.storage.sql.exec(
-        `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt, ownerName)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         item.id,
         item.ownerId,
         item.key,
@@ -335,10 +330,10 @@ export class GameWorld extends DurableObject<Env> {
         item.h,
         item.placedAt,
         item.expiresAt,
-        item.ownerName,
       )
       this.placed.set(item.id, item)
-      this.broadcast({ t: 'placed', item }) // everyone, incl. buyer
+      // Include the buyer's current name so every client can fill its authors map.
+      this.broadcast({ t: 'placed', item, authorName: a.name })
       this.sendTo(ws, { t: 'wallet', likes }) // buyer's new balance
     }
   }
@@ -482,6 +477,18 @@ export class GameWorld extends DurableObject<Env> {
       name,
       Date.now(),
     )
+  }
+
+  /** ownerId → current name for the given items (every owner has a names row,
+   *  persisted on connect), so clients can label items whose owner is offline. */
+  private authorsFor(items: PlacedItem[]): Record<string, string> {
+    const authors: Record<string, string> = {}
+    for (const it of items) {
+      if (!(it.ownerId in authors)) {
+        authors[it.ownerId] = this.getName(it.ownerId) ?? 'Koala'
+      }
+    }
+    return authors
   }
 
   // ---- placed items (durable, shared) ----

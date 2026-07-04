@@ -44,6 +44,9 @@ export interface Multiplayer {
   readonly food: Map<string, Food>
   /** Server-owned placed decorations (shop items), keyed by item id. */
   readonly placed: Map<string, PlacedItem>
+  /** ownerId → current display name, for rendering item author labels. Updated
+   *  live on rename, so it also covers owners who've left the park. */
+  readonly authors: Map<string, string>
   self: Player | null
   connected: boolean
   /** This player's authoritative likes total (== coin wallet; server-tracked). */
@@ -95,6 +98,7 @@ export function createMultiplayer(
   const players = new Map<string, RemotePlayer>()
   const food = new Map<string, Food>()
   const placed = new Map<string, PlacedItem>()
+  const authors = new Map<string, string>()
   let ws: WebSocket | null = null
   let closed = false
   let retry = 0
@@ -104,6 +108,7 @@ export function createMultiplayer(
     players,
     food,
     placed,
+    authors,
     self: null,
     connected: false,
     likes: 0,
@@ -166,6 +171,9 @@ export function createMultiplayer(
         for (const f of msg.food ?? []) food.set(f.id, f)
         placed.clear()
         for (const it of msg.placed ?? []) placed.set(it.id, it)
+        authors.clear()
+        for (const [oid, nm] of Object.entries(msg.authors ?? {}))
+          authors.set(oid, nm)
         setLikes(msg.likes ?? 0)
         emitPlaced()
         break
@@ -199,6 +207,7 @@ export function createMultiplayer(
         break
       case 'placed':
         placed.set(msg.item.id, msg.item)
+        authors.set(msg.item.ownerId, msg.authorName)
         emitPlaced()
         break
       case 'unplaced':
@@ -216,6 +225,9 @@ export function createMultiplayer(
           const p = players.get(msg.id)
           if (p) p.name = msg.name // canvas name tag reads this each frame
         }
+        // One update relabels ALL of this owner's items (author labels resolve
+        // through this map), so a rename propagates to previously-placed items.
+        authors.set(msg.id, msg.name)
         break
     }
   }
@@ -241,6 +253,7 @@ export function createMultiplayer(
       players.clear()
       food.clear()
       placed.clear()
+      authors.clear()
       emitPlaced()
       scheduleReconnect()
     })
@@ -331,6 +344,7 @@ export function createMultiplayer(
     players.clear()
     food.clear()
     placed.clear()
+    authors.clear()
     if (ws) {
       const s = ws
       ws = null

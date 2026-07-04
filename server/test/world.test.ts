@@ -422,8 +422,8 @@ describe('GameWorld shop', () => {
     expect(placed).toBeTruthy()
     expect(placed.item.key).toBe('flowers')
     expect(placed.item.ownerId).toBe(a.id)
-    // Authorship: the buyer's display name is stamped on the item.
-    expect(placed.item.ownerName).toBe(a.name)
+    // Authorship: the placed broadcast carries the buyer's current name.
+    expect(placed.authorName).toBe(a.name)
     // Buyer's wallet dropped by the price.
     const wallet = [...msgs].reverse().find((m) => m.t === 'wallet')
     expect(wallet.likes).toBe(likes - 20)
@@ -445,7 +445,8 @@ describe('GameWorld shop', () => {
     const w = c.msgs.find((m) => m.t === 'welcome')
     const persisted = w.placed.find((p: any) => p.id === placed.item.id)
     expect(persisted).toBeTruthy()
-    expect(persisted.ownerName).toBe(a.name) // author survives reconnect (SQLite)
+    expect(persisted.ownerId).toBe(a.id) // item persists, pointing to its owner
+    expect(w.authors[a.id]).toBe(a.name) // author resolved via the directory
   }, 30000)
 })
 
@@ -550,4 +551,30 @@ describe('GameWorld names (allowlist + injection safety)', () => {
     await wait(50)
     expect(b.msgs.find((m) => m.t === 'welcome')?.self.name).toBe('Safe')
   })
+})
+
+describe('GameWorld authorship follows rename (directory)', () => {
+  it('renaming updates the author for items placed before the rename', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const likes = await earnAtLeast(ws, msgs, 20)
+    expect(likes).toBeGreaterThanOrEqual(20)
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 8, y: 8 }))
+    await wait(150)
+    const placed = msgs.find(
+      (m) => m.t === 'placed' && m.item.x === 8 && m.item.y === 8,
+    )
+    expect(placed).toBeTruthy()
+
+    ws.send(JSON.stringify({ t: 'setName', name: 'Pixel' }))
+    await wait(100)
+    // A fresh peer: the pre-existing item still exists (points to owner) and the
+    // authors directory resolves that owner to the NEW name.
+    const peer = await connect((await session()).cookie)
+    await wait(60)
+    const w = peer.msgs.find((m) => m.t === 'welcome')
+    expect(w.placed.some((p: any) => p.id === placed.item.id)).toBe(true)
+    expect(w.authors[a.id]).toBe('Pixel')
+  }, 30000)
 })

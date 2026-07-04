@@ -176,7 +176,7 @@ interface GameObject {
   key?: string
   placedAt?: number
   expiresAt?: number
-  ownerName?: string // author's name, shown when Koala walks up to the item
+  ownerId?: string // author's session id; name resolved via mp.authors on proximity
 }
 
 interface Butterfly {
@@ -446,7 +446,7 @@ export default function ParkGame() {
           key: p.key,
           placedAt: p.placedAt,
           expiresAt: p.expiresAt,
-          ownerName: p.ownerName,
+          ownerId: p.ownerId,
         })),
       )
     }
@@ -2051,7 +2051,11 @@ export default function ParkGame() {
       const catY = g.cat.y + 0.5
       const REACH = 2.2 // tiles within which the author is revealed
       for (const obj of g.objects) {
-        if (obj.placedAt == null || !obj.ownerName) continue
+        if (obj.placedAt == null || obj.ownerId == null) continue
+        // Resolve the author's CURRENT name from the shared authors map, so a
+        // rename is reflected on every item that owner placed.
+        const author = mp?.authors.get(obj.ownerId)
+        if (!author) continue
         const ix = obj.x + obj.w / 2
         const iy = obj.y + obj.h / 2
         const d = Math.hypot(catX - ix, catY - iy)
@@ -2066,8 +2070,8 @@ export default function ParkGame() {
         ctx.lineWidth = SCALE
         ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.6})`
         ctx.fillStyle = `rgba(255,255,255,${alpha})`
-        ctx.strokeText(obj.ownerName, px, py)
-        ctx.fillText(obj.ownerName, px, py)
+        ctx.strokeText(author, px, py)
+        ctx.fillText(author, px, py)
         ctx.restore()
       }
     }

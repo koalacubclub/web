@@ -148,7 +148,9 @@ export const SHOP_ITEMS_BY_KEY: Record<string, ShopItem> = Object.fromEntries(
 // How long a purchased item lives before it expires (wall-clock, server clock).
 export const PLACED_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
-// A placed decoration owned by the server and shared with everyone.
+// A placed decoration owned by the server and shared with everyone. It points to
+// its owner by id only; the display name is resolved from the `authors` map (so a
+// rename updates every item that player owns, with the name stored once).
 export interface PlacedItem {
   id: string
   key: string
@@ -158,7 +160,6 @@ export interface PlacedItem {
   w: number
   h: number
   ownerId: string
-  ownerName: string // buyer's display name at purchase (for on-proximity authorship)
   placedAt: number // epoch ms (server)
   expiresAt: number // epoch ms (server)
 }
@@ -187,6 +188,7 @@ export type ServerMessage =
       players: Player[]
       food: Food[]
       placed: PlacedItem[]
+      authors: Record<string, string> // ownerId → current name (incl. offline owners)
       likes: number
       now: number
     }
@@ -196,7 +198,7 @@ export type ServerMessage =
   | { t: 'spawn'; f: Food }
   | { t: 'despawn'; id: string; reason: 'taken' | 'expired' }
   | { t: 'collected'; id: string; by: string; points: number; likes: number }
-  | { t: 'placed'; item: PlacedItem } // broadcast to everyone
+  | { t: 'placed'; item: PlacedItem; authorName: string } // broadcast to everyone
   | { t: 'unplaced'; id: string; reason: 'expired' } // broadcast to everyone
   | { t: 'wallet'; likes: number } // the recipient's new balance after a spend
   | { t: 'buyfail'; reason: BuyFailReason } // sent only to the buyer
