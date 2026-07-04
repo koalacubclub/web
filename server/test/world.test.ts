@@ -630,3 +630,73 @@ describe('GameWorld stats', () => {
     expect(statsMsg.totalSessions).toBeGreaterThan(before)
   })
 })
+
+// ---- jump ability + airborne food ----
+
+const sendJump = (ws: WebSocket) => ws.send(JSON.stringify({ t: 'jump' }))
+
+// Grab a currently-live AIRBORNE food (spawned lazily on the first traffic).
+async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
+  for (let i = 0; i < 12; i++) {
+    const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
+    const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
+    const air = [...fromWelcome, ...spawned].find((f) => f?.air)
+    if (air) return air
+    sendState(ws, 10, 6)
+    await wait(500)
+  }
+  throw new Error('no airborne food spawned in time')
+}
+
+describe('GameWorld jump', () => {
+  it('broadcasts a jump to other players (not the sender)', async () => {
+    const a = await session()
+    const { ws: wsA, msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+    sendJump(wsA)
+    await wait(80)
+    expect(msgsB.some((m) => m.t === 'jumped' && m.id === a.id)).toBe(true)
+    // The sender animates locally, so it should NOT receive its own jumped.
+    expect(msgsA.some((m) => m.t === 'jumped')).toBe(false)
+  })
+
+  it('drops a second jump inside the cooldown', async () => {
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+    sendJump(wsA)
+    sendJump(wsA) // immediately again → within cooldown
+    await wait(120)
+    const jumps = msgsB.filter((m) => m.t === 'jumped' && m.id === a.id)
+    expect(jumps.length).toBe(1)
+  })
+})
+
+describe('GameWorld airborne food', () => {
+  it('only awards an airborne food while mid-jump', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const air = await obtainAirFood(ws, msgs)
+    // Stand exactly on it (server-known position).
+    sendState(ws, air.x, air.y)
+    await wait(80)
+
+    // Grounded collect: rejected (no jump window open).
+    sendCollect(ws, air.id)
+    await wait(120)
+    expect(msgs.some((m) => m.t === 'collected' && m.id === air.id)).toBe(false)
+
+    // Jump, then collect within the window: awarded (double points).
+    sendJump(ws)
+    sendCollect(ws, air.id)
+    await wait(150)
+    const got = msgs.find((m) => m.t === 'collected' && m.id === air.id)
+    expect(got).toBeTruthy()
+    expect(got.points).toBe(air.points)
+  }, 15000)
+})

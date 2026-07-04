@@ -2,8 +2,19 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
-import { COLLECT_RADIUS, FOOD_TTL_MS, foodCap } from '@koala/shared'
+import {
+  AIR_COLLECT_RADIUS,
+  AIR_FOOD_TTL_MS,
+  AIR_HEIGHT_TILES,
+  AIR_POINTS_MULT,
+  COLLECT_RADIUS,
+  FOOD_TTL_MS,
+  foodCap,
+  JUMP_COOLDOWN_MS,
+  JUMP_DURATION_MS,
+} from '@koala/shared'
 import { cameraPan } from './parkCamera'
+import { jumpLiftTiles } from '@/game/jump'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { NIGHT, night } from '@/game/constants'
@@ -205,6 +216,8 @@ interface Food {
   // Present only for server-owned collectibles (multiplayer).
   id?: string
   points?: number
+  // Airborne food floats above its tile and is only collectable mid-jump.
+  air?: boolean
 }
 
 // How often (ms) the client re-asks to collect a food it's standing on. A single
@@ -270,6 +283,11 @@ export default function ParkGame() {
       idleFrames: 0,
       state: 'standing' as 'standing' | 'lying' | 'sleeping',
     },
+    // performance.now() when the local koala's current jump started. Init to
+    // -Infinity (never jumped) — NOT 0: performance.now()'s origin is page load,
+    // so a 0 sentinel would read as "jumped at load" for the first ~620ms (phantom
+    // hop + first-jump lockout). Doubles as the cooldown clock; render-only offset.
+    jumpAt: -Infinity,
     keys: {} as Record<string, boolean>,
     // Tap/click target the cat walks toward (top-left tile coords), or null.
     target: null as { x: number; y: number } | null,
@@ -488,13 +506,48 @@ export default function ParkGame() {
     bgCanvas.height = CANVAS_HEIGHT
     const bgCtx = bgCanvas.getContext('2d')
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      g.keys[e.key.toLowerCase()] = true
+    // Whether a jump input should act right now: hero on-screen, not typing in a
+    // field, and no lightbox open. When false, keys (e.g. space) keep their normal
+    // browser behaviour (page scroll / text entry).
+    const jumpAllowed = () => {
+      if (lightboxRef.current) return false
+      const el = typeof document !== 'undefined' ? document.activeElement : null
+      const tag = el?.tagName
       if (
-        ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(
-          e.key.toLowerCase(),
-        )
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        (el as HTMLElement | null)?.isContentEditable
       ) {
+        return false
+      }
+      return window.scrollY < window.innerHeight // hero in view
+    }
+    // Start a hop: respects the cooldown, wakes a resting koala (drawCat skips
+    // lying/sleeping), and tells the server (which opens the airborne-collect
+    // window + broadcasts the hop to others). The local hop animates immediately.
+    const startJump = () => {
+      const now = performance.now()
+      if (now - g.jumpAt < JUMP_COOLDOWN_MS) return
+      g.jumpAt = now
+      g.cat.state = 'standing'
+      g.cat.idle = false
+      g.cat.idleFrames = 0
+      mp?.sendJump()
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase()
+      // Space = jump. Only preventDefault (blocking page scroll) when we actually
+      // handle it, so space still scrolls / types when the game isn't in focus.
+      if (key === ' ') {
+        if (jumpAllowed()) {
+          e.preventDefault()
+          startJump()
+        }
+        return
+      }
+      g.keys[key] = true
+      if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         e.preventDefault()
       }
     }
@@ -660,12 +713,18 @@ export default function ParkGame() {
     // after which dragging steers her and the page won't scroll. ──
     const HOLD_MS = 150 // press this long (without moving) to grab the cat
     const MOVE_TOL = 10 // px of movement before the hold that counts as a swipe
+    const DOUBLE_TAP_MS = 300 // two quick taps within this window = jump
+    const TAP_TOL = 28 // px the two taps must land within
     let touchId: number | null = null
     let touchStartX = 0
     let touchStartY = 0
     let touchMoved = false
     let touchEngaged = false
     let holdTimer = 0
+    // Double-tap tracking (kept in the outer scope so it survives per-touch resets).
+    let lastTapAt = 0
+    let lastTapX = 0
+    let lastTapY = 0
     const touchById = (list: TouchList) => {
       for (let i = 0; i < list.length; i++) {
         if (list[i].identifier === touchId) return list[i]
@@ -738,6 +797,24 @@ export default function ParkGame() {
         hotspotAt(t.clientX, t.clientY) === touchHotspot
       ) {
         activateHotspot(touchHotspot)
+      } else if (!touchHotspot && !touchMoved && !touchEngaged) {
+        // A clean single-finger tap (not a swipe, hold-drag, or hotspot). Two of
+        // these close together = a double-tap → jump. This can't fire during a
+        // scroll (touchMoved) or a grab-steer (touchEngaged), so both gestures
+        // are preserved.
+        const now = Date.now()
+        if (
+          now - lastTapAt < DOUBLE_TAP_MS &&
+          Math.abs(t.clientX - lastTapX) < TAP_TOL &&
+          Math.abs(t.clientY - lastTapY) < TAP_TOL
+        ) {
+          if (jumpAllowed()) startJump()
+          lastTapAt = 0 // consume; a third tap starts a fresh pair
+        } else {
+          lastTapAt = now
+          lastTapX = t.clientX
+          lastTapY = t.clientY
+        }
       }
       endTouch()
     }
@@ -1334,7 +1411,7 @@ export default function ParkGame() {
 
     // Draws a koala. Defaults to the local cat; pass a remote player's state
     // (and name) to render other players in the same world space.
-    function drawCat(cat: DrawableCat = g.cat, label?: string) {
+    function drawCat(cat: DrawableCat = g.cat, label?: string, jumpPx = 0) {
       if (!ctx) return
       const x = cat.x * PIXEL
       const y = cat.y * PIXEL
@@ -1351,7 +1428,7 @@ export default function ParkGame() {
         ctx.strokeStyle = 'rgba(0,0,0,0.55)'
         ctx.fillStyle = 'rgba(255,255,255,0.92)'
         const lx = x + PIXEL * 0.5
-        const ly = y - PIXEL * 0.15
+        const ly = y - PIXEL * 0.15 - jumpPx // ride the hop with the body
         ctx.strokeText(label, lx, ly)
         ctx.fillText(label, lx, ly)
         ctx.restore()
@@ -1485,15 +1562,44 @@ export default function ParkGame() {
       const bobY = cat.idle ? Math.sin(g.frameCount * 0.05) * 2 : 0
       const walkBob = !cat.idle ? Math.sin(g.frameCount * 0.2) * 2 : 0
 
+      // Mid-hop: draw a separate shrinking shadow on the GROUND so the lift reads
+      // as height (the body's own shadow below is skipped while airborne).
+      if (jumpPx > 0) {
+        const shrink = Math.max(0.45, 1 - jumpPx / (PIXEL * 2.2))
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'
+        ctx.beginPath()
+        ctx.ellipse(
+          x + PIXEL * 0.5,
+          y + PIXEL * 0.85,
+          PIXEL * 0.35 * shrink,
+          PIXEL * 0.1 * shrink,
+          0,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+      }
+
       ctx.save()
-      ctx.translate(x + PIXEL * 0.5, y + PIXEL * 0.5 + bobY + walkBob)
+      ctx.translate(x + PIXEL * 0.5, y + PIXEL * 0.5 + bobY + walkBob - jumpPx)
       ctx.scale(flip, 1)
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.1)'
-      ctx.beginPath()
-      ctx.ellipse(0, PIXEL * 0.35, PIXEL * 0.35, PIXEL * 0.1, 0, 0, Math.PI * 2)
-      ctx.fill()
+      // Shadow (only on the ground — while airborne the grounded shadow above
+      // stands in for it).
+      if (jumpPx <= 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.1)'
+        ctx.beginPath()
+        ctx.ellipse(
+          0,
+          PIXEL * 0.35,
+          PIXEL * 0.35,
+          PIXEL * 0.1,
+          0,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+      }
 
       // Body
       ctx.fillStyle = NIGHT.catLight
@@ -1765,12 +1871,16 @@ export default function ParkGame() {
         if (onObject) continue
         if (g.foods.some((f) => Math.hypot(f.x - x, f.y - y) < 1.2)) continue
         if (Math.hypot(g.cat.x - x, g.cat.y - y) < 1.5) continue
+        // Occasionally the (single) collectible is airborne — a jump target.
+        const air = Math.random() < 0.3
         g.foods.push({
           key: pick.key,
           x,
           y,
           born: g.frameCount,
-          life: FOOD_TTL_MS * 0.06, // frameCount units (60fps) — matches server TTL
+          // frameCount units (60fps) — matches the server TTLs.
+          life: (air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS) * 0.06,
+          air,
         })
         return
       }
@@ -1781,15 +1891,20 @@ export default function ParkGame() {
     // Solo (no backend): the original client-side spawn + pickup + earn.
     function updateFoods() {
       const cat = g.cat
+      // Are we mid-hop right now? Airborne food can only be grabbed in this window
+      // (the server enforces the same rule; this just avoids futile requests).
+      const jumping = performance.now() - g.jumpAt <= JUMP_DURATION_MS
       if (mp) {
         const now = Date.now() + mp.clockOffset
         for (const sf of mp.food.values()) {
           const age = (now - sf.bornAt) * 0.06 // ms → 60fps-frame units
           const last = g.collectCooldowns.get(sf.id) ?? 0
+          const reach = sf.air ? AIR_COLLECT_RADIUS : COLLECT_RADIUS
           if (
             age > 8 &&
             now - last > COLLECT_RETRY_MS &&
-            Math.hypot(cat.x - sf.x, cat.y - sf.y) < COLLECT_RADIUS
+            (!sf.air || jumping) &&
+            Math.hypot(cat.x - sf.x, cat.y - sf.y) < reach
           ) {
             g.collectCooldowns.set(sf.id, now)
             mp.sendCollect(sf.id)
@@ -1825,11 +1940,17 @@ export default function ParkGame() {
       g.foods = g.foods.filter((f) => {
         const age = g.frameCount - f.born
         if (age > f.life) return false
-        if (age > 8 && Math.hypot(cat.x - f.x, cat.y - f.y) < 0.85) {
+        const reach = f.air ? AIR_COLLECT_RADIUS : 0.85
+        if (
+          age > 8 &&
+          (!f.air || jumping) &&
+          Math.hypot(cat.x - f.x, cat.y - f.y) < reach
+        ) {
           const def = FOODS_BY_KEY[f.key]
-          parkStore.earn(def.points)
+          const pts = f.air ? def.points * AIR_POINTS_MULT : def.points
+          parkStore.earn(pts)
           g.popups.push({
-            text: `+${def.points} ${def.label}`,
+            text: `+${pts} ${def.label}`,
             x: (f.x + 0.5) * PIXEL,
             y: f.y * PIXEL - 6,
             life: 80,
@@ -1858,7 +1979,8 @@ export default function ParkGame() {
           y: sf.y,
           points: sf.points,
           born: g.frameCount - ageFrames,
-          life,
+          life: sf.air ? AIR_FOOD_TTL_MS * 0.06 : life,
+          air: sf.air,
         })
       }
       return out
@@ -2118,7 +2240,12 @@ export default function ParkGame() {
         const blink =
           remaining < 150 && Math.floor(g.frameCount / 6) % 2 === 0 ? 0.4 : 1
         const size = PIXEL * 0.9 * ease
-        const cy = baseY + bob
+        // Airborne food floats above its tile (a jump target); its shadow stays
+        // on the ground and shrinks to sell the height.
+        const lift = f.air ? AIR_HEIGHT_TILES * PIXEL : 0
+        const hover = f.air ? Math.sin(g.frameCount * 0.06 + f.x) * 3 : 0
+        const shadowScale = f.air ? Math.max(0.5, 1 - lift / (PIXEL * 3)) : 1
+        const cy = baseY + bob - lift + hover
         ctx.globalAlpha = blink
 
         // Soft glow (gold for the legendary, warm cream otherwise).
@@ -2131,14 +2258,14 @@ export default function ParkGame() {
         ctx.arc(cx, cy, size, 0, Math.PI * 2)
         ctx.fill()
 
-        // Ground shadow.
+        // Ground shadow (anchored to the tile, not the lifted sprite).
         ctx.fillStyle = 'rgba(0,0,0,0.2)'
         ctx.beginPath()
         ctx.ellipse(
           cx,
           baseY + size * 0.42,
-          size * 0.3,
-          size * 0.1,
+          size * 0.3 * shadowScale,
+          size * 0.1 * shadowScale,
           0,
           0,
           Math.PI * 2,
@@ -2512,7 +2639,8 @@ export default function ParkGame() {
         pose: g.cat.state,
         interacting: g.cat.interacting,
       })
-      drawCat()
+      const nowMs = performance.now()
+      drawCat(g.cat, undefined, jumpLiftTiles(g.jumpAt, nowMs) * PIXEL)
       // Remote koalas, interpolated toward their latest target and depth-sorted
       // with each other (drawn after the local cat, like all other players).
       if (mp && mp.players.size) {
@@ -2529,7 +2657,8 @@ export default function ParkGame() {
           remoteCat.state = p.pose
           remoteCat.idle = !moving && p.pose === 'standing'
           remoteCat.interacting = p.interacting
-          drawCat(remoteCat, p.name)
+          const rjump = p.jumpAt ? jumpLiftTiles(p.jumpAt, nowMs) * PIXEL : 0
+          drawCat(remoteCat, p.name, rjump)
         }
       }
       ctx!.restore()
@@ -2645,7 +2774,7 @@ export default function ParkGame() {
         // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or press and hold (drag) to walk her toward your pointer, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
