@@ -1786,14 +1786,36 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs — front pair tucks up shorter mid-hop.
+      // Legs — front pair tucks up shorter mid-hop, and shifts up + forward.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
+      const frontX = airborne ? s * 1 : 0 // forward (toward the head)
+      const frontY = airborne ? -s * 1 : 0 // up
       ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3 - frontTuck)
-      ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3 - frontTuck)
+      ctx.fillRect(
+        s * 2 + frontX,
+        s * 4 + legOffset + frontY,
+        s * 2,
+        s * 3 - frontTuck,
+      )
+      ctx.fillRect(
+        s * 4 + frontX,
+        s * 4 - legOffset + frontY,
+        s * 2,
+        s * 3 - frontTuck,
+      )
       // Front paws (ride up with the tuck).
-      ctx.fillRect(s * 2, s * 6.5 + legOffset - frontTuck, s * 2, s * 1)
-      ctx.fillRect(s * 4, s * 6.5 - legOffset - frontTuck, s * 2, s * 1)
+      ctx.fillRect(
+        s * 2 + frontX,
+        s * 6.5 + legOffset - frontTuck + frontY,
+        s * 2,
+        s * 1,
+      )
+      ctx.fillRect(
+        s * 4 + frontX,
+        s * 6.5 - legOffset - frontTuck + frontY,
+        s * 2,
+        s * 1,
+      )
 
       // Rear legs — stretched down, and rotated back a touch mid-hop so they
       // trail the torso (drawn about the hip pivot since fillRect can't rotate).
