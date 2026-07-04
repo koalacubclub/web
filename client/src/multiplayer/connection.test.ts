@@ -598,6 +598,26 @@ describe('createMultiplayer — presence + stats', () => {
     mp.close()
   })
 
+  it('sends the hand paw-slap through the ability path and stamps a remote slapper', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('b')],
+      now: 0,
+    })
+    mp.sendAction('hand')
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'action', a: 'hand' })
+    // A hand slap stamps act/actAt but not jumpAt.
+    expect(mp.players.get('b')?.act).toBeUndefined()
+    ws.receive({ t: 'acted', id: 'b', a: 'hand' })
+    expect(mp.players.get('b')?.act).toBe('hand')
+    expect(typeof mp.players.get('b')?.actAt).toBe('number')
+    expect(mp.players.get('b')?.jumpAt).toBeUndefined()
+    mp.close()
+  })
+
   it('exposes stats from welcome and merges stats updates, keeping yourVisits', async () => {
     const { createMultiplayer } = await import('./connection')
     const seen: WorldStats[] = []
