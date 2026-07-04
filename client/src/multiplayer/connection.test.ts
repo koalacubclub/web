@@ -183,6 +183,7 @@ describe('createMultiplayer', () => {
     ws.close()
     expect(mp.connected).toBe(false)
     expect(mp.players.size).toBe(0)
+    mp.close() // cancel the backoff reconnect so it can't leak into later tests
   })
 
   it('close() tears down the socket and stops reconnecting', async () => {
@@ -279,6 +280,7 @@ describe('createMultiplayer', () => {
     expect(mp.food.size).toBe(1)
     ws.close()
     expect(mp.food.size).toBe(0)
+    mp.close() // cancel the backoff reconnect so it can't leak into later tests
   })
 
   // ---- shop: placed items + wallet ----
@@ -386,6 +388,7 @@ describe('createMultiplayer', () => {
     expect(mp.placed.size).toBe(1)
     ws.close()
     expect(mp.placed.size).toBe(0)
+    mp.close() // cancel the backoff reconnect so it can't leak into later tests
   })
 })
 
@@ -552,6 +555,7 @@ describe('createMultiplayer — presence + stats', () => {
     mp.sendJump()
     const sent = ws.sent.map((s) => JSON.parse(s))
     expect(sent).toContainEqual({ t: 'jump' })
+    mp.close()
   })
 
   it('marks a remote player mid-jump on a jumped message', async () => {
@@ -565,6 +569,7 @@ describe('createMultiplayer — presence + stats', () => {
     expect(mp.players.get('b')?.jumpAt).toBeUndefined()
     ws.receive({ t: 'jumped', id: 'b' })
     expect(typeof mp.players.get('b')?.jumpAt).toBe('number')
+    mp.close()
   })
 
   it('exposes stats from welcome and merges stats updates, keeping yourVisits', async () => {
