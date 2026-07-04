@@ -65,7 +65,12 @@ export const FOODS_BY_KEY: Record<string, FoodDef> = Object.fromEntries(
 )
 
 // Shared game-balance tuning for the server-owned collectibles.
-export const MAX_FOOD = 1 // max collectibles on the map at once
+// Food cap scales with the crowd — about half the players, rounded up — so a
+// solo park shows 1, 3 players see 2, 10 see 5. Server-enforced (it knows the
+// live player count); the solo client uses foodCap(1) === 1.
+export function foodCap(players: number): number {
+  return Math.ceil(players / 2)
+}
 export const FOOD_SPAWN_COOLDOWN_MS = 4000 // min gap between spawns
 export const FOOD_TTL_MS = 30000 // a food despawns if uncollected this long
 export const COLLECT_RADIUS = 0.85 // tiles: how close a koala must be to collect

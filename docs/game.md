@@ -78,7 +78,8 @@ Config lives at the top of the file (presentation) + `shared/protocol.ts` (the
 FOODS = [{ key, label, emoji, points, weight, tier }, …]
 ```
 
-- **Spawning:** every ~4–9s, up to 1 on screen at once (`MAX_FOOD`), on a random free ground
+- **Spawning:** every ~4–9s, up to `foodCap(players)` on screen — ≈half the crowd
+  rounded up (1 solo, 2 for 3 players, 5 for 10), on a random free ground
   tile (weighted by `weight`, avoiding objects/other food/the cat). Each has a
   ~30s lifespan (`FOOD_TTL_MS`; blinks before despawning).
 - **Collecting:** walk within ~0.85 tile → coins `+= points`, a `+N` popup pops,
