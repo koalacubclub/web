@@ -47,6 +47,10 @@ export interface RemotePlayer {
   // `jumped` message); the game loop reads it to animate the hop arc. Undefined
   // until they've jumped.
   jumpAt?: number
+  // performance.now() when this player's most recent slap started (set on a
+  // `slapped` message); the game loop reads it to animate the swipe. Undefined
+  // until they've slapped.
+  slapAt?: number
 }
 
 export interface Multiplayer {
@@ -79,6 +83,9 @@ export interface Multiplayer {
   /** Tell the server this player jumped (opens the airborne-collect window and
    *  broadcasts the hop to others). The caller animates its own hop locally. */
   sendJump(): void
+  /** Tell the server this player slapped; broadcasts the swipe pose to others.
+   *  The caller animates its own swipe locally. */
+  sendSlap(): void
   close(): void
 }
 
@@ -140,6 +147,7 @@ export function createMultiplayer(
     sendBuy,
     sendName,
     sendJump,
+    sendSlap,
     close,
   }
 
@@ -292,6 +300,12 @@ export function createMultiplayer(
         if (p) p.jumpAt = performance.now()
         break
       }
+      case 'slapped': {
+        // Kick off this remote player's swipe animation locally.
+        const p = players.get(msg.id)
+        if (p) p.slapAt = performance.now()
+        break
+      }
     }
   }
 
@@ -406,6 +420,15 @@ export function createMultiplayer(
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     try {
       ws.send(JSON.stringify({ t: 'jump' }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  function sendSlap() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'slap' }))
     } catch {
       /* socket closing; the reconnect path will recover */
     }

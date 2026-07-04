@@ -97,6 +97,12 @@ export const JUMP_DURATION_MS = 620 // length of the hop arc
 export const JUMP_COOLDOWN_MS = 750 // min gap between jumps (anti-spam + feel)
 export const JUMP_PEAK_TILES = 1.5 // how high the koala rises, in tiles (render)
 
+// ── Slap: a paw-swipe that jostles a nearby object. Purely a render pose +
+// broadcast (like jump); object reactions are computed client-side. ──
+export const SLAP_DURATION_MS = 380 // length of the swipe animation
+export const SLAP_COOLDOWN_MS = 320 // min gap between slaps
+export const SLAP_REACH = 1.1 // tiles: how close an object must be to get hit
+
 // Airborne food shares the ground food's foodCap budget: each spawn rolls this
 // probability to be airborne (else ground), so it never adds beyond the cap.
 // ~1/3 → roughly one airborne treat for every two ground ones, at any player
@@ -227,6 +233,9 @@ export type ClientMessage =
   // Trigger a jump (no payload). Server rate-limits, opens this session's jump
   // window (for airborne collects), and broadcasts a `jumped` to the others.
   | { t: 'jump' }
+  // Trigger a slap (no payload). Server just broadcasts a `slapped` to others so
+  // they can play the swipe pose; object reactions are client-local.
+  | { t: 'slap' }
 
 export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
@@ -259,6 +268,8 @@ export type ServerMessage =
   | { t: 'stats'; active24h: number; totalSessions: number }
   // A player jumped — broadcast to everyone else so they can play the hop.
   | { t: 'jumped'; id: string }
+  // A player slapped — broadcast to everyone else so they can play the swipe.
+  | { t: 'slapped'; id: string }
 
 export const PROTOCOL_VERSION = 1
 

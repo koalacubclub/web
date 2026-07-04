@@ -12,9 +12,12 @@ import {
   foodCap,
   JUMP_COOLDOWN_MS,
   JUMP_DURATION_MS,
+  SLAP_COOLDOWN_MS,
+  SLAP_REACH,
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { jumpLiftTiles } from '@/game/jump'
+import { slapPhase } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
@@ -190,6 +193,12 @@ interface GameObject {
   placedAt?: number
   expiresAt?: number
   ownerId?: string // author's session id; name resolved via mp.authors on proximity
+  // Slap reaction (transient, client-local): when it was last hit (drives the
+  // wobble), and the ball's knocked-about velocity in tiles/ms.
+  hitAt?: number
+  vx?: number
+  vy?: number
+  mutedByTap?: boolean // 'radio': slapped to toggle its music off/on
 }
 
 interface Butterfly {
@@ -205,6 +214,16 @@ interface Popup {
   text: string
   x: number
   y: number
+  life: number
+}
+
+// A short-lived slap impact burst (impact stars, or a pond splash ring), in
+// canvas px. `born` is a frameCount stamp; `life` counts down in frame-units.
+interface SlapEffect {
+  kind: 'stars' | 'splash'
+  x: number
+  y: number
+  born: number
   life: number
 }
 
@@ -240,6 +259,9 @@ type DrawableCat = {
 
 export default function ParkGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Set inside the game effect to its `startSlap`, so the on-screen slap button
+  // (rendered in React, outside the effect) can trigger a swipe.
+  const slapFnRef = useRef<(() => void) | null>(null)
   // Interactive-hotspot UI (driven from the canvas hit-testing in the effect).
   const [hover, setHover] = useState<{
     kind: 'text' | 'photo'
@@ -279,6 +301,14 @@ export default function ParkGame() {
   // on every touchmove (no per-frame re-render). null = hidden.
   const [joyBase, setJoyBase] = useState<{ x: number; y: number } | null>(null)
   const joyKnobRef = useRef<HTMLDivElement>(null)
+  // Show the on-screen slap button only while the hero is in view.
+  const [atTop, setAtTop] = useState(true)
+  useEffect(() => {
+    const onScroll = () => setAtTop(window.scrollY < window.innerHeight * 0.6)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   const gameRef = useRef({
     cat: {
@@ -295,6 +325,11 @@ export default function ParkGame() {
     // so a 0 sentinel would read as "jumped at load" for the first ~620ms (phantom
     // hop + first-jump lockout). Doubles as the cooldown clock; render-only offset.
     jumpAt: -Infinity,
+    // performance.now() when the local koala's current slap started (same
+    // -Infinity sentinel as jumpAt); cooldown clock + drives the swipe pose.
+    slapAt: -Infinity,
+    // Short-lived slap impact bursts (stars/ripples), drawn then expired.
+    effects: [] as SlapEffect[],
     keys: {} as Record<string, boolean>,
     // Tap/click target the cat walks toward (top-left tile coords), or null.
     target: null as { x: number; y: number } | null,
@@ -544,6 +579,97 @@ export default function ParkGame() {
       mp?.sendJump()
     }
 
+    // Start a paw-swipe: respects the cooldown, wakes a resting koala, plays the
+    // swipe pose (broadcast to others), and jostles the nearest object it can
+    // reach (ball rolls, pond splashes, radio toggles; everything else wobbles +
+    // pops "thwap!"). Object reactions are client-local.
+    const startSlap = () => {
+      const now = performance.now()
+      if (now - g.slapAt < SLAP_COOLDOWN_MS) return
+      g.slapAt = now
+      g.cat.state = 'standing'
+      g.cat.idle = false
+      g.cat.idleFrames = 0
+      mp?.sendSlap()
+
+      // Nearest slappable object within reach — distance to the object's BOX (not
+      // its centre), so big objects like the pond/house are reachable when the cat
+      // is beside an edge. Skip UI hotspots.
+      const cx = g.cat.x + 0.5
+      const cy = g.cat.y + 0.5
+      let best: GameObject | null = null
+      let bestD = Infinity
+      for (const o of g.objects) {
+        if (o.type === 'social' || o.type === 'photo') continue
+        const nx = Math.max(o.x, Math.min(cx, o.x + o.w))
+        const ny = Math.max(o.y, Math.min(cy, o.y + o.h))
+        const d = Math.hypot(cx - nx, cy - ny)
+        if (d < SLAP_REACH && d < bestD) {
+          best = o
+          bestD = d
+        }
+      }
+      if (!best) return // whiff — just the pose
+
+      const bx = best.x + best.w / 2 // tile-space centre
+      const by = best.y + best.h / 2
+      const bxp = bx * PIXEL // canvas-space centre (effects/popups)
+      const byp = by * PIXEL
+      // Wobble everything except the ball (it's knocked away), the pond (it
+      // splashes), and the house (too big to jiggle).
+      if (
+        best.type !== 'ball' &&
+        best.type !== 'pond' &&
+        best.type !== 'house'
+      ) {
+        best.hitAt = now
+      }
+      if (best.type === 'radio') {
+        best.mutedByTap = !best.mutedByTap
+        g.popups.push({
+          text: best.mutedByTap ? '♪ off' : '♪ on',
+          x: bxp,
+          y: byp - PIXEL * 0.4,
+          life: 70,
+        })
+      } else if (best.type === 'pond') {
+        g.effects.push({
+          kind: 'splash',
+          x: bxp,
+          y: byp,
+          born: g.frameCount,
+          life: 28,
+        })
+      } else if (best.type === 'ball' && best.placedAt == null) {
+        // Only the (base map) ball is knocked around — directly away from the
+        // cat. Shop-placed decor is store-owned, so it just wobbles (below).
+        const dx = bx - cx
+        const dy = by - cy
+        const d = Math.hypot(dx, dy) || 1
+        const speed = 0.006 // tiles/ms
+        best.vx = (dx / d) * speed
+        best.vy = (dy / d) * speed
+        g.effects.push({
+          kind: 'stars',
+          x: bxp,
+          y: byp,
+          born: g.frameCount,
+          life: 20,
+        })
+      } else {
+        // Everything else just wobbles + sparks.
+        g.effects.push({
+          kind: 'stars',
+          x: bxp,
+          y: byp,
+          born: g.frameCount,
+          life: 20,
+        })
+      }
+    }
+    // Exposed to the on-screen slap button (see the React overlay below).
+    slapFnRef.current = startSlap
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
       // Space = jump. Only preventDefault (blocking page scroll) when we actually
@@ -552,6 +678,14 @@ export default function ParkGame() {
         if (jumpAllowed()) {
           e.preventDefault()
           startJump()
+        }
+        return
+      }
+      // X = slap (the second action). Same gating as jump.
+      if (key === 'x') {
+        if (jumpAllowed()) {
+          e.preventDefault()
+          startSlap()
         }
         return
       }
@@ -1462,7 +1596,12 @@ export default function ParkGame() {
 
     // Draws a koala. Defaults to the local cat; pass a remote player's state
     // (and name) to render other players in the same world space.
-    function drawCat(cat: DrawableCat = g.cat, label?: string, jumpPx = 0) {
+    function drawCat(
+      cat: DrawableCat = g.cat,
+      label?: string,
+      jumpPx = 0,
+      slap = 0,
+    ) {
       if (!ctx) return
       const x = cat.x * PIXEL
       const y = cat.y * PIXEL
@@ -1777,20 +1916,58 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs
+      // Legs. During a slap the front leg becomes the raised arm, so skip it
+      // (otherwise the koala has five legs).
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
       ctx.fillStyle = NIGHT.white
       ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
-      ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
+      if (slap === 0) ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
       ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3)
       ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3)
 
       // Paws
       ctx.fillStyle = NIGHT.white
       ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
-      ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
+      if (slap === 0) ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
       ctx.fillRect(-s * 3, s * 6.5 - legOffset, s * 2, s * 1)
       ctx.fillRect(-s * 1, s * 6.5 + legOffset, s * 2, s * 1)
+
+      // Slap: a white front arm (rect + paw) pivoting at the shoulder — it raises
+      // up, then chops down (top → bottom). `slap` is the 0..1 progress. Drawn in
+      // the flipped space so +x is "forward" (toward `dir`); angle from +x with
+      // +y downward, so negative = up-forward, positive = down-forward.
+      if (slap > 0) {
+        const A_REST = -0.2
+        const A_UP = -1.3 // raised (wind-up)
+        const A_DOWN = 0.95 // slapped down
+        let ang: number
+        if (slap < 0.25) {
+          // Wind up: rest → up, quick (easeOut).
+          const t = slap / 0.25
+          ang = A_REST + (A_UP - A_REST) * (1 - (1 - t) ** 3)
+        } else if (slap < 0.45) {
+          // Strike: up → down, FAST (easeIn cubic — the whip).
+          const t = (slap - 0.25) / 0.2
+          ang = A_UP + (A_DOWN - A_UP) * (t * t * t)
+        } else {
+          // Hold at the bottom, then settle back a touch near the very end.
+          const t = (slap - 0.45) / 0.55
+          ang = A_DOWN + (A_REST - A_DOWN) * (t * t) * 0.3
+        }
+        const armLen = s * 6
+        const armW = s * 1.9
+        ctx.save()
+        ctx.translate(s * 3, s * 3.5) // shoulder pivot at the front-leg root
+        ctx.rotate(ang)
+        ctx.fillStyle = NIGHT.white
+        ctx.beginPath()
+        ctx.roundRect(0, -armW / 2, armLen, armW, armW / 2)
+        ctx.fill()
+        ctx.beginPath() // paw at the end
+        ctx.arc(armLen, 0, armW * 0.75, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
 
       ctx.restore()
 
@@ -1847,20 +2024,69 @@ export default function ParkGame() {
     // a radio on entry stays silent (and it satisfies audio autoplay rules).
     // Set true on the first movement in updateCat.
 
+    // Integrate objects knocked by a slap (currently the ball): move by velocity
+    // (tiles/ms × dt), decelerate with friction, bounce off the map edges, and
+    // stop once slow (velocity cleared so it drops out of this loop).
+    function updateSlappables(dt: number) {
+      for (const o of g.objects) {
+        if (o.vx == null || o.vy == null) continue
+        o.x += o.vx * dt
+        o.y += o.vy * dt
+        const fr = Math.max(0, 1 - 0.006 * dt)
+        o.vx *= fr
+        o.vy *= fr
+        if (o.x < 0) {
+          o.x = 0
+          o.vx = -o.vx * 0.6
+        } else if (o.x > MAP_COLS - o.w) {
+          o.x = MAP_COLS - o.w
+          o.vx = -o.vx * 0.6
+        }
+        if (o.y < 1) {
+          o.y = 1
+          o.vy = -o.vy * 0.6
+        } else if (o.y > GROUND_ROWS - o.h) {
+          o.y = GROUND_ROWS - o.h
+          o.vy = -o.vy * 0.6
+        }
+        if (Math.hypot(o.vx, o.vy) < 0.0003) {
+          o.vx = undefined
+          o.vy = undefined
+        }
+      }
+    }
+
+    // A decaying horizontal wobble (canvas px) for ~350ms after an object is
+    // slapped, applied around its draw so any object type "reacts".
+    const SLAP_SHAKE_MS = 350
+    function slapShake(hitAt: number): number {
+      const age = performance.now() - hitAt
+      if (age < 0 || age > SLAP_SHAKE_MS) return 0
+      const k = 1 - age / SLAP_SHAKE_MS
+      return Math.sin(age * 0.05) * k * PIXEL * 0.12
+    }
+
     function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
       const catX = g.cat.x + 0.5
       const catY = g.cat.y + 0.5
       let radioPlaying = false
       sorted.forEach((obj) => {
+        // A freshly-slapped object jitters briefly (wrap its whole draw).
+        const shake = obj.hitAt ? slapShake(obj.hitAt) : 0
+        if (shake) {
+          ctx!.save()
+          ctx!.translate(shake, 0)
+        }
         // Shop-placed decorations render via the shared sprite module (with
         // pop-in / pre-expiry blink); base objects use their own art below.
         if (obj.placedAt != null) {
           // A radio plays (pulses + notes + sound) while Koala is near it — but
-          // only once she's walked, so entering the world doesn't trigger it.
+          // only once she's walked, and not if she slapped it off.
           const playing =
             hasWalked &&
             obj.type === 'radio' &&
+            !obj.mutedByTap &&
             Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
               RADIO_REACH
           if (playing) radioPlaying = true
@@ -1870,39 +2096,87 @@ export default function ParkGame() {
             night: true,
             playing,
           })
-          return
+        } else {
+          switch (obj.type) {
+            case 'tree':
+              drawTree(obj)
+              break
+            case 'bench':
+              drawBench(obj)
+              break
+            case 'flowers':
+              drawFlowers(obj)
+              break
+            case 'pond':
+              drawPond(obj)
+              break
+            case 'ball':
+              drawBall(obj)
+              break
+            case 'stone':
+              drawStone(obj)
+              break
+            case 'social':
+              // Billboards render with the objects (before the cat) so the cat
+              // walks in front of them. They stay bright (no wash to escape now).
+              drawSocialSign(obj)
+              break
+            case 'photo':
+              drawPhoto(obj)
+              break
+          }
         }
-        switch (obj.type) {
-          case 'tree':
-            drawTree(obj)
-            break
-          case 'bench':
-            drawBench(obj)
-            break
-          case 'flowers':
-            drawFlowers(obj)
-            break
-          case 'pond':
-            drawPond(obj)
-            break
-          case 'ball':
-            drawBall(obj)
-            break
-          case 'stone':
-            drawStone(obj)
-            break
-          case 'social':
-            // Billboards render with the objects (before the cat) so the cat
-            // walks in front of them. They stay bright (no wash to escape now).
-            drawSocialSign(obj)
-            break
-          case 'photo':
-            drawPhoto(obj)
-            break
-        }
+        if (shake) ctx!.restore()
       })
       // Fade the radio jingle in/out with proximity (idempotent per frame).
       radio.setNear(radioPlaying)
+    }
+
+    // Slap impact bursts (impact stars + pond splash rings), fading out.
+    function drawEffects(fr: number) {
+      if (!ctx) return
+      g.effects = g.effects.filter((e) => e.life > 0)
+      g.effects.forEach((e) => {
+        e.life -= fr
+        const total = e.kind === 'splash' ? 28 : 20
+        const p = Math.min(1, (g.frameCount - e.born) / total)
+        ctx!.save()
+        ctx!.globalAlpha = Math.max(0, 1 - p)
+        if (e.kind === 'stars') {
+          ctx!.fillStyle = '#FFE97A'
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2
+            const r = p * PIXEL * 0.5
+            ctx!.beginPath()
+            ctx!.arc(
+              e.x + Math.cos(a) * r,
+              e.y + Math.sin(a) * r,
+              2 + (1 - p) * 2,
+              0,
+              Math.PI * 2,
+            )
+            ctx!.fill()
+          }
+        } else {
+          // Splash: a ring of droplets arcing up/out (no ripple ring).
+          ctx!.fillStyle = 'rgba(200,235,255,0.95)'
+          for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2
+            const rr = p * PIXEL * 1.1
+            const lift = -Math.sin(p * Math.PI) * PIXEL * 0.5
+            ctx!.beginPath()
+            ctx!.arc(
+              e.x + Math.cos(a) * rr,
+              e.y + Math.sin(a) * rr * 0.5 + lift,
+              2.5 * (1 - p) + 1,
+              0,
+              Math.PI * 2,
+            )
+            ctx!.fill()
+          }
+        }
+        ctx!.restore()
+      })
     }
 
     function drawPopups(f: number) {
@@ -2758,6 +3032,7 @@ export default function ParkGame() {
       // Dynamic world, pushed down so the sky has room above it.
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
+      updateSlappables(dt) // integrate knocked objects (ball) before drawing them
       drawObjects(wallNow)
       drawButterflies(f)
       updateCat(dt)
@@ -2772,7 +3047,12 @@ export default function ParkGame() {
         interacting: g.cat.interacting,
       })
       const nowMs = performance.now()
-      drawCat(g.cat, undefined, jumpLiftTiles(g.jumpAt, nowMs) * PIXEL)
+      drawCat(
+        g.cat,
+        undefined,
+        jumpLiftTiles(g.jumpAt, nowMs) * PIXEL,
+        slapPhase(g.slapAt, nowMs),
+      )
       // Remote koalas, interpolated toward their latest target and depth-sorted
       // with each other (drawn after the local cat, like all other players).
       if (mp && mp.players.size) {
@@ -2790,7 +3070,8 @@ export default function ParkGame() {
           remoteCat.idle = !moving && p.pose === 'standing'
           remoteCat.interacting = p.interacting
           const rjump = p.jumpAt ? jumpLiftTiles(p.jumpAt, nowMs) * PIXEL : 0
-          drawCat(remoteCat, p.name, rjump)
+          const rslap = p.slapAt ? slapPhase(p.slapAt, nowMs) : 0
+          drawCat(remoteCat, p.name, rjump, rslap)
         }
       }
       ctx!.restore()
@@ -2810,6 +3091,7 @@ export default function ParkGame() {
       ctx!.translate(0, WORLD_OFFSET)
       drawDreamBubble()
       drawFoods()
+      drawEffects(f)
       drawAuthorLabels()
       drawPopups(f)
       ctx!.restore()
@@ -3046,6 +3328,21 @@ export default function ParkGame() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Slap button — dedicated action control (desktop also has the `x`
+                key). A real <button>, so the window touch/pointer handlers skip
+                it (canEngageAt ignores closest('a, button')) and it doesn't start
+                the joystick. Only shown while the hero is in view. */}
+            {atTop && (
+              <button
+                type="button"
+                aria-label="Slap"
+                onClick={() => slapFnRef.current?.()}
+                className="pointer-events-auto fixed bottom-6 left-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.82_0.13_78)]/80 text-2xl shadow-[0_6px_20px_rgba(0,0,0,0.4)] ring-1 ring-white/30 backdrop-blur-sm transition-transform active:scale-90"
+              >
+                🐾
+              </button>
+            )}
 
             {/* Floating touch joystick — spawns at the finger; the knob is moved
                 imperatively (joyKnobRef) each touchmove, so only mount/unmount

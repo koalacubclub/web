@@ -572,6 +572,29 @@ describe('createMultiplayer — presence + stats', () => {
     mp.close()
   })
 
+  it('sendSlap emits a slap request on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+    mp.sendSlap()
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'slap' })
+    mp.close()
+  })
+
+  it('marks a remote player mid-slap on a slapped message', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('b')],
+      now: 0,
+    })
+    expect(mp.players.get('b')?.slapAt).toBeUndefined()
+    ws.receive({ t: 'slapped', id: 'b' })
+    expect(typeof mp.players.get('b')?.slapAt).toBe('number')
+    mp.close()
+  })
+
   it('exposes stats from welcome and merges stats updates, keeping yourVisits', async () => {
     const { createMultiplayer } = await import('./connection')
     const seen: WorldStats[] = []

@@ -25,6 +25,7 @@ import {
   MAX_INBOUND_MSGS_PER_SEC,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
+  SLAP_COOLDOWN_MS,
   sanitizeBuy,
   sanitizeCollect,
   sanitizeName,
@@ -77,6 +78,9 @@ export class GameWorld extends DurableObject<Env> {
   // When each session last started a jump (epoch ms). Ephemeral (jumps are
   // transient): used to gate airborne-food collection to a live jump window.
   private jumpAt = new Map<string, number>()
+
+  // When each session last slapped (epoch ms) — rate-limits the broadcast.
+  private slapAt = new Map<string, number>()
 
   // Server-owned placed decorations (bought with likes). Shared across players,
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
@@ -302,6 +306,15 @@ export class GameWorld extends DurableObject<Env> {
       return
     }
 
+    if (msg.t === 'slap') {
+      // Rate-limited; purely a broadcast so others can play the swipe pose.
+      const last = this.slapAt.get(a.id) ?? 0
+      if (now - last < SLAP_COOLDOWN_MS) return
+      this.slapAt.set(a.id, now)
+      this.broadcast({ t: 'slapped', id: a.id }, a.id)
+      return
+    }
+
     if (msg.t === 'collect') {
       const c = sanitizeCollect(msg)
       if (!c) return
@@ -424,6 +437,7 @@ export class GameWorld extends DurableObject<Env> {
       this.positions.delete(a.id)
       this.rate.delete(a.id)
       this.jumpAt.delete(a.id)
+      this.slapAt.delete(a.id)
       this.broadcast({ t: 'leave', id: a.id }, a.id)
     }
   }
