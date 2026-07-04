@@ -150,6 +150,7 @@ export interface PlacedItem {
   w: number
   h: number
   ownerId: string
+  ownerName: string // buyer's display name at purchase (for on-proximity authorship)
   placedAt: number // epoch ms (server)
   expiresAt: number // epoch ms (server)
 }

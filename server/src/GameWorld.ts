@@ -93,9 +93,19 @@ export class GameWorld extends DurableObject<Env> {
          w        INTEGER NOT NULL,
          h        INTEGER NOT NULL,
          placedAt INTEGER NOT NULL,
-         expiresAt INTEGER NOT NULL
+         expiresAt INTEGER NOT NULL,
+         ownerName TEXT NOT NULL DEFAULT ''
        )`,
     )
+    // Migration: add ownerName to a placed table created before authorship
+    // existed. Throws if the column is already there — ignore.
+    try {
+      sql.exec(
+        "ALTER TABLE placed ADD COLUMN ownerName TEXT NOT NULL DEFAULT ''",
+      )
+    } catch {
+      /* column already exists */
+    }
     // Drop anything already expired, then load the rest into memory.
     sql.exec('DELETE FROM placed WHERE expiresAt <= ?', Date.now())
     for (const r of sql.exec('SELECT * FROM placed').toArray()) {
@@ -108,6 +118,7 @@ export class GameWorld extends DurableObject<Env> {
         w: Number(r.w),
         h: Number(r.h),
         ownerId: String(r.owner),
+        ownerName: String(r.ownerName ?? ''),
         placedAt: Number(r.placedAt),
         expiresAt: Number(r.expiresAt),
       }
@@ -280,14 +291,15 @@ export class GameWorld extends DurableObject<Env> {
         w: b.item.w,
         h: b.item.h,
         ownerId: a.id,
+        ownerName: a.name, // snapshot the buyer's display name for authorship
         placedAt: now,
         expiresAt: now + PLACED_TTL_MS,
       }
       // Persist first, then mirror in memory — so an (unlikely) SQL throw rolls
       // back the whole turn (DO transaction) without leaving an orphan in memory.
       this.ctx.storage.sql.exec(
-        `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt, ownerName)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         item.id,
         item.ownerId,
         item.key,
@@ -298,6 +310,7 @@ export class GameWorld extends DurableObject<Env> {
         item.h,
         item.placedAt,
         item.expiresAt,
+        item.ownerName,
       )
       this.placed.set(item.id, item)
       this.broadcast({ t: 'placed', item }) // everyone, incl. buyer

@@ -422,6 +422,8 @@ describe('GameWorld shop', () => {
     expect(placed).toBeTruthy()
     expect(placed.item.key).toBe('flowers')
     expect(placed.item.ownerId).toBe(a.id)
+    // Authorship: the buyer's display name is stamped on the item.
+    expect(placed.item.ownerName).toBe(a.name)
     // Buyer's wallet dropped by the price.
     const wallet = [...msgs].reverse().find((m) => m.t === 'wallet')
     expect(wallet.likes).toBe(likes - 20)
@@ -441,6 +443,8 @@ describe('GameWorld shop', () => {
     const c = await connect(a.cookie)
     await wait(80)
     const w = c.msgs.find((m) => m.t === 'welcome')
-    expect(w.placed.some((p: any) => p.id === placed.item.id)).toBe(true)
+    const persisted = w.placed.find((p: any) => p.id === placed.item.id)
+    expect(persisted).toBeTruthy()
+    expect(persisted.ownerName).toBe(a.name) // author survives reconnect (SQLite)
   }, 30000)
 })
