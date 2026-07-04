@@ -157,6 +157,13 @@ preventing it.
 `VITE_GAME_WS_URL` are set; otherwise (and if the backend is unreachable) the
 game runs solo. A backend outage never breaks the site.
 
+**The economy is server-owned too (#15).** Coins == likes: the DO awards them on
+its authoritative food-collect and owns the shop — a `buy` is validated (price,
+bounds, no overlap), likes are deducted, and placed items are **shared across
+players** + persisted in SQLite with a server TTL. Food and placed items spawn/
+expire via lazy top-up on player traffic (still no tick). The client never
+reports points or spends locally — it renders server state and sends actions.
+
 **Deploy.** Both halves ship from `main` via CI (Vercel git auto-deploy is off —
 see the `deploy` and `deploy-server` jobs). `wrangler deploy` uses
 `account_id` from `wrangler.jsonc` + the `CLOUDFLARE_API_TOKEN` repo secret;
@@ -174,6 +181,14 @@ with `useSyncExternalStore` (a stable cached snapshot); the game reads/writes vi
 plain imperative getters. This also keeps the economy + placement pure and
 unit-testable without React.
 
+> **Update (#14): the economy is now server-authoritative in multiplayer.** The
+> DO owns coins (== likes), purchases and the shared placed items; `parkStore` is
+> a **server-fed mirror** (`setServerBuyer`/`applyServerWallet`/`applyServerPlaced`)
+> whose `purchase()` routes a `buy` to the server. The store-singleton bridge and
+> the no-React-Context rationale below still hold — only the source of truth moved
+> from localStorage to the server. localStorage remains the **solo** (no-backend)
+> fallback.
+
 Supporting choices:
 
 - **Shared shop sprites.** `client/src/game/sprites.ts` (`drawShopSprite`) draws
@@ -182,15 +197,20 @@ Supporting choices:
   park's base-object look.
 - **Wall-clock TTL.** Placed items expire 2 min after purchase using `Date.now()`
   (`expiresAt`), NOT `frameCount` — the loop pauses off-screen/hidden, so a
-  frame-count TTL would freeze. Stored per-item so a future server can own it.
-- **Non-solid, collision-aware placement.** Bought items never block Koala, and
-  the store spirals out from her tile to a spot overlapping neither other placed
-  items nor the base objects; a full ground returns `'no-room'` and charges
-  nothing.
-- **Local-first, server-ready.** Persistence sits behind a `sync` seam
-  (localStorage today: `kcc-park-coins`/`-best`/`-placed` + a `kcc-device-id`). A
-  server can be layered in later — cache-then-network on load, best-effort
-  optimistic writes, server-wins on refresh — without touching callers.
+  frame-count TTL would freeze. In multiplayer the **server owns `expiresAt`** and
+  sweeps expired items (broadcasting `unplaced`); solo keeps the local sweep.
+- **Non-solid, collision-aware placement.** Bought items never block Koala. The
+  **client** picks the spot (spirals out from her tile, avoiding base objects +
+  placed items; a full ground returns `'no-room'` and charges nothing); in
+  multiplayer the **server** independently validates price, bounds and overlap
+  before it places + charges (client-chosen tile, server-owned decision).
+- **Server-authoritative (multiplayer), local-first (solo).** The `sync` seam is
+  now realized: when connected, `parkStore` is fed by the DO
+  (`applyServerWallet`/`applyServerPlaced`) and purchases route to it via
+  `setServerBuyer` — no localStorage writes. With no backend it falls back to
+  localStorage (`kcc-park-coins`/`-best`/`-placed`). The catalog lives in
+  `shared/protocol.ts` (`SHOP_ITEMS`) so client and server price identically;
+  `client/src/game/shopItems.ts` just re-exports it.
 
 ## Testing notes
 
@@ -201,6 +221,8 @@ Supporting choices:
   handling, self-filtering, throttling and reconnect.
 - Server: the Durable Object is tested in real `workerd` via
   `@cloudflare/vitest-pool-workers` (`server/test/world.test.ts`) — auth, origin
-  gate, relay, position clamp, and the per-session rate limit.
+  gate, relay, position clamp, per-session rate limit, food collect (award /
+  persist / dedupe / out-of-range) and the shop (buy / insufficient / invalid /
+  occupied / shared broadcast / persists across reconnect).
 - e2e: Playwright; its `webServer` builds + previews the production bundle, so
   `pnpm test:e2e` is self-contained.

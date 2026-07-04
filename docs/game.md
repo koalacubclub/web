@@ -3,8 +3,7 @@
 `src/components/ParkGame.tsx` is a self-contained **canvas 2D** mini-game that
 serves as the site hero: Koala walks around a nighttime park and catches food
 that spawns for points. It's a Neko-Atsume-style, cozy flat-cartoon look — all art
-is drawn **procedurally** with `ctx` shapes (no spritesheet), except the drop-in
-food PNGs.
+is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
 
 ## How it's built
 
@@ -65,7 +64,15 @@ food PNGs.
 
 ## Food-collectible system
 
-Config lives at the top of the file:
+> **Multiplayer vs solo.** When connected to the backend, the **server owns food
+> and scoring** (see [decisions.md](./decisions.md) #14): it spawns a shared set,
+> the client asks to collect on proximity, and the server validates + awards
+> "likes" (== coins). The behaviour below is the **solo** (no-backend) fallback;
+> the numbers (`FOODS` table, TTL, radius) are shared in `shared/protocol.ts` so
+> both paths match.
+
+Config lives at the top of the file (presentation) + `shared/protocol.ts` (the
+`FOODS` table — points/weight/tier — shared with the server):
 
 ```ts
 FOODS = [{ key, label, emoji, points, weight, tier }, …]
@@ -74,11 +81,12 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 - **Spawning:** every ~4–9s, up to 3 on screen at once, on a random free ground
   tile (weighted by `weight`, avoiding objects/other food/the cat). Each has a
   ~15s lifespan (blinks before despawning).
-- **Collecting:** walk within ~0.85 tile → score `+= points`, a `+N Label` popup
-  pops, and Koala shows hearts. Rarer/higher-point items (goldfish = 50) spawn
-  less often.
+- **Collecting:** walk within ~0.85 tile → coins `+= points`, a `+N` popup pops,
+  and Koala shows hearts. Rarer/higher-point items (goldfish = 50) spawn less
+  often.
 - **Score:** shown in an on-canvas HUD pill that sits just above the ground line
-  (pinned against the camera pan via `g.hudShift`); the **best score persists** in
+  (pinned against the camera pan via `g.hudShift`). The score is the coin wallet —
+  in multiplayer it's the **server-owned likes total**; solo, the best persists in
   `localStorage` under `kcc-park-best`.
 - **Art:** each food is drawn **procedurally with `ctx` primitives**
   (`drawFoodShape()`) as flat basic-shape art, matching the park's other objects
@@ -94,20 +102,28 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 A **shop** (trigger bottom-right of the hero → a **bottom sheet** that leaves the
 park visible so you can see where things land) spends coins to buy decorations
 that spawn at Koala's tile. It's bridged through a small framework-agnostic store
-so the React UI and the imperative canvas never fight:
+so the React UI and the imperative canvas never fight.
 
-- **`client/src/game/parkStore.ts`** — the single source of truth for the wallet
-  (`coins`/`best`), the placed items, and persistence. React reads it via
-  `useSyncExternalStore` (live balance); the game loop reads/writes plain
-  imperative getters (`getCoins`, `getPlaced`, `setCatTile`) so the 60fps loop
-  never triggers a React re-render. `earn()` replaces the old inline score bump,
-  `purchase()` deducts coins + appends a placed item, `sweepExpired()` drops
-  expired ones.
-- **`client/src/game/shopItems.ts`** — the `SHOP_ITEMS` catalog
-  (`key,label,type,w,h,price`): one source of truth for BOTH the shop UI and the
-  placement footprint. Reuses existing decor (flowers / mushroom / rock / ball /
-  bench / pond / tree) plus three shop-only sprites: `snowcat`, `cardbox`, and a
-  4×4 `house` (a grey cedar-shingle Cape Cod).
+> **Multiplayer vs solo.** When connected, the **server owns the whole economy**
+> (see [decisions.md](./decisions.md) #14/#15): coins == likes, purchases are
+> validated + charged server-side, and placed items are **shared across players**
+> with a server-owned TTL. `parkStore` becomes a server-fed mirror
+> (`setServerBuyer`/`applyServerWallet`/`applyServerPlaced`); `purchase()` sends a
+> `buy` and the item appears when the server broadcasts it. The store details
+> below are how it works, with localStorage as the **solo** fallback.
+
+- **`client/src/game/parkStore.ts`** — the client-side bridge for the wallet
+  (`coins`/`best`) + placed items. React reads it via `useSyncExternalStore`
+  (live balance); the game loop reads/writes plain imperative getters (`getCoins`,
+  `getPlaced`, `setCatTile`) so the 60fps loop never triggers a React re-render.
+  In multiplayer it's **fed by the server** (`applyServerWallet`/`applyServerPlaced`)
+  and `purchase()` routes a `buy` to it (`setServerBuyer`); solo, `earn()` /
+  `purchase()` / `sweepExpired()` mutate it directly and persist to localStorage.
+- **`shared/protocol.ts` → `SHOP_ITEMS`** — the catalog (`key,label,type,w,h,price`)
+  now lives in the shared protocol so the **server** validates purchases against
+  the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
+  Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
+  plus three shop-only sprites: `snowcat`, `cardbox`, and a 4×4 `house`.
 - **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
   primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
   art so a bought tree looks like a park tree. The shop renders the **real item
@@ -123,11 +139,11 @@ so the React UI and the imperative canvas never fight:
   `frameCount`, which pauses with the loop), swept on load and ~once/second during
   play. Fresh items **pop in**; they **blink** in the last 8 s before expiring
   (both wall-clock; skipped under `prefers-reduced-motion`).
-- **Persistence & the future server:** local-first behind a `sync` seam in the
-  store — today localStorage (`kcc-park-coins`/`-best`/`-placed`, plus a
-  `kcc-device-id` + schema version). A server can be layered in later
-  (cache-then-network on load, best-effort optimistic writes, server-wins on
-  refresh) **without touching the game or the shop UI**.
+- **Persistence:** **multiplayer** — coins + placed items live in the Durable
+  Object's SQLite (per-session wallet; shared placed table), fed into `parkStore`
+  over the WebSocket. **Solo** — localStorage (`kcc-park-coins`/`-best`/`-placed`
+  - `kcc-device-id` + schema version) behind the same `sync` seam. Callers (game
+    loop + shop UI) don't change between modes.
 
 ## Rendering & performance
 
@@ -189,6 +205,12 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   latest target (`rx/ry` lerp) so they glide between updates instead of teleporting.
 - **Presence:** a small `data-testid="mp-presence"` badge (`● N in the park`) is
   updated imperatively from the loop to avoid per-frame React re-renders.
+- **Economy (server-owned):** the connection also holds the server's `food` +
+  `placed` maps and the `likes` wallet. The loop renders server food and, on
+  proximity, `sendCollect(id)`s (with a short retry so a momentarily-stale server
+  position can't block a pickup); the shop `sendBuy(key,x,y)`s. Coins/placed are
+  fed into `parkStore` via `onWallet`/`onPlaced` so the HUD + shop read one store.
+  See the Shop section above and [decisions.md](./decisions.md) #14/#15.
 
 The camera transform (`parkCamera.ts`, CSS transform on the `<canvas>`) is
 camera-agnostic for remotes — they're drawn in world space and pan with everyone

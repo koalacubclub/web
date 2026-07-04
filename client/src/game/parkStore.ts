@@ -1,4 +1,4 @@
-// parkStore — the single source of truth for the game economy (the score is a
+// parkStore — the client-side bridge for the game economy (the score is a
 // spendable coin wallet), the shop-placed decorations, and their persistence.
 //
 // It's a framework-agnostic module singleton so the two sides that need it can
@@ -8,10 +8,16 @@
 //     re-render churn on the 60fps loop), and
 //   • the React shop UI subscribes via `useSyncExternalStore` for a live balance.
 //
-// Persistence is local-first behind a small `sync` seam: today localStorage is
-// the store of record; later a server can be layered in here (cache-then-network
-// on load, best-effort optimistic writes on mutate) WITHOUT changing any caller.
+// Source of truth:
+//   • Multiplayer (a backend is configured): the SERVER owns the economy. This
+//     store runs in a server-fed mode — setServerBuyer/applyServerWallet/
+//     applyServerPlaced mirror the server's coins + placed, purchase() routes a
+//     `buy` to the server, and nothing is written to localStorage. See
+//     docs/decisions.md #15.
+//   • Solo (no backend): this store IS the source of truth, persisted to
+//     localStorage behind the small `sync` seam below.
 
+import type { PlacedItem as ServerPlacedItem } from '@koala/shared'
 import { GROUND_ROWS, MAP_COLS } from './constants'
 import { SHOP_ITEMS_BY_KEY } from './shopItems'
 
@@ -138,6 +144,12 @@ let snapshot: ParkSnapshot = { coins, best, placed }
 const listeners = new Set<() => void>()
 let loaded = false
 
+// When connected to the multiplayer backend, the SERVER owns the economy: coins
+// (== likes), purchases and placed items. In that mode this store is a pure
+// mirror fed by applyServer*(), purchases are routed to the server, and nothing
+// is written to localStorage. `serverBuyer` is set (via setServerBuyer) iff so.
+let serverBuyer: ((key: string, x: number, y: number) => void) | null = null
+
 function rebuildSnapshot() {
   snapshot = { coins, best, placed }
 }
@@ -212,9 +224,55 @@ export function setObstacles(rects: Rect[]) {
   obstacles = rects.map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h }))
 }
 
+// ── Server-fed mode (multiplayer: the DO owns the economy) ───────────────────
+// Called by ParkGame with the connection's buy sender when a backend is present
+// (null to return to solo/localStorage). Switching to server mode clears the
+// local wallet/placed until the server's welcome fills them, so a stale
+// localStorage balance never lingers.
+export function setServerBuyer(
+  fn: ((key: string, x: number, y: number) => void) | null,
+) {
+  serverBuyer = fn
+  if (fn) {
+    loaded = true // never read localStorage in server mode
+    coins = 0
+    best = 0
+    placed = []
+    rebuildSnapshot()
+    emit()
+  }
+}
+
+/** Mirror the server's authoritative wallet. */
+export function applyServerWallet(serverCoins: number) {
+  if (serverCoins === coins) return // no change → no re-render
+  coins = serverCoins
+  if (coins > best) best = coins
+  rebuildSnapshot()
+  emit()
+}
+
+/** Replace the placed set from the server (welcome / full resync). */
+export function applyServerPlaced(items: ServerPlacedItem[]) {
+  placed = items.map((p) => ({
+    id: p.id,
+    key: p.key,
+    type: p.type,
+    x: p.x,
+    y: p.y,
+    w: p.w,
+    h: p.h,
+    placedAt: p.placedAt,
+    expiresAt: p.expiresAt,
+  }))
+  rebuildSnapshot()
+  emit()
+}
+
 // ── Mutations ───────────────────────────────────────────────────────────────
 export function earn(points: number) {
   ensureLoaded()
+  if (serverBuyer) return // server credits coins on its authoritative collect
   if (!points) return
   coins += points
   if (coins > best) best = coins
@@ -270,6 +328,13 @@ export function purchase(itemKey: string): PurchaseResult {
   if (!item || coins < item.price) return 'insufficient'
   const spot = findSpot(item.w, item.h)
   if (!spot) return 'no-room'
+  if (serverBuyer) {
+    // Server-authoritative: send the chosen tile; the server validates coins +
+    // overlap, then broadcasts the placed item and our new wallet. We optimistically
+    // report 'ok' for the shop feedback; the placed item appears on the next frame.
+    serverBuyer(item.key, spot.x, spot.y)
+    return 'ok'
+  }
   const now = Date.now()
   const item2: PlacedItem = {
     id: newId(),
@@ -294,6 +359,7 @@ export function purchase(itemKey: string): PurchaseResult {
 // Drop expired placed items. Returns true (and notifies) only if something went.
 export function sweepExpired(now: number = Date.now()): boolean {
   ensureLoaded()
+  if (serverBuyer) return false // the server owns placed-item TTL in this mode
   const live = placed.filter((p) => p.expiresAt > now)
   if (live.length === placed.length) return false
   placed = live
@@ -314,5 +380,6 @@ export function __resetForTests() {
   obstacles = []
   listeners.clear()
   loaded = false
+  serverBuyer = null
   rebuildSnapshot()
 }

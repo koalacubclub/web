@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
+import { COLLECT_RADIUS, FOOD_TTL_MS } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
@@ -198,7 +199,15 @@ interface Food {
   y: number
   born: number
   life: number
+  // Present only for server-owned collectibles (multiplayer).
+  id?: string
+  points?: number
 }
+
+// How often (ms) the client re-asks to collect a food it's standing on. A single
+// request can be rejected while the server's last-known position lags, so we
+// retry until the food is gone (stays well under the inbound rate limit).
+const COLLECT_RETRY_MS = 200
 
 // The minimal shape drawCat needs. Both the local cat (g.cat) and the scratch
 // object used to render each remote koala are structurally this.
@@ -248,6 +257,11 @@ export default function ParkGame() {
     score: 0,
     best: 0,
     nextFoodAt: 180,
+    // Multiplayer collectibles: per-food last collect-request time (retry, not a
+    // permanent block), last-seen likes total, and whether we've synced it.
+    collectCooldowns: new Map<string, number>(),
+    prevLikes: 0,
+    likesSynced: false,
     hudShift: 0, // canvas-px X offset to keep the HUD pinned against the camera pan
     hudShiftY: 0, // canvas-px Y offset (vertical camera), same purpose
     frameCount: 0,
@@ -385,7 +399,14 @@ export default function ParkGame() {
     // Multiplayer: connect to the shared park (null when no backend is
     // configured — e.g. a prod build before the Worker is deployed — in which
     // case the game just runs solo). Torn down in this effect's cleanup.
-    const mp: Multiplayer | null = createMultiplayer()
+    // When connected, the SERVER owns the economy: it feeds the coin wallet +
+    // placed items into parkStore (which the shop UI + HUD read), and purchases
+    // are routed back to it.
+    const mp: Multiplayer | null = createMultiplayer({
+      onWallet: (likes) => parkStore.applyServerWallet(likes),
+      onPlaced: (items) => parkStore.applyServerPlaced(items),
+    })
+    if (mp) parkStore.setServerBuyer(mp.sendBuy)
     // Scratch object reused each frame to render remote koalas without churn.
     const remoteCat: DrawableCat = {
       x: 0,
@@ -1710,21 +1731,57 @@ export default function ParkGame() {
       }
     }
 
+    // Multiplayer: the SERVER owns food + scoring. We ask to collect on
+    // proximity (server validates + awards likes → parkStore via onWallet).
+    // Solo (no backend): the original client-side spawn + pickup + earn.
     function updateFoods() {
-      // Spawn cadence: up to 3 on screen, every ~4–9s.
+      const cat = g.cat
+      if (mp) {
+        const now = Date.now() + mp.clockOffset
+        for (const sf of mp.food.values()) {
+          const age = (now - sf.bornAt) * 0.06 // ms → 60fps-frame units
+          const last = g.collectCooldowns.get(sf.id) ?? 0
+          if (
+            age > 8 &&
+            now - last > COLLECT_RETRY_MS &&
+            Math.hypot(cat.x - sf.x, cat.y - sf.y) < COLLECT_RADIUS
+          ) {
+            g.collectCooldowns.set(sf.id, now)
+            mp.sendCollect(sf.id)
+          }
+        }
+        for (const id of g.collectCooldowns.keys()) {
+          if (!mp.food.has(id)) g.collectCooldowns.delete(id)
+        }
+        // Coins are server-fed into parkStore; when our total rises, pop "+N".
+        if (mp.connected) {
+          if (g.likesSynced && mp.likes > g.prevLikes) {
+            g.popups.push({
+              text: `+${mp.likes - g.prevLikes}`,
+              x: (cat.x + 0.5) * PIXEL,
+              y: cat.y * PIXEL - 6,
+              life: 80,
+            })
+            cat.interacting = true
+          }
+          g.prevLikes = mp.likes
+          g.likesSynced = true
+        } else {
+          g.likesSynced = false
+        }
+        return
+      }
+
+      // --- Solo fallback ---
       if (g.frameCount >= g.nextFoodAt && g.foods.length < 3) {
         spawnFood()
         g.nextFoodAt = g.frameCount + 240 + Math.floor(Math.random() * 300)
       }
-      // Lifespan + collection.
-      const cat = g.cat
       g.foods = g.foods.filter((f) => {
         const age = g.frameCount - f.born
         if (age > f.life) return false
         if (age > 8 && Math.hypot(cat.x - f.x, cat.y - f.y) < 0.85) {
           const def = FOODS_BY_KEY[f.key]
-          // Score is a spendable coin wallet owned by the store (which also
-          // tracks the peak/best and persists both).
           parkStore.earn(def.points)
           g.popups.push({
             text: `+${def.points} ${def.label}`,
@@ -1737,6 +1794,29 @@ export default function ParkGame() {
         }
         return true
       })
+    }
+
+    // Collectibles to render: solo → the local list; multiplayer → the
+    // server-owned set mapped into render shape (born/life derived from the
+    // server clock, clamped so skew can't produce a negative pop-in size).
+    function foodsToRender(): Food[] {
+      if (!mp) return g.foods
+      const now = Date.now() + mp.clockOffset
+      const life = FOOD_TTL_MS * 0.06
+      const out: Food[] = []
+      for (const sf of mp.food.values()) {
+        const ageFrames = Math.max(0, (now - sf.bornAt) * 0.06)
+        out.push({
+          id: sf.id,
+          key: sf.key,
+          x: sf.x,
+          y: sf.y,
+          points: sf.points,
+          born: g.frameCount - ageFrames,
+          life,
+        })
+      }
+      return out
     }
 
     // Collectible food drawn as flat, basic-shape art with `ctx` primitives so
@@ -1948,7 +2028,7 @@ export default function ParkGame() {
 
     function drawFoods() {
       if (!ctx) return
-      g.foods.forEach((f) => {
+      foodsToRender().forEach((f) => {
         const def = FOODS_BY_KEY[f.key]
         const cx = (f.x + 0.5) * PIXEL
         const baseY = (f.y + 0.5) * PIXEL
@@ -2504,6 +2584,7 @@ export default function ParkGame() {
       clearHold()
       document.body.classList.remove('kcc-dragging')
       mp?.close()
+      parkStore.setServerBuyer(null) // back to solo/localStorage economy
     }
   }, [initObjects])
 

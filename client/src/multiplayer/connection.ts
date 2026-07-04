@@ -12,7 +12,10 @@
 
 import type {
   Dir,
+  BuyFailReason,
   CatPose,
+  Food,
+  PlacedItem,
   Player,
   PlayerState,
   ServerMessage,
@@ -37,10 +40,23 @@ export interface RemotePlayer {
 export interface Multiplayer {
   /** Remote players only (never includes self), keyed by session id. */
   readonly players: Map<string, RemotePlayer>
+  /** Server-owned collectibles currently on the map, keyed by food id. */
+  readonly food: Map<string, Food>
+  /** Server-owned placed decorations (shop items), keyed by item id. */
+  readonly placed: Map<string, PlacedItem>
   self: Player | null
   connected: boolean
+  /** This player's authoritative likes total (== coin wallet; server-tracked). */
+  likes: number
+  /** serverNow - clientNow (ms), from welcome. Add to Date.now() to read the
+   *  server clock, so food TTL/pop timing is correct despite client clock skew. */
+  clockOffset: number
   /** Send local koala state; internally throttled to CLIENT_SEND_HZ. */
   sendState(s: PlayerState): void
+  /** Ask the server to collect a food by id; the server validates + awards. */
+  sendCollect(id: string): void
+  /** Ask the server to buy + place a catalog item at a tile; server validates. */
+  sendBuy(key: string, x: number, y: number): void
   close(): void
 }
 
@@ -62,11 +78,19 @@ export const MULTIPLAYER_ENABLED = Boolean(HTTP_BASE && WS_BASE)
 export function createMultiplayer(
   opts: {
     onStatus?: (connected: boolean) => void
+    /** Fired when this player's wallet (likes) changes. */
+    onWallet?: (likes: number) => void
+    /** Fired with the full placed set whenever it changes. */
+    onPlaced?: (placed: PlacedItem[]) => void
+    /** Fired when a buy is rejected by the server. */
+    onBuyFail?: (reason: BuyFailReason) => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
 
   const players = new Map<string, RemotePlayer>()
+  const food = new Map<string, Food>()
+  const placed = new Map<string, PlacedItem>()
   let ws: WebSocket | null = null
   let closed = false
   let retry = 0
@@ -74,11 +98,23 @@ export function createMultiplayer(
 
   const handle: Multiplayer = {
     players,
+    food,
+    placed,
     self: null,
     connected: false,
+    likes: 0,
+    clockOffset: 0,
     sendState,
+    sendCollect,
+    sendBuy,
     close,
   }
+
+  const setLikes = (v: number) => {
+    handle.likes = v
+    opts.onWallet?.(v)
+  }
+  const emitPlaced = () => opts.onPlaced?.([...placed.values()])
 
   const setConnected = (v: boolean) => {
     if (handle.connected !== v) {
@@ -112,8 +148,16 @@ export function createMultiplayer(
     switch (msg.t) {
       case 'welcome':
         handle.self = msg.self
+        handle.clockOffset =
+          typeof msg.now === 'number' ? msg.now - Date.now() : 0
         players.clear()
-        for (const p of msg.players) upsert(p)
+        for (const p of msg.players ?? []) upsert(p)
+        food.clear()
+        for (const f of msg.food ?? []) food.set(f.id, f)
+        placed.clear()
+        for (const it of msg.placed ?? []) placed.set(it.id, it)
+        setLikes(msg.likes ?? 0)
+        emitPlaced()
         break
       case 'join':
         upsert(msg.p)
@@ -133,6 +177,29 @@ export function createMultiplayer(
         }
         break
       }
+      case 'spawn':
+        food.set(msg.f.id, msg.f)
+        break
+      case 'despawn':
+        food.delete(msg.id)
+        break
+      case 'collected':
+        // The server awards likes; only OUR total is echoed back to us.
+        if (handle.self && msg.by === handle.self.id) setLikes(msg.likes)
+        break
+      case 'placed':
+        placed.set(msg.item.id, msg.item)
+        emitPlaced()
+        break
+      case 'unplaced':
+        if (placed.delete(msg.id)) emitPlaced()
+        break
+      case 'wallet':
+        setLikes(msg.likes)
+        break
+      case 'buyfail':
+        opts.onBuyFail?.(msg.reason)
+        break
     }
   }
 
@@ -155,6 +222,9 @@ export function createMultiplayer(
       if (ws === socket) ws = null
       setConnected(false)
       players.clear()
+      food.clear()
+      placed.clear()
+      emitPlaced()
       scheduleReconnect()
     })
     // 'error' is always followed by 'close'; let close handle reconnection.
@@ -205,12 +275,34 @@ export function createMultiplayer(
     }
   }
 
+  // Not throttled — proximity collection is debounced client-side (one request
+  // per food id) and still counts against the per-session inbound rate limit.
+  function sendCollect(id: string) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'collect', id }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  function sendBuy(key: string, x: number, y: number) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'buy', key, x, y }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
   function close() {
     closed = true
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
     setConnected(false)
     players.clear()
+    food.clear()
+    placed.clear()
     if (ws) {
       const s = ws
       ws = null
