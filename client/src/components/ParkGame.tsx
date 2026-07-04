@@ -1799,9 +1799,10 @@ export default function ParkGame() {
       // trail the torso (drawn about the hip pivot since fillRect can't rotate).
       const backRot = airborne ? 0.5 : 0
       const backLen = s * 3 + backStretch
+      const backShift = airborne ? -s * 1.2 : 0 // nudge rear legs toward the tail
       for (const [pivotX, pivotY] of [
-        [-s * 2, s * 4 - legOffset],
-        [s * 0, s * 4 + legOffset],
+        [-s * 2 + backShift, s * 4 - legOffset],
+        [backShift, s * 4 + legOffset],
       ] as const) {
         ctx.save()
         ctx.translate(pivotX, pivotY)
