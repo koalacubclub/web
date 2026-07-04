@@ -156,6 +156,34 @@ so the React UI and the imperative canvas never fight.
   - `kcc-device-id` + schema version) behind the same `sync` seam. Callers (game
     loop + shop UI) don't change between modes.
 
+### Local testing tips
+
+- **Give yourself coins (solo mode).** The solo wallet is just localStorage, so
+  from the browser console:
+
+  ```js
+  localStorage.setItem('kcc-park-coins', '9999')
+  location.reload()
+  ```
+
+  This only works **solo**. In multiplayer the **server** owns the wallet, so a
+  localStorage value is ignored — earn coins by collecting food, or seed the
+  Durable Object's `likes` table.
+
+- **Run solo without the Worker.** In dev the client defaults to a local backend
+  at `ws://localhost:8787` (see `client/src/multiplayer/connection.ts`). To skip
+  running `wrangler` and force solo play, create a **gitignored**
+  `client/.env.local` with empty URLs, then restart `pnpm dev`:
+
+  ```
+  VITE_GAME_HTTP_URL=
+  VITE_GAME_WS_URL=
+  ```
+
+  Empty (not unset) values make `MULTIPLAYER_ENABLED` false, so `createMultiplayer`
+  returns `null` and the game uses the localStorage economy above. Delete the file
+  to go back to the local-server setup.
+
 ## Rendering & performance
 
 - **Device-resolution canvas.** The backing store is sized to ~device pixels —
