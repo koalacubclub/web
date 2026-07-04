@@ -1604,6 +1604,9 @@ export default function ParkGame() {
       // Standing/walking cat (original code)
       const bobY = cat.idle ? Math.sin(g.frameCount * 0.05) * 2 : 0
       const walkBob = !cat.idle ? Math.sin(g.frameCount * 0.2) * 2 : 0
+      // Mid-hop "yay" pose: ears perk, eyes widen, mouth opens, front paws fly up.
+      const airborne = jumpPx > 0
+      const earLift = airborne ? s * 0.9 : 0
 
       // Mid-hop: draw a separate shrinking shadow on the GROUND so the lift reads
       // as height (the body's own shadow below is skipped while airborne).
@@ -1674,15 +1677,15 @@ export default function ParkGame() {
       ctx.ellipse(s * 4.3, s * 1, s * 2.5, s * 2, 0, 0, Math.PI * 2)
       ctx.fill()
 
-      // Ears
+      // Ears (apex lifts a touch when airborne so they read as "perked")
       ctx.fillStyle = NIGHT.catOrange
       ctx.beginPath()
-      ctx.moveTo(s * 1.5, -s * 5.5)
+      ctx.moveTo(s * 1.5, -s * 5.5 - earLift)
       ctx.lineTo(s * 3, -s * 3)
       ctx.lineTo(0, -s * 3)
       ctx.fill()
       ctx.beginPath()
-      ctx.moveTo(s * 6.5, -s * 5.5)
+      ctx.moveTo(s * 6.5, -s * 5.5 - earLift)
       ctx.lineTo(s * 8, -s * 3)
       ctx.lineTo(s * 5, -s * 3)
       ctx.fill()
@@ -1690,7 +1693,7 @@ export default function ParkGame() {
       // Inner ears (light pink)
       ctx.fillStyle = NIGHT.catEar
       ctx.beginPath()
-      ctx.moveTo(s * 1.5, -s * 4.8)
+      ctx.moveTo(s * 1.5, -s * 4.8 - earLift)
       ctx.lineTo(s * 2.7, -s * 3.3)
       ctx.lineTo(s * 0.5, -s * 3.3)
       ctx.fill()
@@ -1700,22 +1703,24 @@ export default function ParkGame() {
       ctx.fillRect(s * 3, -s * 3, s * 1, s * 1.5)
       ctx.fillRect(s * 4.5, -s * 2.8, s * 0.8, s * 1.2)
 
-      // Eyes
+      // Eyes (wide open when airborne — excited)
+      const eyeR = airborne ? s * 1.5 : s * 1.2
+      const pupR = airborne ? s * 0.85 : s * 0.7
       ctx.fillStyle = NIGHT.white
       ctx.beginPath()
-      ctx.arc(s * 3, -s * 0.5, s * 1.2, 0, Math.PI * 2)
+      ctx.arc(s * 3, -s * 0.5, eyeR, 0, Math.PI * 2)
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(s * 5.5, -s * 0.5, s * 1.2, 0, Math.PI * 2)
+      ctx.arc(s * 5.5, -s * 0.5, eyeR, 0, Math.PI * 2)
       ctx.fill()
 
       // Pupils
       ctx.fillStyle = night('#8B9B2A')
       ctx.beginPath()
-      ctx.arc(s * 3.2, -s * 0.4, s * 0.7, 0, Math.PI * 2)
+      ctx.arc(s * 3.2, -s * 0.4, pupR, 0, Math.PI * 2)
       ctx.fill()
       ctx.beginPath()
-      ctx.arc(s * 5.7, -s * 0.4, s * 0.7, 0, Math.PI * 2)
+      ctx.arc(s * 5.7, -s * 0.4, pupR, 0, Math.PI * 2)
       ctx.fill()
 
       // Pupil highlights
@@ -1734,6 +1739,18 @@ export default function ParkGame() {
       ctx.lineTo(s * 4, s * 1)
       ctx.lineTo(s * 4.6, s * 1)
       ctx.fill()
+
+      // Little open "yay" mouth while airborne (with a tiny pink tongue).
+      if (airborne) {
+        ctx.fillStyle = night('#5A2A2A')
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catEar
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 2.2, s * 0.4, s * 0.4, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
 
       // Whiskers
       ctx.strokeStyle = NIGHT.charcoal
@@ -1769,20 +1786,53 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs
-      const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
-      ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
-      ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
-      ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3)
-      ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3)
+      if (airborne) {
+        // "Yay!" — front paws thrown up beside the head, back legs tucked.
+        ctx.strokeStyle = NIGHT.white
+        ctx.lineWidth = s * 1.8
+        ctx.lineCap = 'round'
+        // Raised arms (shoulders → up, flanking the head).
+        ctx.beginPath()
+        ctx.moveTo(s * 0.6, s * 1.5)
+        ctx.lineTo(-s * 0.6, -s * 3.4)
+        ctx.moveTo(s * 5.6, s * 1.5)
+        ctx.lineTo(s * 6.8, -s * 3.4)
+        ctx.stroke()
+        // Tucked, dangling back legs.
+        ctx.beginPath()
+        ctx.moveTo(s * 1.3, s * 5)
+        ctx.lineTo(s * 1.3, s * 6.6)
+        ctx.moveTo(s * 3.3, s * 5)
+        ctx.lineTo(s * 3.3, s * 6.6)
+        ctx.stroke()
+        // Paw tips (raised paws + tucked feet).
+        ctx.fillStyle = NIGHT.white
+        for (const [px, py] of [
+          [-s * 0.6, -s * 3.5],
+          [s * 6.8, -s * 3.5],
+          [s * 1.3, s * 6.7],
+          [s * 3.3, s * 6.7],
+        ] as const) {
+          ctx.beginPath()
+          ctx.arc(px, py, s * 0.95, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      } else {
+        // Legs
+        const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
+        ctx.fillStyle = NIGHT.white
+        ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
+        ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
+        ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3)
+        ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3)
 
-      // Paws
-      ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
-      ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
-      ctx.fillRect(-s * 3, s * 6.5 - legOffset, s * 2, s * 1)
-      ctx.fillRect(-s * 1, s * 6.5 + legOffset, s * 2, s * 1)
+        // Paws
+        ctx.fillStyle = NIGHT.white
+        ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
+        ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
+        ctx.fillRect(-s * 3, s * 6.5 - legOffset, s * 2, s * 1)
+        ctx.fillRect(-s * 1, s * 6.5 + legOffset, s * 2, s * 1)
+      }
 
       ctx.restore()
 
