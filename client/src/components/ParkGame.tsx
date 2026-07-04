@@ -2267,7 +2267,7 @@ export default function ParkGame() {
         // Airborne food floats above its tile (a jump target); its shadow stays
         // on the ground and shrinks to sell the height.
         const lift = f.air ? AIR_HEIGHT_TILES * PIXEL : 0
-        const hover = f.air ? Math.sin(g.frameCount * 0.06 + f.x) * 3 : 0
+        const hover = f.air ? Math.sin(g.frameCount * 0.06 + f.x) * 5 : 0
         const shadowScale = f.air ? Math.max(0.5, 1 - lift / (PIXEL * 3)) : 1
         const cy = baseY + bob - lift + hover
         ctx.globalAlpha = blink
@@ -2295,6 +2295,41 @@ export default function ParkGame() {
           Math.PI * 2,
         )
         ctx.fill()
+
+        // Airborne food wears little flapping wings so it's unmistakably a
+        // jump target (drawn behind the food body). Ground food has none.
+        if (f.air) {
+          const flap = Math.sin(g.frameCount * 0.35) * 0.5 // radians
+          const wingW = size * 0.62
+          for (const dir of [-1, 1] as const) {
+            ctx.save()
+            ctx.translate(cx + dir * size * 0.2, cy - size * 0.05)
+            ctx.rotate(dir * (0.3 + flap)) // spread outward, then flap
+            ctx.scale(dir, 1)
+            ctx.fillStyle = 'rgba(255,253,245,0.95)'
+            ctx.strokeStyle = 'rgba(150,160,190,0.55)'
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.ellipse(
+              wingW * 0.5,
+              0,
+              wingW * 0.5,
+              wingW * 0.3,
+              0,
+              0,
+              Math.PI * 2,
+            )
+            ctx.fill()
+            ctx.stroke()
+            // a feather crease
+            ctx.strokeStyle = 'rgba(150,160,190,0.4)'
+            ctx.beginPath()
+            ctx.moveTo(wingW * 0.15, 0)
+            ctx.lineTo(wingW * 0.92, 0)
+            ctx.stroke()
+            ctx.restore()
+          }
+        }
 
         // Flat basic-shape sprite, matching the rest of the park's art.
         drawFoodShape(f.key, cx, cy, size, def.emoji)
