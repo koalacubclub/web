@@ -128,7 +128,7 @@ so the React UI and the imperative canvas never fight.
   the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
   Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
   plus shop-only sprites: `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
-- **Portable radio (interactive):** the `radio` sprite plays a gentle looping
+- **Boombox (interactive):** the 2×1 `radio` sprite plays a gentle looping
   chiptune when Koala walks within ~2.5 tiles of it — its speakers pulse and music
   notes drift up. The tune is a quiet C-pentatonic loop synthesised with the Web
   Audio API in `client/src/game/radio.ts` (created lazily after a user gesture,

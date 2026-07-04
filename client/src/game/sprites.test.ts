@@ -66,13 +66,13 @@ describe('drawShopSprite night tinting', () => {
   it('draws drifting music notes only when the radio is playing', () => {
     const NOTE = '#FFE97A' // a bright (un-tinted) note colour
     const idle = recorder()
-    drawShopSprite(idle.ctx, { type: 'radio', x: 2, y: 2, w: 1, h: 1 }, 0, {
+    drawShopSprite(idle.ctx, { type: 'radio', x: 2, y: 2, w: 2, h: 1 }, 0, {
       night: true,
       playing: false,
     })
     const live = recorder()
     // frameCount chosen so a note is mid-rise (alpha > 0).
-    drawShopSprite(live.ctx, { type: 'radio', x: 2, y: 2, w: 1, h: 1 }, 20, {
+    drawShopSprite(live.ctx, { type: 'radio', x: 2, y: 2, w: 2, h: 1 }, 20, {
       night: true,
       playing: true,
     })

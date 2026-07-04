@@ -127,14 +127,7 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
     price: 70,
   },
   { key: 'bench', label: 'Park bench', type: 'bench', w: 2, h: 1, price: 90 },
-  {
-    key: 'radio',
-    label: 'Portable radio',
-    type: 'radio',
-    w: 1,
-    h: 1,
-    price: 120,
-  },
+  { key: 'radio', label: 'Boombox', type: 'radio', w: 2, h: 1, price: 120 },
   { key: 'pond', label: 'Pond', type: 'pond', w: 3, h: 2, price: 150 },
   { key: 'tree', label: 'Tree', type: 'tree', w: 2, h: 2, price: 180 },
   {
