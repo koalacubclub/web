@@ -156,7 +156,10 @@ const ABILITY_META: Record<
 // in a quarter-arc hugging it (top → left), so the cluster stays compact.
 const JUMP_SIZE = 60
 const ARC_BTN = 42
-const ARC_R = 60 // arc radius from the jump centre
+// Radius from the jump centre. Must be large enough that adjacent arc buttons
+// (30° apart) don't overlap: chord = 2·R·sin15° ≥ ARC_BTN ⇒ R ≥ ~81. Use 88 for
+// a comfortable gap.
+const ARC_R = 88
 const ARC = [
   { a: 'dash' as const, deg: 90 }, // straight above jump
   { a: 'bite' as const, deg: 120 },

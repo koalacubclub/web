@@ -131,7 +131,9 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                 transition={{ duration: 0.18 }}
                 onPointerDownCapture={(e) => e.stopPropagation()}
                 onTouchStartCapture={(e) => e.stopPropagation()}
-                className="absolute top-[calc(100%+10px)] right-0 w-72 rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md"
+                /* Anchored to the viewport (not the gear) so the 288px sheet can't
+                   clip off the left edge on phones (body is overflow-x:hidden). */
+                className="fixed right-4 top-14 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7 sm:top-[4.25rem]"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span
