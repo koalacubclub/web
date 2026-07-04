@@ -8,6 +8,7 @@ import type {
   ServerMessage,
 } from '@koala/shared'
 import {
+  ACTIVE_WINDOW_MS,
   COLLECT_RADIUS,
   FOOD_SPAWN_COOLDOWN_MS,
   FOOD_TTL_MS,
@@ -90,6 +91,17 @@ export class GameWorld extends DurableObject<Env> {
          updated INTEGER NOT NULL
        )`,
     )
+    // A durable ledger of every session that has ever joined this world — one row
+    // per session, with a visit counter and a last-seen stamp. Powers the Settings
+    // stats (total sessions ever, active in the last 24h, this session's visits).
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS sessions (
+         session   TEXT PRIMARY KEY,
+         firstSeen INTEGER NOT NULL,
+         lastSeen  INTEGER NOT NULL,
+         visits    INTEGER NOT NULL DEFAULT 0
+       )`,
+    )
     sql.exec(
       `CREATE TABLE IF NOT EXISTS placed (
          id       TEXT PRIMARY KEY,
@@ -148,6 +160,15 @@ export class GameWorld extends DurableObject<Env> {
     const name = stored ?? url.searchParams.get('name') ?? 'Koala'
     if (!stored) this.saveName(id, name)
 
+    // Is this session already present (e.g. a second tab)? A connect only counts
+    // as a fresh "visit" when the session was fully offline beforehand — checked
+    // before acceptWebSocket() so the new socket isn't in the set yet.
+    const rejoining = this.ctx
+      .getWebSockets()
+      .some(
+        (ws) => (ws.deserializeAttachment() as Attachment | null)?.id === id,
+      )
+
     const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server)
     // Seed from any position this session already has (a second tab), else spawn.
@@ -176,6 +197,9 @@ export class GameWorld extends DurableObject<Env> {
     // Refresh the collectibles + placed items on join, then hand the newcomer
     // the current world plus their stored likes total.
     const nowJoin = Date.now()
+    // Record the visit (bumps the counter only for a genuinely new arrival, but
+    // always refreshes last-seen), then read the stats for this viewer.
+    const yourVisits = this.touchSession(id, nowJoin, !rejoining)
     this.maybeSpawn(nowJoin)
     this.sweepPlaced(nowJoin)
     const placedItems = [...this.placed.values()]
@@ -187,11 +211,17 @@ export class GameWorld extends DurableObject<Env> {
       placed: placedItems,
       authors: this.authorsFor(placedItems),
       likes: this.getLikes(id),
+      stats: { ...this.globalStats(nowJoin), yourVisits },
       now: nowJoin,
     })
 
     // Announce the newcomer to everyone else.
     this.broadcast({ t: 'join', p: self }, id)
+    // A brand-new session changes the global totals — push them to everyone else
+    // so open Settings menus refresh (rejoins don't move these numbers).
+    if (!rejoining) {
+      this.broadcast({ t: 'stats', ...this.globalStats(nowJoin) }, id)
+    }
 
     return new Response(null, { status: 101, webSocket: client })
   }
@@ -401,6 +431,49 @@ export class GameWorld extends DurableObject<Env> {
       )
       .one()
     return Number(row.likes)
+  }
+
+  // ---- session ledger + stats (durable) ----
+
+  /** Upsert a session row: refresh last-seen, and add one visit when `newVisit`.
+   *  Returns this session's total visit count. */
+  private touchSession(id: string, now: number, newVisit: boolean): number {
+    const inc = newVisit ? 1 : 0
+    const row = this.ctx.storage.sql
+      .exec(
+        `INSERT INTO sessions (session, firstSeen, lastSeen, visits) VALUES (?, ?, ?, ?)
+         ON CONFLICT(session) DO UPDATE SET
+           lastSeen = excluded.lastSeen,
+           visits = visits + ?
+         RETURNING visits`,
+        id,
+        now,
+        now,
+        inc,
+        inc,
+      )
+      .one()
+    return Number(row.visits)
+  }
+
+  /** Global (same-for-everyone) stats: distinct sessions ever + in the last 24h. */
+  private globalStats(now: number): {
+    active24h: number
+    totalSessions: number
+  } {
+    const sql = this.ctx.storage.sql
+    const active24h = Number(
+      sql
+        .exec(
+          'SELECT COUNT(*) AS n FROM sessions WHERE lastSeen > ?',
+          now - ACTIVE_WINDOW_MS,
+        )
+        .one().n,
+    )
+    const totalSessions = Number(
+      sql.exec('SELECT COUNT(*) AS n FROM sessions').one().n,
+    )
+    return { active24h, totalSessions }
   }
 
   // ---- collectibles (no game tick: lazy top-up on player traffic) ----

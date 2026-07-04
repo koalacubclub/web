@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { WorldStats } from '@koala/shared'
 import type { Multiplayer } from './connection'
 
 // Minimal controllable WebSocket stand-in (jsdom has no WebSocket). Tests grab
@@ -492,5 +493,86 @@ describe('createMultiplayer — authors directory', () => {
     // A rename relabels ALL of that owner's items via one map update.
     ws.receive({ t: 'renamed', id: 'u1', name: 'Pixel' })
     expect(mp.authors.get('u1')).toBe('Pixel')
+  })
+})
+
+describe('createMultiplayer — presence + stats', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_GAME_HTTP_URL', 'http://localhost:8787')
+    vi.stubEnv('VITE_GAME_WS_URL', 'ws://localhost:8787')
+    FakeWebSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('emits the roster (self + remotes) on welcome/join/leave', async () => {
+    const { createMultiplayer } = await import('./connection')
+    let roster: { id: string; name: string; self: boolean }[] = []
+    const mp = createMultiplayer({
+      onPresence: (r) => (roster = r),
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('a')],
+      now: 0,
+    })
+    expect(roster.map((p) => p.id).sort()).toEqual(['a', 'self'])
+    expect(roster.find((p) => p.id === 'self')?.self).toBe(true)
+    expect(roster.find((p) => p.id === 'a')?.self).toBe(false)
+
+    ws.receive({ t: 'join', p: player('b') })
+    expect(roster.map((p) => p.id).sort()).toEqual(['a', 'b', 'self'])
+
+    ws.receive({ t: 'leave', id: 'a' })
+    expect(roster.map((p) => p.id).sort()).toEqual(['b', 'self'])
+
+    // Disconnect empties the roster.
+    ws.close()
+    expect(roster).toEqual([])
+    mp.close()
+  })
+
+  it('exposes stats from welcome and merges stats updates, keeping yourVisits', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const seen: WorldStats[] = []
+    const mp = createMultiplayer({
+      onStats: (s) => seen.push(s),
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      stats: { active24h: 3, totalSessions: 10, yourVisits: 4 },
+      now: 0,
+    })
+    expect(mp.stats).toEqual({ active24h: 3, totalSessions: 10, yourVisits: 4 })
+
+    // A stats broadcast carries only the globals; yourVisits is preserved.
+    ws.receive({ t: 'stats', active24h: 5, totalSessions: 12 })
+    expect(mp.stats).toEqual({ active24h: 5, totalSessions: 12, yourVisits: 4 })
+    expect(seen.at(-1)).toEqual({
+      active24h: 5,
+      totalSessions: 12,
+      yourVisits: 4,
+    })
+    mp.close()
   })
 })

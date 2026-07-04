@@ -35,4 +35,25 @@ describe('BottomBar', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
     expect(rename).toHaveBeenCalledWith('Pixel')
   })
+
+  it('lists online players and world stats in the settings menu', () => {
+    store.applyServerPresence([
+      { id: 'a', name: 'Alice', self: true },
+      { id: 'b', name: 'Bob', self: false },
+    ])
+    store.applyServerStats({ active24h: 12, totalSessions: 345, yourVisits: 7 })
+    render(<BottomBar atTop={true} />)
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+
+    // Roster (self is tagged "you").
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('Bob')).toBeInTheDocument()
+    expect(screen.getByText('you')).toBeInTheDocument()
+
+    // Durable stats.
+    expect(screen.getByText('Active (24h)')).toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(screen.getByText('345')).toBeInTheDocument()
+    expect(screen.getByText('7')).toBeInTheDocument()
+  })
 })

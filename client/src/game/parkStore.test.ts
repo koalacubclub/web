@@ -167,3 +167,30 @@ describe('parkStore — display name (server-fed)', () => {
     expect(() => store.rename('Solo')).not.toThrow()
   })
 })
+
+describe('parkStore — presence + stats (server-fed)', () => {
+  it('mirrors the roster and stats into the snapshot', () => {
+    expect(store.getSnapshot().online).toEqual([])
+    expect(store.getSnapshot().stats).toBeNull()
+
+    store.applyServerPresence([{ id: 'a', name: 'Alice', self: true }])
+    store.applyServerStats({ active24h: 2, totalSessions: 9, yourVisits: 3 })
+
+    expect(store.getSnapshot().online).toEqual([
+      { id: 'a', name: 'Alice', self: true },
+    ])
+    expect(store.getSnapshot().stats).toEqual({
+      active24h: 2,
+      totalSessions: 9,
+      yourVisits: 3,
+    })
+  })
+
+  it('clears presence + stats when switching to server-fed mode', () => {
+    store.applyServerPresence([{ id: 'a', name: 'Alice', self: true }])
+    store.applyServerStats({ active24h: 2, totalSessions: 9, yourVisits: 3 })
+    store.setServerBuyer(() => {}) // (re)entering multiplayer resets the mirror
+    expect(store.getSnapshot().online).toEqual([])
+    expect(store.getSnapshot().stats).toBeNull()
+  })
+})

@@ -238,7 +238,6 @@ export default function ParkGame() {
     lightboxRef.current = false
     setLightbox(false)
   }, [])
-  const presenceRef = useRef<HTMLDivElement>(null)
   const gameRef = useRef({
     cat: {
       x: 9,
@@ -408,6 +407,8 @@ export default function ParkGame() {
       onWallet: (likes) => parkStore.applyServerWallet(likes),
       onPlaced: (items) => parkStore.applyServerPlaced(items),
       onName: (name) => parkStore.applyServerName(name),
+      onPresence: (roster) => parkStore.applyServerPresence(roster),
+      onStats: (stats) => parkStore.applyServerStats(stats),
     })
     if (mp) {
       parkStore.setServerBuyer(mp.sendBuy)
@@ -2516,14 +2517,8 @@ export default function ParkGame() {
       ctx!.restore()
 
       updateCamera()
-      // (The score/likes HUD now lives in the DOM BottomBar, not on the canvas.)
-
-      // Bare-minimum presence readout (imperative to avoid per-frame React
-      // re-renders). Empty string hides it when solo / disconnected.
-      if (presenceRef.current) {
-        presenceRef.current.textContent =
-          mp && mp.connected ? `● ${mp.players.size + 1} in the park` : ''
-      }
+      // (The score/likes HUD + the presence roster now live in the DOM
+      // BottomBar / Settings menu, not on the canvas.)
 
       if (active()) animId = requestAnimationFrame(gameLoop)
     }
@@ -2636,13 +2631,6 @@ export default function ParkGame() {
           height: 'auto',
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
-      />
-      {/* Presence badge — updated imperatively by the game loop. Bare-minimum
-          UI to prove the multiplayer session is live. */}
-      <div
-        ref={presenceRef}
-        data-testid="mp-presence"
-        className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 tabular-nums backdrop-blur-sm empty:hidden"
       />
       {/* Hotspot tooltip + photo lightbox are portalled to <body>: the fixed hero
           sits in a z-0 stacking context, so rendering them here would trap them

@@ -578,3 +578,55 @@ describe('GameWorld authorship follows rename (directory)', () => {
     expect(w.authors[a.id]).toBe('Pixel')
   }, 30000)
 })
+
+// ---- world stats (session ledger) ----
+
+describe('GameWorld stats', () => {
+  it('welcomes a session with world stats (visits, 24h, total)', async () => {
+    const a = await session()
+    const { msgs } = await connect(a.cookie)
+    await wait(50)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w.stats).toBeTruthy()
+    expect(w.stats.yourVisits).toBe(1) // first visit for this fresh session
+    expect(w.stats.totalSessions).toBeGreaterThanOrEqual(1)
+    expect(w.stats.active24h).toBeGreaterThanOrEqual(1)
+  })
+
+  it('counts a reconnect as another visit for the same session', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    expect(first.msgs.find((m) => m.t === 'welcome').stats.yourVisits).toBe(1)
+    first.ws.close()
+    await wait(50)
+    const second = await connect(a.cookie)
+    await wait(50)
+    expect(second.msgs.find((m) => m.t === 'welcome').stats.yourVisits).toBe(2)
+  })
+
+  it('does not count a second concurrent tab as a new visit', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    expect(first.msgs.find((m) => m.t === 'welcome').stats.yourVisits).toBe(1)
+    // Second socket, SAME session, while the first is still open.
+    const second = await connect(a.cookie)
+    await wait(50)
+    expect(second.msgs.find((m) => m.t === 'welcome').stats.yourVisits).toBe(1)
+  })
+
+  it('broadcasts refreshed global stats to peers when a new session joins', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    await wait(50)
+    const before = msgsA.find((m) => m.t === 'welcome').stats.totalSessions
+    // A brand-new session joins → existing peers get a stats update.
+    const b = await session()
+    await connect(b.cookie)
+    await wait(80)
+    const statsMsg = [...msgsA].reverse().find((m) => m.t === 'stats')
+    expect(statsMsg).toBeTruthy()
+    expect(statsMsg.totalSessions).toBeGreaterThan(before)
+  })
+})

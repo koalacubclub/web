@@ -17,8 +17,9 @@
 //   • Solo (no backend): this store IS the source of truth, persisted to
 //     localStorage behind the small `sync` seam below.
 
-import type { PlacedItem as ServerPlacedItem } from '@koala/shared'
+import type { PlacedItem as ServerPlacedItem, WorldStats } from '@koala/shared'
 import { PLACED_TTL_MS } from '@koala/shared'
+import type { OnlinePlayer } from '@/multiplayer/connection'
 import { GROUND_ROWS, MAP_COLS } from './constants'
 import { SHOP_ITEMS_BY_KEY } from './shopItems'
 
@@ -45,6 +46,8 @@ export interface ParkSnapshot {
   best: number
   placed: PlacedItem[]
   name: string // this player's display name (server-fed in MP; '' in solo)
+  online: OnlinePlayer[] // live roster (self + remotes); empty in solo/disconnected
+  stats: WorldStats | null // durable world stats; null in solo/until welcome
 }
 
 export type PurchaseResult = 'ok' | 'insufficient' | 'no-room'
@@ -126,6 +129,8 @@ const sync = {
       best: Number(lsGet(BEST_KEY)) || 0,
       placed: parsePlaced(lsGet(PLACED_KEY)),
       name: '', // names are server-owned; solo has none
+      online: [], // presence + stats are multiplayer-only
+      stats: null,
     }
   },
   saveWallet(coins: number, best: number) {
@@ -147,7 +152,16 @@ let groundRows = GROUND_ROWS
 let obstacles: Rect[] = [] // static base-object footprints (set once by the game)
 
 let selfName = '' // this player's display name (server-fed in MP)
-let snapshot: ParkSnapshot = { coins, best, placed, name: selfName }
+let online: OnlinePlayer[] = [] // live roster (server-fed in MP)
+let stats: WorldStats | null = null // durable world stats (server-fed in MP)
+let snapshot: ParkSnapshot = {
+  coins,
+  best,
+  placed,
+  name: selfName,
+  online,
+  stats,
+}
 const listeners = new Set<() => void>()
 let loaded = false
 
@@ -159,7 +173,7 @@ let serverBuyer: ((key: string, x: number, y: number) => void) | null = null
 let serverRenamer: ((name: string) => void) | null = null
 
 function rebuildSnapshot() {
-  snapshot = { coins, best, placed, name: selfName }
+  snapshot = { coins, best, placed, name: selfName, online, stats }
 }
 function emit() {
   for (const cb of listeners) cb()
@@ -247,6 +261,8 @@ export function setServerBuyer(
     best = 0
     placed = []
     selfName = ''
+    online = []
+    stats = null
     rebuildSnapshot()
     emit()
   }
@@ -280,6 +296,20 @@ export function applyServerWallet(serverCoins: number) {
 export function applyServerName(name: string) {
   if (name === selfName) return
   selfName = name
+  rebuildSnapshot()
+  emit()
+}
+
+/** Mirror the server's live roster (self + remotes). */
+export function applyServerPresence(roster: OnlinePlayer[]) {
+  online = roster
+  rebuildSnapshot()
+  emit()
+}
+
+/** Mirror the server's durable world stats. */
+export function applyServerStats(next: WorldStats) {
+  stats = next
   rebuildSnapshot()
   emit()
 }
@@ -416,5 +446,7 @@ export function __resetForTests() {
   serverBuyer = null
   serverRenamer = null
   selfName = ''
+  online = []
+  stats = null
   rebuildSnapshot()
 }
