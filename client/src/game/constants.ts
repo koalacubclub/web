@@ -56,7 +56,8 @@ export const COLORS = {
 const NIGHT_S = [120, 80, 180]
 const _nightCache = new Map<string, string>()
 export function night(color: string): string {
-  if (color[0] !== '#' || (color.length !== 7 && color.length !== 4)) return color
+  if (color[0] !== '#' || (color.length !== 7 && color.length !== 4))
+    return color
   const hit = _nightCache.get(color)
   if (hit) return hit
   let h = color.slice(1)
