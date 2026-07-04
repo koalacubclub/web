@@ -511,18 +511,43 @@ describe('GameWorld names', () => {
   })
 })
 
-describe('GameWorld names (unicode)', () => {
-  it('caps by code points and never stores a split/lone surrogate', async () => {
+describe('GameWorld names (allowlist + injection safety)', () => {
+  it('strips emoji/symbols to the allowed character set', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
-    ws.send(JSON.stringify({ t: 'setName', name: '😀'.repeat(25) }))
+    ws.send(
+      JSON.stringify({
+        t: 'setName',
+        name: 'Pixel \u{1F600}\u{1F3AE} Koala!;',
+      }),
+    )
     await wait(80)
     const rn = msgs.find((m) => m.t === 'renamed' && m.id === a.id)
     expect(rn).toBeTruthy()
-    expect([...rn.name].length).toBeLessThanOrEqual(NAME_MAX)
-    const loneSurrogate =
-      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
-    expect(loneSurrogate.test(rn.name)).toBe(false)
+    expect(rn.name).toBe('Pixel Koala') // emoji + ! + ; dropped, spaces collapsed
+    const before = msgs.filter((m) => m.t === 'renamed').length
+    ws.send(
+      JSON.stringify({ t: 'setName', name: '\u{1F600}\u{1F600}\u{1F600}' }),
+    )
+    await wait(80)
+    expect(msgs.filter((m) => m.t === 'renamed').length).toBe(before)
+  })
+
+  it('stores a SQL-injection-style name as harmless text and keeps working', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'setName', name: "Rob'; DROP TABLE names;--" }))
+    await wait(80)
+    const rn = msgs.find((m) => m.t === 'renamed' && m.id === a.id)
+    expect(rn).toBeTruthy()
+    expect(rn.name).not.toContain(';') // stripped by the allowlist
+    // The `names` table is intact — a later rename still works + persists.
+    ws.send(JSON.stringify({ t: 'setName', name: 'Safe' }))
+    await wait(80)
+    const b = await connect(a.cookie)
+    await wait(50)
+    expect(b.msgs.find((m) => m.t === 'welcome')?.self.name).toBe('Safe')
   })
 })
