@@ -4,6 +4,7 @@ import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
+import { NIGHT, night } from '@/game/constants'
 import * as parkStore from '@/game/parkStore'
 
 /**
@@ -340,14 +341,14 @@ export default function ParkGame() {
       { type: 'photo', photo: true, x: 17, y: 8, w: 1, h: 1 },
     ]
     g.butterflies = [
-      { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
+      { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: NIGHT.butterfly },
       {
         x: 300,
         y: 120,
         vx: -0.3,
         vy: 0.5,
         timer: Math.PI,
-        color: COLORS.flower1,
+        color: NIGHT.flower1,
       },
       {
         x: 500,
@@ -355,7 +356,7 @@ export default function ParkGame() {
         vx: 0.4,
         vy: -0.2,
         timer: Math.PI / 2,
-        color: COLORS.fishBowl,
+        color: NIGHT.fishBowl,
       },
     ]
   }, [])
@@ -944,11 +945,11 @@ export default function ParkGame() {
       const jy = (rng() - 0.5) * PIXEL * 0.12
 
       // Trunk (original fixed shape).
-      ctx.fillStyle = COLORS.treeTrunk
+      ctx.fillStyle = NIGHT.treeTrunk
       ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
 
       // Main (darker) canopy blob.
-      ctx.fillStyle = COLORS.treeLeaves
+      ctx.fillStyle = NIGHT.treeLeaves
       ctx.beginPath()
       ctx.arc(
         x + PIXEL + jx,
@@ -960,7 +961,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Two lighter blobs (upper-left + upper-right), each slightly jittered.
-      ctx.fillStyle = COLORS.treeLeavesLight
+      ctx.fillStyle = NIGHT.treeLeavesLight
       ctx.beginPath()
       ctx.arc(
         x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
@@ -985,12 +986,12 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
-      ctx.fillStyle = COLORS.bench
+      ctx.fillStyle = NIGHT.bench
       ctx.fillRect(x + SCALE * 3, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
       ctx.fillRect(x + PIXEL * 1.5, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-      ctx.fillStyle = COLORS.benchLight
+      ctx.fillStyle = NIGHT.benchLight
       ctx.fillRect(x, y + PIXEL * 0.3, PIXEL * 2, SCALE * 4)
-      ctx.fillStyle = COLORS.bench
+      ctx.fillStyle = NIGHT.bench
       ctx.fillRect(x, y + PIXEL * 0.2, PIXEL * 2, SCALE * 2)
       ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
     }
@@ -1002,11 +1003,11 @@ export default function ParkGame() {
       // Per-patch randomness (seeded by tile position) so each flower cluster has
       // its own count / colours / sizes / scatter instead of all looking alike.
       const palette = [
-        COLORS.flower1,
-        COLORS.flower2,
-        COLORS.flower3,
-        COLORS.heart,
-        COLORS.butterfly,
+        NIGHT.flower1,
+        NIGHT.flower2,
+        NIGHT.flower3,
+        NIGHT.heart,
+        NIGHT.butterfly,
       ]
       const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
       const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
@@ -1017,13 +1018,13 @@ export default function ParkGame() {
         const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
         const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
         const stemH = SCALE * 4
-        ctx.fillStyle = COLORS.grassDark
+        ctx.fillStyle = NIGHT.grassDark
         ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
         ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
         ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
         ctx.fill()
-        ctx.fillStyle = COLORS.fishBowl
+        ctx.fillStyle = NIGHT.fishBowl
         ctx.beginPath()
         ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
         ctx.fill()
@@ -1036,7 +1037,7 @@ export default function ParkGame() {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       const wobble = Math.sin(g.frameCount * 0.03) * 2
-      ctx.fillStyle = COLORS.water
+      ctx.fillStyle = NIGHT.water
       ctx.beginPath()
       ctx.ellipse(
         x + PIXEL * 1.5,
@@ -1048,7 +1049,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = COLORS.waterLight
+      ctx.fillStyle = NIGHT.waterLight
       ctx.beginPath()
       ctx.ellipse(
         x + PIXEL * 1.2,
@@ -1064,7 +1065,7 @@ export default function ParkGame() {
         const angle = (i / 6) * Math.PI * 2
         const sx = x + PIXEL * 1.5 + Math.cos(angle) * PIXEL * 1.3
         const sy = y + PIXEL + Math.sin(angle) * PIXEL * 0.7
-        ctx.fillStyle = i % 2 === 0 ? COLORS.stone : COLORS.stoneDark
+        ctx.fillStyle = i % 2 === 0 ? NIGHT.stone : NIGHT.stoneDark
         ctx.beginPath()
         ctx.arc(sx, sy, SCALE * 2, 0, Math.PI * 2)
         ctx.fill()
@@ -1088,7 +1089,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = '#FF6B6B'
+      ctx.fillStyle = night('#FF6B6B')
       ctx.beginPath()
       ctx.arc(
         x + PIXEL * 0.5,
@@ -1098,7 +1099,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = COLORS.fishBowl
+      ctx.fillStyle = NIGHT.fishBowl
       ctx.beginPath()
       ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.4 - bounce, SCALE, 0, Math.PI * 2)
       ctx.fill()
@@ -1108,7 +1109,7 @@ export default function ParkGame() {
       if (!ctx) return
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
-      ctx.fillStyle = COLORS.stone
+      ctx.fillStyle = NIGHT.stone
       ctx.beginPath()
       ctx.ellipse(
         x + PIXEL * 0.5,
@@ -1228,7 +1229,7 @@ export default function ParkGame() {
       ctx.ellipse(0, h * 0.5, w * 0.5, PIXEL * 0.08, 0, 0, Math.PI * 2)
       ctx.fill()
       // Polaroid frame.
-      ctx.fillStyle = '#FBFBF7'
+      ctx.fillStyle = night('#FBFBF7')
       ctx.beginPath()
       ctx.roundRect(-w / 2, -h / 2, w, h, SCALE)
       ctx.fill()
@@ -1252,7 +1253,7 @@ export default function ParkGame() {
         ctx.drawImage(heroImg, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh)
         ctx.restore()
       } else {
-        ctx.fillStyle = '#DDD7C8'
+        ctx.fillStyle = night('#DDD7C8')
         ctx.fillRect(ix, iy, iw, ih)
       }
       ctx.restore()
@@ -1276,7 +1277,7 @@ export default function ParkGame() {
         ctx.beginPath()
         ctx.ellipse(b.x + 3, b.y, 4, 3 + wingFlap, 0.3, 0, Math.PI * 2)
         ctx.fill()
-        ctx.fillStyle = COLORS.charcoal
+        ctx.fillStyle = NIGHT.charcoal
         ctx.fillRect(b.x - 1, b.y - 2, 2, 4)
       })
     }
@@ -1320,37 +1321,37 @@ export default function ParkGame() {
         ctx.fill()
 
         // Body (flat oval, lying down)
-        ctx.fillStyle = COLORS.catLight
+        ctx.fillStyle = NIGHT.catLight
         ctx.beginPath()
         ctx.ellipse(0, s * 3, s * 6, s * 3, 0, 0, Math.PI * 2)
         ctx.fill()
 
         // White belly (underside visible when lying)
-        ctx.fillStyle = COLORS.white
+        ctx.fillStyle = NIGHT.white
         ctx.beginPath()
         ctx.ellipse(0, s * 4.5, s * 4, s * 1.8, 0, 0, Math.PI * 2)
         ctx.fill()
 
         // Tabby stripes on body
-        ctx.fillStyle = COLORS.catStripe
+        ctx.fillStyle = NIGHT.catStripe
         for (let i = 0; i < 3; i++) {
           ctx.fillRect(-s * 4 + i * s * 3, s * 1.5, s * 1.5, s * 2.5)
         }
 
         // Head (resting on paws)
-        ctx.fillStyle = COLORS.catLight
+        ctx.fillStyle = NIGHT.catLight
         ctx.beginPath()
         ctx.arc(s * 5, s * 1.5, s * 3.5, 0, Math.PI * 2)
         ctx.fill()
 
         // White muzzle/chin
-        ctx.fillStyle = COLORS.white
+        ctx.fillStyle = NIGHT.white
         ctx.beginPath()
         ctx.ellipse(s * 5.2, s * 2.8, s * 2, s * 1.5, 0, 0, Math.PI * 2)
         ctx.fill()
 
         // Ears
-        ctx.fillStyle = COLORS.catOrange
+        ctx.fillStyle = NIGHT.catOrange
         ctx.beginPath()
         ctx.moveTo(s * 3.5, -s * 1.5)
         ctx.lineTo(s * 5, 0)
@@ -1363,7 +1364,7 @@ export default function ParkGame() {
         ctx.fill()
 
         // Inner ears
-        ctx.fillStyle = COLORS.heart
+        ctx.fillStyle = NIGHT.heart
         ctx.beginPath()
         ctx.moveTo(s * 3.8, -s * 1)
         ctx.lineTo(s * 4.8, 0)
@@ -1376,7 +1377,7 @@ export default function ParkGame() {
         ctx.fill()
 
         // Eyes (closed when sleeping, half-closed when lying)
-        ctx.strokeStyle = COLORS.charcoal
+        ctx.strokeStyle = NIGHT.charcoal
         ctx.lineWidth = 1.5
         if (cat.state === 'sleeping') {
           // Closed eyes - curved lines
@@ -1388,7 +1389,7 @@ export default function ParkGame() {
           ctx.stroke()
         } else {
           // Half-closed eyes
-          ctx.fillStyle = '#8B9B2A'
+          ctx.fillStyle = night('#8B9B2A')
           ctx.beginPath()
           ctx.ellipse(s * 4, s * 1.5, s * 0.6, s * 0.3, 0, 0, Math.PI * 2)
           ctx.fill()
@@ -1398,7 +1399,7 @@ export default function ParkGame() {
         }
 
         // Nose
-        ctx.fillStyle = COLORS.heart
+        ctx.fillStyle = NIGHT.heart
         ctx.beginPath()
         ctx.moveTo(s * 5.1, s * 2.2)
         ctx.lineTo(s * 4.8, s * 2.6)
@@ -1407,7 +1408,7 @@ export default function ParkGame() {
 
         // Tail curled around body
         const tailWag = Math.sin(g.frameCount * 0.03) * s * 0.5
-        ctx.strokeStyle = COLORS.catOrange
+        ctx.strokeStyle = NIGHT.catOrange
         ctx.lineWidth = s * 2
         ctx.lineCap = 'round'
         ctx.beginPath()
@@ -1421,7 +1422,7 @@ export default function ParkGame() {
         ctx.stroke()
 
         // Front paws tucked under head
-        ctx.fillStyle = COLORS.white
+        ctx.fillStyle = NIGHT.white
         ctx.fillRect(s * 3, s * 3.5, s * 1.5, s * 1)
         ctx.fillRect(s * 5, s * 3.5, s * 1.5, s * 1)
 
@@ -1445,37 +1446,37 @@ export default function ParkGame() {
       ctx.fill()
 
       // Body
-      ctx.fillStyle = COLORS.catLight
+      ctx.fillStyle = NIGHT.catLight
       ctx.beginPath()
       ctx.ellipse(0, s * 2, s * 5, s * 4, 0, 0, Math.PI * 2)
       ctx.fill()
 
       // White belly (bottom half of body)
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.beginPath()
       ctx.ellipse(0, s * 4, s * 3.5, s * 2.5, 0, 0, Math.PI * 2)
       ctx.fill()
 
       // Tabby stripes
-      ctx.fillStyle = COLORS.catStripe
+      ctx.fillStyle = NIGHT.catStripe
       for (let i = 0; i < 3; i++) {
         ctx.fillRect(-s * 3 + i * s * 3, s * 0.5, s * 1.5, s * 2)
       }
 
       // Head
-      ctx.fillStyle = COLORS.catLight
+      ctx.fillStyle = NIGHT.catLight
       ctx.beginPath()
       ctx.arc(s * 4, -s * 1, s * 4, 0, Math.PI * 2)
       ctx.fill()
 
       // White muzzle/chin area
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.beginPath()
       ctx.ellipse(s * 4.3, s * 1, s * 2.5, s * 2, 0, 0, Math.PI * 2)
       ctx.fill()
 
       // Ears
-      ctx.fillStyle = COLORS.catOrange
+      ctx.fillStyle = NIGHT.catOrange
       ctx.beginPath()
       ctx.moveTo(s * 1.5, -s * 5.5)
       ctx.lineTo(s * 3, -s * 3)
@@ -1488,7 +1489,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Inner ears
-      ctx.fillStyle = '#FFE4D6'
+      ctx.fillStyle = night('#FFE4D6')
       ctx.beginPath()
       ctx.moveTo(s * 1.5, -s * 4.8)
       ctx.lineTo(s * 2.7, -s * 3.3)
@@ -1496,12 +1497,12 @@ export default function ParkGame() {
       ctx.fill()
 
       // Head stripes
-      ctx.fillStyle = COLORS.catStripe
+      ctx.fillStyle = NIGHT.catStripe
       ctx.fillRect(s * 3, -s * 3, s * 1, s * 1.5)
       ctx.fillRect(s * 4.5, -s * 2.8, s * 0.8, s * 1.2)
 
       // Eyes
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.beginPath()
       ctx.arc(s * 3, -s * 0.5, s * 1.2, 0, Math.PI * 2)
       ctx.fill()
@@ -1510,7 +1511,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Pupils
-      ctx.fillStyle = '#8B9B2A'
+      ctx.fillStyle = night('#8B9B2A')
       ctx.beginPath()
       ctx.arc(s * 3.2, -s * 0.4, s * 0.7, 0, Math.PI * 2)
       ctx.fill()
@@ -1519,7 +1520,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Pupil highlights
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.beginPath()
       ctx.arc(s * 3.4, -s * 0.7, s * 0.3, 0, Math.PI * 2)
       ctx.fill()
@@ -1528,7 +1529,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Nose
-      ctx.fillStyle = COLORS.heart
+      ctx.fillStyle = NIGHT.heart
       ctx.beginPath()
       ctx.moveTo(s * 4.3, s * 0.5)
       ctx.lineTo(s * 4, s * 1)
@@ -1536,7 +1537,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Whiskers
-      ctx.strokeStyle = COLORS.charcoal
+      ctx.strokeStyle = NIGHT.charcoal
       ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(s * 2, s * 0.5)
@@ -1551,7 +1552,7 @@ export default function ParkGame() {
 
       // Tail
       const tailWag = Math.sin(g.frameCount * 0.08) * s * 2
-      ctx.strokeStyle = COLORS.catOrange
+      ctx.strokeStyle = NIGHT.catOrange
       ctx.lineWidth = s * 2
       ctx.lineCap = 'round'
       ctx.beginPath()
@@ -1560,7 +1561,7 @@ export default function ParkGame() {
       ctx.stroke()
 
       // Tail stripes
-      ctx.strokeStyle = COLORS.catStripe
+      ctx.strokeStyle = NIGHT.catStripe
       ctx.lineWidth = s * 0.8
       ctx.beginPath()
       ctx.moveTo(-s * 5.5, 0)
@@ -1571,14 +1572,14 @@ export default function ParkGame() {
 
       // Legs
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
       ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
       ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3)
       ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3)
 
       // Paws
-      ctx.fillStyle = COLORS.white
+      ctx.fillStyle = NIGHT.white
       ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
       ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
       ctx.fillRect(-s * 3, s * 6.5 - legOffset, s * 2, s * 1)
@@ -1589,7 +1590,7 @@ export default function ParkGame() {
       // Hearts when interacting
       if (cat.interacting) {
         const heartY = y - PIXEL * 0.3 + Math.sin(g.frameCount * 0.1) * 3
-        ctx.fillStyle = COLORS.heart
+        ctx.fillStyle = NIGHT.heart
         ctx.beginPath()
         const hx = x + PIXEL * 0.5
         const hy = heartY
@@ -1623,7 +1624,11 @@ export default function ParkGame() {
         // Shop-placed decorations render via the shared sprite module (with
         // pop-in / pre-expiry blink); base objects use their own art below.
         if (obj.placedAt != null) {
-          drawShopSprite(ctx!, obj, g.frameCount, { now, reducedMotion })
+          drawShopSprite(ctx!, obj, g.frameCount, {
+            now,
+            reducedMotion,
+            night: true,
+          })
           return
         }
         switch (obj.type) {
@@ -1644,6 +1649,11 @@ export default function ParkGame() {
             break
           case 'stone':
             drawStone(obj)
+            break
+          case 'social':
+            // Billboards render with the objects (before the cat) so the cat
+            // walks in front of them. They stay bright (no wash to escape now).
+            drawSocialSign(obj)
             break
           case 'photo':
             drawPhoto(obj)
@@ -2031,7 +2041,7 @@ export default function ParkGame() {
       ctx.fill()
 
       ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
-      ctx.fillStyle = COLORS.fishBowl
+      ctx.fillStyle = COLORS.fishBowl // HUD star stays bright (above the wash)
       ctx.fillText('★', pad + 12, top + 16)
       ctx.fillStyle = COLORS.white
       ctx.fillText(scoreText, pad + 30, top + 16)
@@ -2317,6 +2327,13 @@ export default function ParkGame() {
       drawGround()
       drawPawTrail()
       ctx!.restore()
+      // Bake the night tint into the static background once (sky/hills/ground/
+      // grass/paws), replacing the old per-frame full-canvas multiply overlay.
+      ctx!.save()
+      ctx!.globalCompositeOperation = 'multiply'
+      ctx!.fillStyle = 'rgba(120, 80, 180, 0.5)'
+      ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+      ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
     }
     renderStaticBackground()
@@ -2396,15 +2413,11 @@ export default function ParkGame() {
       }
       ctx!.restore()
 
-      // Purple overlay with blend mode
-      ctx!.save()
-      ctx!.globalCompositeOperation = 'multiply'
-      ctx!.fillStyle = 'rgba(120, 80, 180, 0.5)'
-      ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-      ctx!.restore()
-
-      // Above the wash (bright, not dimmed): the sky (stars + moon), the IG/TikTok
-      // billboards (lit), then the dream bubble, food, and popups.
+      // The night tint is now baked into each object's colours (below) + the
+      // static background, so there's no full-canvas overlay. Drawn last (over
+      // the world): the sky (stars + moon), then the dream bubble, food, and
+      // popups. (The IG/TikTok billboards now draw with the objects, so the cat
+      // walks in front of them.)
       drawMoon()
       // Stars sit higher in the sky (a smaller offset than the world).
       ctx!.save()
@@ -2413,9 +2426,6 @@ export default function ParkGame() {
       ctx!.restore()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      g.objects.forEach((o) => {
-        if (o.type === 'social') drawSocialSign(o)
-      })
       drawDreamBubble()
       drawFoods()
       drawPopups(f)

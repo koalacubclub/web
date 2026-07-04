@@ -46,3 +46,31 @@ export const COLORS = {
   stoneDark: '#757575',
   charcoal: '#4A4A4A',
 }
+
+// Bake the old night wash into a colour. The park used to get its night look from
+// a per-frame `multiply` overlay of rgba(120,80,180,0.5) over the world; that made
+// every below-wash pixel `out = 0.5·c·(s/255 + 1)` per channel (s = 120,80,180).
+// `night()` reproduces that exactly so we can drop the overlay and let each object
+// carry its own night colour. Non-hex inputs (e.g. the oklch sky, rgba shadows)
+// pass through unchanged. Memoised.
+const NIGHT_S = [120, 80, 180]
+const _nightCache = new Map<string, string>()
+export function night(color: string): string {
+  if (color[0] !== '#' || (color.length !== 7 && color.length !== 4)) return color
+  const hit = _nightCache.get(color)
+  if (hit) return hit
+  let h = color.slice(1)
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  const n = parseInt(h, 16)
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+  const o = ch.map((c, i) => Math.round(0.5 * c * (NIGHT_S[i] / 255 + 1)))
+  const res = `rgb(${o[0]}, ${o[1]}, ${o[2]})`
+  _nightCache.set(color, res)
+  return res
+}
+
+// Night-baked clone of COLORS for below-wash draws (ground/objects/cat/decor).
+// Above-wash draws (moon, stars, food, billboards, HUD) keep bright COLORS.
+export const NIGHT = Object.fromEntries(
+  Object.entries(COLORS).map(([k, v]) => [k, night(v)]),
+) as typeof COLORS
