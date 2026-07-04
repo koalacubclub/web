@@ -18,11 +18,14 @@
 //     localStorage behind the small `sync` seam below.
 
 import type { PlacedItem as ServerPlacedItem } from '@koala/shared'
+import { PLACED_TTL_MS } from '@koala/shared'
 import { GROUND_ROWS, MAP_COLS } from './constants'
 import { SHOP_ITEMS_BY_KEY } from './shopItems'
 
-// How long a purchased item lives before it expires (wall-clock). Tunable.
-export const PLACED_TTL_MS = 2 * 60 * 1000
+// How long a purchased item lives before it expires (wall-clock). Single source
+// of truth in shared/protocol.ts so client (solo) + server agree; re-exported
+// here for existing callers/tests.
+export { PLACED_TTL_MS }
 
 export interface PlacedItem {
   id: string // client-generated; doubles as the server idempotency key

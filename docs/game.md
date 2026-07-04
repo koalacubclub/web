@@ -135,7 +135,7 @@ so the React UI and the imperative canvas never fight.
   once via `setObstacles`). A full ground returns `'no-room'` and charges nothing.
   Placed decor is **non-solid** — it never traps Koala, even on her own tile.
 - **Lifetime (TTL):** placed items persist across reloads but **expire
-  `PLACED_TTL_MS` (2 min) after purchase** — a wall-clock `expiresAt` (NOT
+  `PLACED_TTL_MS` (7 days) after purchase** — a wall-clock `expiresAt` (NOT
   `frameCount`, which pauses with the loop), swept on load and ~once/second during
   play. Fresh items **pop in**; they **blink** in the last 8 s before expiring
   (both wall-clock; skipped under `prefers-reduced-motion`).

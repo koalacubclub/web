@@ -138,7 +138,7 @@ export const SHOP_ITEMS_BY_KEY: Record<string, ShopItem> = Object.fromEntries(
 )
 
 // How long a purchased item lives before it expires (wall-clock, server clock).
-export const PLACED_TTL_MS = 2 * 60 * 1000
+export const PLACED_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // A placed decoration owned by the server and shared with everyone.
 export interface PlacedItem {
