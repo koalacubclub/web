@@ -336,3 +336,111 @@ describe('GameWorld likes', () => {
     expect(true).toBe(true)
   })
 })
+
+// ---- server-authoritative shop (buy + placed items) ----
+
+// Reconstruct the live food set from the message log, excluding ids we've
+// already collected, so we can earn coins deterministically.
+function liveFood(msgs: any[], exclude: Set<string>): any {
+  const set = new Map<string, any>()
+  for (const m of msgs) {
+    if (m.t === 'welcome') for (const f of m.food) set.set(f.id, f)
+    else if (m.t === 'spawn') set.set(m.f.id, m.f)
+    else if (m.t === 'despawn') set.delete(m.id)
+  }
+  for (const f of set.values()) if (!exclude.has(f.id)) return f
+  return null
+}
+
+// Collect foods until the session's likes reach `target`. Returns final likes.
+async function earnAtLeast(
+  ws: WebSocket,
+  msgs: any[],
+  target: number,
+): Promise<number> {
+  const done = new Set<string>()
+  let likes = 0
+  for (let i = 0; i < 30 && likes < target; i++) {
+    let f = liveFood(msgs, done)
+    for (let j = 0; j < 12 && !f; j++) {
+      sendState(ws, 10, 6)
+      await wait(500)
+      f = liveFood(msgs, done)
+    }
+    if (!f) break
+    done.add(f.id)
+    sendState(ws, f.x, f.y)
+    await wait(70)
+    sendCollect(ws, f.id)
+    await wait(120)
+    const c = [...msgs].reverse().find((m) => m.t === 'collected')
+    if (c) likes = c.likes
+  }
+  return likes
+}
+
+describe('GameWorld shop', () => {
+  it('rejects a buy with no coins', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 5, y: 5 }))
+    await wait(120)
+    expect(msgs.some((m) => m.t === 'placed')).toBe(false)
+    expect(
+      msgs.some((m) => m.t === 'buyfail' && m.reason === 'insufficient'),
+    ).toBe(true)
+  }, 10000)
+
+  it('rejects a buy with an unknown item key', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'buy', key: 'nope', x: 5, y: 5 }))
+    await wait(120)
+    expect(msgs.some((m) => m.t === 'buyfail' && m.reason === 'invalid')).toBe(
+      true,
+    )
+  }, 10000)
+
+  it('places an item, deducts likes, shares it, and persists it', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    // A second player to prove the placement is broadcast (shared world).
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+
+    const likes = await earnAtLeast(ws, msgs, 20) // flowers cost 20
+    expect(likes).toBeGreaterThanOrEqual(20)
+
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 3, y: 3 }))
+    await wait(150)
+    const placed = msgs.find(
+      (m) => m.t === 'placed' && m.item.x === 3 && m.item.y === 3,
+    )
+    expect(placed).toBeTruthy()
+    expect(placed.item.key).toBe('flowers')
+    expect(placed.item.ownerId).toBe(a.id)
+    // Buyer's wallet dropped by the price.
+    const wallet = [...msgs].reverse().find((m) => m.t === 'wallet')
+    expect(wallet.likes).toBe(likes - 20)
+    // The other player saw the same placement (shared).
+    expect(
+      msgsB.some((m) => m.t === 'placed' && m.item.id === placed.item.id),
+    ).toBe(true)
+
+    // A second buy on the SAME tile is rejected as occupied.
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 3, y: 3 }))
+    await wait(120)
+    expect(msgs.some((m) => m.t === 'buyfail' && m.reason === 'occupied')).toBe(
+      true,
+    )
+
+    // Placement persists across a reconnect (SQLite).
+    const c = await connect(a.cookie)
+    await wait(80)
+    const w = c.msgs.find((m) => m.t === 'welcome')
+    expect(w.placed.some((p: any) => p.id === placed.item.id)).toBe(true)
+  }, 30000)
+})

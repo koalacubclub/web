@@ -80,9 +80,89 @@ export interface Food {
   bornAt: number // epoch ms (server clock) — for TTL + client pop/blink timing
 }
 
+// ---- Shop / economy (server-authoritative) ----
+// Coins == likes (earned from food). The catalog is the single source of truth
+// for prices + footprints, shared so the server validates purchases. The client
+// keeps only presentation (it maps `type` to a procedural sprite).
+export interface ShopItem {
+  key: string
+  label: string
+  type: string // sprite type for drawShopSprite / drawObjectByType
+  w: number
+  h: number
+  price: number
+}
+
+export const SHOP_ITEMS: readonly ShopItem[] = [
+  {
+    key: 'flowers',
+    label: 'Flower patch',
+    type: 'flowers',
+    w: 1,
+    h: 1,
+    price: 20,
+  },
+  {
+    key: 'mushroom',
+    label: 'Mushroom',
+    type: 'mushroom',
+    w: 1,
+    h: 1,
+    price: 25,
+  },
+  { key: 'stone', label: 'Warm rock', type: 'stone', w: 1, h: 1, price: 30 },
+  { key: 'ball', label: 'Toy ball', type: 'ball', w: 1, h: 1, price: 35 },
+  { key: 'snowcat', label: 'Snow-cat', type: 'snowcat', w: 1, h: 1, price: 60 },
+  {
+    key: 'cardbox',
+    label: 'Cardboard box',
+    type: 'cardbox',
+    w: 2,
+    h: 1,
+    price: 70,
+  },
+  { key: 'bench', label: 'Park bench', type: 'bench', w: 2, h: 1, price: 90 },
+  { key: 'pond', label: 'Pond', type: 'pond', w: 3, h: 2, price: 150 },
+  { key: 'tree', label: 'Tree', type: 'tree', w: 2, h: 2, price: 180 },
+  {
+    key: 'house',
+    label: 'Little house',
+    type: 'house',
+    w: 4,
+    h: 4,
+    price: 300,
+  },
+]
+export const SHOP_ITEMS_BY_KEY: Record<string, ShopItem> = Object.fromEntries(
+  SHOP_ITEMS.map((i) => [i.key, i]),
+)
+
+// How long a purchased item lives before it expires (wall-clock, server clock).
+export const PLACED_TTL_MS = 2 * 60 * 1000
+
+// A placed decoration owned by the server and shared with everyone.
+export interface PlacedItem {
+  id: string
+  key: string
+  type: string
+  x: number
+  y: number
+  w: number
+  h: number
+  ownerId: string
+  placedAt: number // epoch ms (server)
+  expiresAt: number // epoch ms (server)
+}
+
 // ---- Client -> Server ----
 export type ClientMessage =
-  { t: 'state'; s: PlayerState } | { t: 'collect'; id: string }
+  | { t: 'state'; s: PlayerState }
+  | { t: 'collect'; id: string }
+  // Buy a catalog item; x/y is the client-chosen placement tile (the server
+  // validates affordability + bounds + no overlap and owns the result).
+  | { t: 'buy'; key: string; x: number; y: number }
+
+export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
 // ---- Server -> Client ----
 export type ServerMessage =
@@ -91,6 +171,7 @@ export type ServerMessage =
       self: Player
       players: Player[]
       food: Food[]
+      placed: PlacedItem[]
       likes: number
       now: number
     }
@@ -100,6 +181,10 @@ export type ServerMessage =
   | { t: 'spawn'; f: Food }
   | { t: 'despawn'; id: string; reason: 'taken' | 'expired' }
   | { t: 'collected'; id: string; by: string; points: number; likes: number }
+  | { t: 'placed'; item: PlacedItem } // broadcast to everyone
+  | { t: 'unplaced'; id: string; reason: 'expired' } // broadcast to everyone
+  | { t: 'wallet'; likes: number } // the recipient's new balance after a spend
+  | { t: 'buyfail'; reason: BuyFailReason } // sent only to the buyer
 
 export const PROTOCOL_VERSION = 1
 
@@ -144,4 +229,23 @@ export function sanitizeCollect(raw: unknown): { id: string } | null {
   const id = (raw as Record<string, unknown>).id
   if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
   return { id }
+}
+
+// Validate an untrusted buy request: a known catalog key and an in-bounds tile
+// whose footprint fits inside the playable grid. Returns the item + tile or null.
+export function sanitizeBuy(
+  raw: unknown,
+): { item: ShopItem; x: number; y: number } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (typeof o.key !== 'string') return null
+  const item = SHOP_ITEMS_BY_KEY[o.key]
+  if (!item) return null
+  const x = o.x
+  const y = o.y
+  if (typeof x !== 'number' || !Number.isInteger(x)) return null
+  if (typeof y !== 'number' || !Number.isInteger(y)) return null
+  if (x < 0 || y < 0) return null
+  if (x + item.w > WORLD.cols || y + item.h > WORLD.groundRows) return null
+  return { item, x, y }
 }

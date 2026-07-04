@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers'
 import type {
   ClientMessage,
   Food,
+  PlacedItem,
   Player,
   PlayerState,
   ServerMessage,
@@ -14,7 +15,9 @@ import {
   FOOD_TOTAL_WEIGHT,
   MAX_FOOD,
   MAX_INBOUND_MSGS_PER_SEC,
+  PLACED_TTL_MS,
   PROTOCOL_VERSION,
+  sanitizeBuy,
   sanitizeCollect,
   sanitizeState,
   WORLD,
@@ -61,18 +64,55 @@ export class GameWorld extends DurableObject<Env> {
   private food = new Map<string, Food>()
   private lastSpawnAt = 0
 
+  // Server-owned placed decorations (bought with likes). Shared across players,
+  // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
+  // overlap checks + broadcasts; rehydrated from SQLite on wake.
+  private placed = new Map<string, PlacedItem>()
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
-    // Durable per-session "likes" (points). This is the ONLY persisted state —
-    // it survives hibernation, reconnects and return visits. The table lives in
-    // this world's SQLite (the `new_sqlite_classes` migration in wrangler.jsonc).
-    this.ctx.storage.sql.exec(
+    // Durable state (survives hibernation, reconnects, return visits): per-session
+    // "likes" (the coin wallet) and the shared placed items. Both live in this
+    // world's SQLite (the `new_sqlite_classes` migration in wrangler.jsonc).
+    const sql = this.ctx.storage.sql
+    sql.exec(
       `CREATE TABLE IF NOT EXISTS likes (
          session TEXT PRIMARY KEY,
          likes   INTEGER NOT NULL DEFAULT 0,
          updated INTEGER NOT NULL
        )`,
     )
+    sql.exec(
+      `CREATE TABLE IF NOT EXISTS placed (
+         id       TEXT PRIMARY KEY,
+         owner    TEXT NOT NULL,
+         itemKey  TEXT NOT NULL,
+         type     TEXT NOT NULL,
+         x        INTEGER NOT NULL,
+         y        INTEGER NOT NULL,
+         w        INTEGER NOT NULL,
+         h        INTEGER NOT NULL,
+         placedAt INTEGER NOT NULL,
+         expiresAt INTEGER NOT NULL
+       )`,
+    )
+    // Drop anything already expired, then load the rest into memory.
+    sql.exec('DELETE FROM placed WHERE expiresAt <= ?', Date.now())
+    for (const r of sql.exec('SELECT * FROM placed').toArray()) {
+      const item: PlacedItem = {
+        id: String(r.id),
+        key: String(r.itemKey),
+        type: String(r.type),
+        x: Number(r.x),
+        y: Number(r.y),
+        w: Number(r.w),
+        h: Number(r.h),
+        ownerId: String(r.owner),
+        placedAt: Number(r.placedAt),
+        expiresAt: Number(r.expiresAt),
+      }
+      this.placed.set(item.id, item)
+    }
     // Rehydrate presence for sockets that survived hibernation, restoring each
     // player's last-known position from its attachment.
     for (const ws of this.ctx.getWebSockets()) {
@@ -118,16 +158,19 @@ export class GameWorld extends DurableObject<Env> {
       })
     }
     const self: Player = { id, name, ...start }
-    // Refresh the collectibles on join, then hand the newcomer the current set
-    // plus their stored likes total.
-    this.maybeSpawn(Date.now())
+    // Refresh the collectibles + placed items on join, then hand the newcomer
+    // the current world plus their stored likes total.
+    const nowJoin = Date.now()
+    this.maybeSpawn(nowJoin)
+    this.sweepPlaced(nowJoin)
     this.sendTo(server, {
       t: 'welcome',
       self,
       players,
       food: [...this.food.values()],
+      placed: [...this.placed.values()],
       likes: this.getLikes(id),
-      now: Date.now(),
+      now: nowJoin,
     })
 
     // Announce the newcomer to everyone else.
@@ -159,10 +202,11 @@ export class GameWorld extends DurableObject<Env> {
       return
     }
 
-    // Player traffic drives the collectibles (no game tick → the DO can still
-    // hibernate when the park is empty). Sweep expired + top up on every message.
+    // Player traffic drives the collectibles + placed-item expiry (no game tick →
+    // the DO can still hibernate when the park is empty).
     const now = Date.now()
     this.maybeSpawn(now)
+    this.sweepPlaced(now)
 
     if (msg.t === 'state') {
       const s = sanitizeState(msg.s)
@@ -203,6 +247,56 @@ export class GameWorld extends DurableObject<Env> {
         points: f.points,
         likes,
       })
+      return
+    }
+
+    if (msg.t === 'buy') {
+      const b = sanitizeBuy(msg)
+      if (!b) {
+        this.sendTo(ws, { t: 'buyfail', reason: 'invalid' })
+        return
+      }
+      // Server-authoritative: the tile must be free of other placed items, and
+      // the buyer must be able to afford it. (Base-object avoidance is the
+      // client's placement choice; the server owns coins + the placed set.)
+      if (this.overlapsPlaced(b.x, b.y, b.item.w, b.item.h)) {
+        this.sendTo(ws, { t: 'buyfail', reason: 'occupied' })
+        return
+      }
+      if (this.getLikes(a.id) < b.item.price) {
+        this.sendTo(ws, { t: 'buyfail', reason: 'insufficient' })
+        return
+      }
+      const likes = this.addLikes(a.id, -b.item.price)
+      const item: PlacedItem = {
+        id: crypto.randomUUID(),
+        key: b.item.key,
+        type: b.item.type,
+        x: b.x,
+        y: b.y,
+        w: b.item.w,
+        h: b.item.h,
+        ownerId: a.id,
+        placedAt: now,
+        expiresAt: now + PLACED_TTL_MS,
+      }
+      this.placed.set(item.id, item)
+      this.ctx.storage.sql.exec(
+        `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        item.id,
+        item.ownerId,
+        item.key,
+        item.type,
+        item.x,
+        item.y,
+        item.w,
+        item.h,
+        item.placedAt,
+        item.expiresAt,
+      )
+      this.broadcast({ t: 'placed', item }) // everyone, incl. buyer
+      this.sendTo(ws, { t: 'wallet', likes }) // buyer's new balance
     }
   }
 
@@ -326,6 +420,28 @@ export class GameWorld extends DurableObject<Env> {
       return f
     }
     return null
+  }
+
+  // ---- placed items (durable, shared) ----
+
+  private overlapsPlaced(x: number, y: number, w: number, h: number): boolean {
+    for (const p of this.placed.values()) {
+      if (x < p.x + p.w && x + w > p.x && y < p.y + p.h && y + h > p.y) {
+        return true
+      }
+    }
+    return false
+  }
+
+  /** Remove expired placed items (lazy, driven by player traffic). */
+  private sweepPlaced(now: number): void {
+    for (const [id, p] of this.placed) {
+      if (p.expiresAt <= now) {
+        this.placed.delete(id)
+        this.ctx.storage.sql.exec('DELETE FROM placed WHERE id = ?', id)
+        this.broadcast({ t: 'unplaced', id, reason: 'expired' })
+      }
+    }
   }
 
   private sendTo(ws: WebSocket, msg: ServerMessage): void {

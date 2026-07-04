@@ -279,4 +279,111 @@ describe('createMultiplayer', () => {
     ws.close()
     expect(mp.food.size).toBe(0)
   })
+
+  // ---- shop: placed items + wallet ----
+
+  const placedItem = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    key: 'flowers',
+    type: 'flowers',
+    x: 1,
+    y: 1,
+    w: 1,
+    h: 1,
+    ownerId: 'self',
+    placedAt: 0,
+    expiresAt: 0,
+    ...over,
+  })
+
+  it('seeds placed items + wallet from welcome', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('p1')],
+      likes: 30,
+      now: 0,
+    })
+    expect(mp.likes).toBe(30)
+    expect(mp.placed.has('p1')).toBe(true)
+  })
+
+  it('adds on placed and removes on unplaced', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [],
+      likes: 0,
+      now: 0,
+    })
+    ws.receive({ t: 'placed', item: placedItem('p1') })
+    expect(mp.placed.has('p1')).toBe(true)
+    ws.receive({ t: 'unplaced', id: 'p1', reason: 'expired' })
+    expect(mp.placed.has('p1')).toBe(false)
+  })
+
+  it('updates the wallet on a wallet message', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [],
+      likes: 50,
+      now: 0,
+    })
+    ws.receive({ t: 'wallet', likes: 30 }) // after a purchase
+    expect(mp.likes).toBe(30)
+  })
+
+  it('sendBuy emits a buy request on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [],
+      likes: 0,
+      now: 0,
+    })
+    mp.sendBuy('flowers', 3, 4)
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'buy', key: 'flowers', x: 3, y: 4 })
+  })
+
+  it('reports a rejected buy via onBuyFail', async () => {
+    const { createMultiplayer } = await import('./connection')
+    let reason: string | undefined
+    const mp = createMultiplayer({ onBuyFail: (r) => (reason = r) })
+    expect(mp).not.toBeNull()
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    FakeWebSocket.instances[0].fireOpen()
+    FakeWebSocket.instances[0].receive({ t: 'buyfail', reason: 'insufficient' })
+    expect(reason).toBe('insufficient')
+    ;(mp as Multiplayer).close()
+  })
+
+  it('clears placed items when the socket closes', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('p1')],
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.placed.size).toBe(1)
+    ws.close()
+    expect(mp.placed.size).toBe(0)
+  })
 })
