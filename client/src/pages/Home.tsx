@@ -562,22 +562,17 @@ function ContentPanel() {
           </div>
 
           {/* Watch more — both platforms, side by side */}
-          <Reveal className="container mt-10 sm:mt-14 flex flex-col items-center gap-5">
-            <p className="text-[10px] sm:text-xs uppercase tracking-[0.35em] font-light text-white/35">
-              Watch the chaos everywhere
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-              <SocialPill
-                href={IG_PROFILE}
-                icon={<Instagram className="w-4 h-4" />}
-                label="Instagram"
-              />
-              <SocialPill
-                href="https://tiktok.com/@koalacubclub"
-                icon={<TikTokIcon className="w-4 h-4" />}
-                label="TikTok"
-              />
-            </div>
+          <Reveal className="container mt-10 sm:mt-14 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+            <SocialPill
+              href={IG_PROFILE}
+              icon={<Instagram className="w-4 h-4" />}
+              label="Instagram"
+            />
+            <SocialPill
+              href="https://tiktok.com/@koalacubclub"
+              icon={<TikTokIcon className="w-4 h-4" />}
+              label="TikTok"
+            />
           </Reveal>
 
           {/* ─── The club: followers wall ─── */}
