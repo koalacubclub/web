@@ -360,16 +360,21 @@ async function earnAtLeast(
 ): Promise<number> {
   const done = new Set<string>()
   let likes = 0
-  for (let i = 0; i < 30 && likes < target; i++) {
+  for (let i = 0; i < 60 && likes < target; i++) {
     let f = liveFood(msgs, done)
     for (let j = 0; j < 12 && !f; j++) {
       sendState(ws, 10, 6)
       await wait(500)
       f = liveFood(msgs, done)
     }
-    if (!f) break
+    // No food this round (the shared foodCap can throttle supply) — keep trying
+    // rather than giving up early.
+    if (!f) continue
     done.add(f.id)
     sendState(ws, f.x, f.y)
+    // Jump so an AIRBORNE food (which now shares the foodCap budget) is
+    // collectable too; harmless for ground food, which collects regardless.
+    ws.send(JSON.stringify({ t: 'jump' }))
     await wait(70)
     sendCollect(ws, f.id)
     await wait(120)
@@ -635,14 +640,26 @@ describe('GameWorld stats', () => {
 
 const sendJump = (ws: WebSocket) => ws.send(JSON.stringify({ t: 'jump' }))
 
-// Grab a currently-live AIRBORNE food (spawned lazily on the first traffic).
+// Grab a currently-live AIRBORNE food. Airborne food shares the foodCap budget
+// with ground food, so on a small/solo park (cap 1) an airborne food only
+// spawns once the slot is free during ground's cooldown. We nudge that along by
+// collecting any ground food we see, freeing the slot for airborne to claim.
 async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
-  for (let i = 0; i < 12; i++) {
+  const grabbed = new Set<string>()
+  for (let i = 0; i < 24; i++) {
     const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
-    const air = [...fromWelcome, ...spawned].find((f) => f?.air)
+    const all = [...fromWelcome, ...spawned]
+    const air = all.find((f) => f?.air)
     if (air) return air
-    sendState(ws, 10, 6)
+    const ground = all.find((f) => f && !f.air && !grabbed.has(f.id))
+    if (ground) {
+      grabbed.add(ground.id)
+      sendState(ws, ground.x, ground.y)
+      sendCollect(ws, ground.id)
+    } else {
+      sendState(ws, 10, 6)
+    }
     await wait(500)
   }
   throw new Error('no airborne food spawned in time')
@@ -681,6 +698,9 @@ describe('GameWorld airborne food', () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
+    // Airborne food shares the foodCap budget, so even solo (cap 1) it can take
+    // the slot — obtainAirFood frees the ground slot (by collecting) until an
+    // airborne food spawns into it.
     const air = await obtainAirFood(ws, msgs)
     // Stand exactly on it (server-known position).
     sendState(ws, air.x, air.y)
