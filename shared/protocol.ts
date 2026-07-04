@@ -33,15 +33,73 @@ export interface Player extends PlayerState {
   name: string
 }
 
+// ---- Collectibles / points ("likes") ----
+// The server owns the collectibles: it spawns them, decides their point value,
+// and awards "likes" when a koala reaches one. The client never reports points
+// or its score — it only asks to collect a food id, and the server validates
+// (proximity, existence) and awards. This is the single source of truth for the
+// food table; the client keeps only presentation (label/emoji/sprite) locally.
+export type FoodTier = 'common' | 'uncommon' | 'rare' | 'legendary'
+
+export interface FoodDef {
+  key: string
+  points: number
+  weight: number // relative spawn frequency
+  tier: FoodTier
+}
+
+export const FOODS: readonly FoodDef[] = [
+  { key: 'treat', points: 5, weight: 30, tier: 'common' },
+  { key: 'fish', points: 10, weight: 28, tier: 'common' },
+  { key: 'cheese', points: 15, weight: 16, tier: 'uncommon' },
+  { key: 'drumstick', points: 15, weight: 16, tier: 'uncommon' },
+  { key: 'shrimp', points: 20, weight: 12, tier: 'uncommon' },
+  { key: 'tin', points: 25, weight: 7, tier: 'rare' },
+  { key: 'sushi', points: 30, weight: 6, tier: 'rare' },
+  { key: 'goldfish', points: 50, weight: 2, tier: 'legendary' },
+]
+
+export const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
+export const FOODS_BY_KEY: Record<string, FoodDef> = Object.fromEntries(
+  FOODS.map((f) => [f.key, f]),
+)
+
+// Shared game-balance tuning for the server-owned collectibles.
+export const MAX_FOOD = 3 // max collectibles on the map at once
+export const FOOD_SPAWN_COOLDOWN_MS = 4000 // min gap between spawns
+export const FOOD_TTL_MS = 15000 // a food despawns if uncollected this long
+export const COLLECT_RADIUS = 0.85 // tiles: how close a koala must be to collect
+
+// A live collectible on the map (server-authoritative).
+export interface Food {
+  id: string
+  key: string
+  x: number
+  y: number
+  points: number
+  bornAt: number // epoch ms (server clock) — for TTL + client pop/blink timing
+}
+
 // ---- Client -> Server ----
-export type ClientMessage = { t: 'state'; s: PlayerState }
+export type ClientMessage =
+  { t: 'state'; s: PlayerState } | { t: 'collect'; id: string }
 
 // ---- Server -> Client ----
 export type ServerMessage =
-  | { t: 'welcome'; self: Player; players: Player[]; now: number }
+  | {
+      t: 'welcome'
+      self: Player
+      players: Player[]
+      food: Food[]
+      likes: number
+      now: number
+    }
   | { t: 'join'; p: Player }
   | { t: 'leave'; id: string }
   | { t: 'state'; id: string; s: PlayerState }
+  | { t: 'spawn'; f: Food }
+  | { t: 'despawn'; id: string; reason: 'taken' | 'expired' }
+  | { t: 'collected'; id: string; by: string; points: number; likes: number }
 
 export const PROTOCOL_VERSION = 1
 
@@ -77,4 +135,13 @@ export function sanitizeState(raw: unknown): PlayerState | null {
     pose,
     interacting: o.interacting === true,
   }
+}
+
+// Validate an untrusted collect request. Returns the food id or null. Bounds the
+// id length so a hostile client can't send a huge string.
+export function sanitizeCollect(raw: unknown): { id: string } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const id = (raw as Record<string, unknown>).id
+  if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
+  return { id }
 }

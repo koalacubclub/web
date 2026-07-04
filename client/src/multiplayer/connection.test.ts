@@ -190,4 +190,93 @@ describe('createMultiplayer', () => {
     expect(mp.connected).toBe(false)
     expect(ws.readyState).toBe(3)
   })
+
+  // ---- server-owned food + likes ----
+
+  const food = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    key: 'treat',
+    x: 1,
+    y: 1,
+    points: 5,
+    bornAt: 0,
+    ...over,
+  })
+
+  it('seeds food and likes from welcome', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [food('f1'), food('f2')],
+      likes: 42,
+      now: 0,
+    })
+    expect(mp.likes).toBe(42)
+    expect(mp.food.has('f1')).toBe(true)
+    expect(mp.food.has('f2')).toBe(true)
+  })
+
+  it('adds on spawn and removes on despawn', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      likes: 0,
+      now: 0,
+    })
+    ws.receive({ t: 'spawn', f: food('f1') })
+    expect(mp.food.has('f1')).toBe(true)
+    ws.receive({ t: 'despawn', id: 'f1', reason: 'taken' })
+    expect(mp.food.has('f1')).toBe(false)
+  })
+
+  it('updates own likes only when the collector is us', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      likes: 0,
+      now: 0,
+    })
+    ws.receive({ t: 'collected', id: 'f1', by: 'other', points: 5, likes: 999 })
+    expect(mp.likes).toBe(0) // someone else's award
+    ws.receive({ t: 'collected', id: 'f2', by: 'self', points: 10, likes: 10 })
+    expect(mp.likes).toBe(10)
+  })
+
+  it('sendCollect emits a collect request on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      likes: 0,
+      now: 0,
+    })
+    mp.sendCollect('f1')
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'collect', id: 'f1' })
+  })
+
+  it('clears food when the socket closes', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [food('f1')],
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.food.size).toBe(1)
+    ws.close()
+    expect(mp.food.size).toBe(0)
+  })
 })

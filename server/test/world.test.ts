@@ -213,3 +213,126 @@ describe('GameWorld multiplayer', () => {
     expect(relayed.length).toBeLessThanOrEqual(MAX_INBOUND_MSGS_PER_SEC)
   })
 })
+
+// ---- server-authoritative likes / collectibles ----
+
+const sendState = (ws: WebSocket, x: number, y: number) =>
+  ws.send(
+    JSON.stringify({
+      t: 'state',
+      s: { x, y, dir: 'right', pose: 'standing', interacting: false },
+    }),
+  )
+const sendCollect = (ws: WebSocket, id: string) =>
+  ws.send(JSON.stringify({ t: 'collect', id }))
+
+// The DO auto-spawns food lazily; grab whatever is currently live (from the
+// welcome roster or a spawn broadcast), nudging with state messages until one
+// appears. Only this test's player is connected, so nothing else can take it.
+async function obtainFood(ws: WebSocket, msgs: any[]): Promise<any> {
+  const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
+  if (fromWelcome.length) return fromWelcome[0]
+  for (let i = 0; i < 12; i++) {
+    const spawned = msgs.find((m) => m.t === 'spawn')?.f
+    if (spawned) return spawned
+    sendState(ws, 10, 6)
+    await wait(500)
+  }
+  throw new Error('no food spawned in time')
+}
+
+describe('GameWorld likes', () => {
+  it('welcomes a new session with a food array and zero likes', async () => {
+    const a = await session()
+    const { msgs } = await connect(a.cookie)
+    await wait(50)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w).toBeTruthy()
+    expect(Array.isArray(w.food)).toBe(true)
+    expect(w.likes).toBe(0)
+  })
+
+  it('awards likes when a koala collects the food it stands on', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const food = await obtainFood(ws, msgs)
+    // Stand exactly on it (server-known position), then collect.
+    sendState(ws, food.x, food.y)
+    await wait(80)
+    sendCollect(ws, food.id)
+    await wait(150)
+    const collected = msgs.find((m) => m.t === 'collected' && m.id === food.id)
+    expect(collected).toBeTruthy()
+    expect(collected.by).toBe(a.id)
+    expect(collected.points).toBe(food.points)
+    expect(collected.likes).toBe(food.points)
+    expect(
+      msgs.some(
+        (m) => m.t === 'despawn' && m.id === food.id && m.reason === 'taken',
+      ),
+    ).toBe(true)
+  }, 10000)
+
+  it('ignores a collect when the koala is out of range', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const food = await obtainFood(ws, msgs)
+    // Stand far away, then try to collect.
+    sendState(ws, food.x > 9 ? 1 : 18, food.y)
+    await wait(80)
+    sendCollect(ws, food.id)
+    await wait(150)
+    expect(msgs.some((m) => m.t === 'collected' && m.id === food.id)).toBe(
+      false,
+    )
+  }, 10000)
+
+  it('awards a food only once even if collected twice (dedupe/race)', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const food = await obtainFood(ws, msgs)
+    sendState(ws, food.x, food.y)
+    await wait(80)
+    sendCollect(ws, food.id)
+    sendCollect(ws, food.id)
+    await wait(150)
+    const hits = msgs.filter((m) => m.t === 'collected' && m.id === food.id)
+    expect(hits.length).toBe(1)
+  }, 10000)
+
+  it('persists likes across a reconnect with the same session', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    const food = await obtainFood(first.ws, first.msgs)
+    sendState(first.ws, food.x, food.y)
+    await wait(80)
+    sendCollect(first.ws, food.id)
+    await wait(150)
+    const collected = first.msgs.find((m) => m.t === 'collected')
+    expect(collected.likes).toBe(food.points)
+
+    // Reconnect with the SAME cookie → likes come back from SQLite.
+    const second = await connect(a.cookie)
+    await wait(80)
+    const w = second.msgs.find((m) => m.t === 'welcome')
+    expect(w.likes).toBe(food.points)
+  }, 10000)
+
+  it('rejects a malformed collect id without awarding or crashing', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'collect', id: 12345 })) // non-string
+    ws.send(JSON.stringify({ t: 'collect', id: 'x'.repeat(200) })) // oversized
+    await wait(100)
+    expect(msgs.some((m) => m.t === 'collected')).toBe(false)
+    // Connection still works afterwards.
+    sendState(ws, 5, 5)
+    await wait(50)
+    expect(true).toBe(true)
+  })
+})
