@@ -236,6 +236,26 @@ describe('createMultiplayer', () => {
     expect(mp.food.has('f1')).toBe(false)
   })
 
+  it('replaces the whole food set on a resync (server woke from hibernation)', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [food('stale')],
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.food.has('stale')).toBe(true)
+    // A resync drops the stale food and installs whatever the server now has.
+    ws.receive({ t: 'foods', food: [food('fresh')] })
+    expect(mp.food.has('stale')).toBe(false)
+    expect(mp.food.has('fresh')).toBe(true)
+    // An empty resync clears everything.
+    ws.receive({ t: 'foods', food: [] })
+    expect(mp.food.size).toBe(0)
+  })
+
   it('updates own likes only when the collector is us', async () => {
     const { mp, ws } = await startConnected()
     ws.receive({

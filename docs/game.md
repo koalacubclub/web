@@ -19,14 +19,14 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   above the wash).
 - **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
   toward the pointer (release to stop). Mouse/pen engage immediately. **Space** =
-  jump (see Multiplayer → Jump ability).
-- **Controls (touch):** gesture-disambiguated so the full-screen hero doesn't
-  hijack the page scroll — a **quick swipe scrolls the page**, while a **~150ms
-  hold** (finger still, moved < ~10px) "grabs" Koala and the subsequent drag steers
-  her, calling `preventDefault` so the page won't scroll. A **double-tap** (two
-  quick, still, non-hotspot taps) jumps. There is **no on-screen D-pad**. During a
-  drag a `kcc-dragging` class on `<body>` disables text selection / the iOS
-  long-press callout (the rest of the page stays selectable).
+  jump; **Gamer mode** adds on-screen ability buttons + keys (shift = dash, 1/2/3
+  = bite/hand/meow) — see Multiplayer → Abilities.
+- **Controls (touch):** the hero stays a **scrollable** hero — a **swipe scrolls
+  the page**, a tap on a channel sign / photo opens it, and a **double-tap** jumps.
+  The canvas itself never steers by touch (no `preventDefault` in the touch path),
+  so scroll and play never fight. Movement on touch is the opt-in **Gamer-mode**
+  on-screen joystick (a fixed, discreet golden stick bottom-left; the ability
+  buttons sit bottom-right). By default there is **no on-screen D-pad**.
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
@@ -104,12 +104,13 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 
 ## Shop & placed decorations
 
-A **shop** spends coins to buy decorations that spawn at Koala's tile. Its trigger
-lives in the **bottom control bar** (`client/src/components/BottomBar.tsx`) — a
-centered cluster grouping the score/likes pill · **Shop** · **Settings**. Shop
-opens a **bottom sheet** that leaves the park visible so you can see where things
-land; Settings is always available and holds the **radio mute** toggle (persisted
-to `localStorage`), plus — when connected — the display-name field, the live online
+A **shop** spends coins to buy decorations that spawn at Koala's tile. The
+**bottom control bar** (`client/src/components/BottomBar.tsx`) is two pills: the
+**score/likes pill — which opens the shop** (consolidated; no separate Shop
+button) and **Settings**. Shop opens a **bottom sheet** that leaves the park
+visible so you can see where things land. Settings is always available and holds
+the **Gamer-mode** toggle + the **radio mute** toggle (both persisted to
+`localStorage`), plus — when connected — the display-name field, the live online
 roster, and the world stats. It's bridged through a small framework-agnostic store
 so the React UI and the imperative canvas never fight.
 
@@ -220,22 +221,26 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   with a name tag, depth-sorted by `y`. Remote positions are interpolated toward
   their latest target (`rx/ry` lerp) so they glide between updates instead of
   teleporting.
-- **Jump ability:** space bar (desktop) or a double-tap (touch) triggers a hop —
-  a purely visual parabola offset (`jumpOffsetPx`, peaking mid-flight); the tile
-  `x/y` never change, so collision/camera/position stay grounded. It's a transient
-  broadcast event: `mp.sendJump()` → the server opens a per-session jump window and
-  rebroadcasts `jumped` → each peer sets `RemotePlayer.jumpAt` and the loop renders
-  their hop. `JUMP_COOLDOWN_MS` gates spam; the space handler only `preventDefault`s
-  (blocking page scroll) when the hero is on-screen and no field is focused.
-  **Airborne food** floats above its tile (drawn lifted with a grounded, shrinking
-  shadow) and can **only** be collected mid-jump — the client suppresses the collect
-  request off-jump and the **server enforces** it against its jump window. Airborne
-  food is worth `AIR_POINTS_MULT`× and **shares the `foodCap(players)` budget**
-  with ground food: every spawn rolls `AIR_SPAWN_SHARE` (~⅓) to be airborne, else
-  ground — so the two together never exceed the cap, and airborne food can appear
-  at any player count, including solo. A pity timer (`AIR_PITY_MS`) forces the
-  next spawn airborne if none has appeared for a while, so an unlucky run of
-  ground rolls can't leave airborne food absent.
+- **Abilities (actions):** all abilities share one transient broadcast — client
+  `mp.sendAction(a)` → `{t:'action',a}`; the server rate-limits per `(session,
+ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
+  `{t:'acted',id,a}` → each peer stamps `RemotePlayer.act/actAt` and the loop
+  animates it (the actor plays its own locally). `AbilityKind = jump | dash | bite
+| hand | meow`. **Jump** = a vertical hop (`jumpLiftTiles`; `x/y` never change so
+  collision/camera stay grounded) that opens the **airborne-food** window: air food
+  floats (drawn lifted + winged, grounded shrinking shadow), collectable **only**
+  mid-jump (client suppresses off-jump collects; the server enforces it). Air food
+  is worth `AIR_POINTS_MULT`× and **shares the `foodCap(players)` budget** (each
+  spawn rolls `AIR_SPAWN_SHARE` ~⅓ airborne, with an `AIR_PITY_MS` fallback). **Dash**
+  = a functional forward lunge (`dashFrom→dashTo`, clamped, propagates over the
+  normal position channel). **Bite/hand/meow** = cosmetic emotes (`drawEmote`).
+- **Gamer mode + controls** (`controlsStore`, persisted, off by default, works
+  solo — toggled in Settings): shows a fixed, discreet golden **joystick** (mobile
+  only, bottom-left) that writes an analog move vector the loop reads each frame,
+  and an **ability dock** (bottom-right, desktop too) with per-ability cooldown
+  sweeps. The controls are `<button>` overlay zones in Home's `pointer-events-none`
+  layer, so only they capture touch — the canvas never steers by touch, so an
+  empty-area swipe still scrolls the page (the site stays scrollable).
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside
