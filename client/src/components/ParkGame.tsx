@@ -1604,10 +1604,11 @@ export default function ParkGame() {
       // Standing/walking cat (original code)
       const bobY = cat.idle ? Math.sin(g.frameCount * 0.05) * 2 : 0
       const walkBob = !cat.idle ? Math.sin(g.frameCount * 0.2) * 2 : 0
-      // Mid-hop: the rear legs stretch down (reaching, mid-leap); everything
-      // else stays as the standing pose.
+      // Mid-hop: the rear legs stretch down (reaching, mid-leap) while the front
+      // feet tuck up shorter; everything else stays as the standing pose.
       const airborne = jumpPx > 0
       const backStretch = airborne ? s * 2.5 : 0
+      const frontTuck = airborne ? s * 1.5 : 0
 
       // Mid-hop: draw a separate shrinking shadow on the GROUND so the lift reads
       // as height (the body's own shadow below is skipped while airborne).
@@ -1785,18 +1786,18 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs — front pair unchanged; rear pair stretches down mid-hop.
+      // Legs — front pair tucks up shorter mid-hop; rear pair stretches down.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
       ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
-      ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
+      ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3 - frontTuck)
+      ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3 - frontTuck)
       ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3 + backStretch)
       ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3 + backStretch)
 
-      // Paws (rear paws ride down with the stretch)
+      // Paws (front paws ride up with the tuck; rear paws ride down)
       ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
-      ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
+      ctx.fillRect(s * 2, s * 6.5 + legOffset - frontTuck, s * 2, s * 1)
+      ctx.fillRect(s * 4, s * 6.5 - legOffset - frontTuck, s * 2, s * 1)
       ctx.fillRect(-s * 3, s * 6.5 - legOffset + backStretch, s * 2, s * 1)
       ctx.fillRect(-s * 1, s * 6.5 + legOffset + backStretch, s * 2, s * 1)
 
