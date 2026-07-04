@@ -195,7 +195,7 @@ Supporting choices:
   shop items with `ctx` primitives so the shop renders the **real item art** (not
   emoji) at real relative size (`ItemPreview`), and placed decor matches the
   park's base-object look.
-- **Wall-clock TTL.** Placed items expire 2 min after purchase using `Date.now()`
+- **Wall-clock TTL.** Placed items expire `PLACED_TTL_MS` (7 days) after purchase using `Date.now()`
   (`expiresAt`), NOT `frameCount` — the loop pauses off-screen/hidden, so a
   frame-count TTL would freeze. In multiplayer the **server owns `expiresAt`** and
   sweeps expired items (broadcasting `unplaced`); solo keeps the local sweep.
