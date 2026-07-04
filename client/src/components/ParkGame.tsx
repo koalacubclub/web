@@ -739,6 +739,9 @@ export default function ParkGame() {
     document.addEventListener('selectstart', handleSelectStart)
 
     let animId = 0
+    // Has the local koala walked yet this session? Gates radio playback so a cat
+    // that spawns beside a radio stays silent until the player moves.
+    let hasWalked = false
 
     function drawGround() {
       if (!ctx) return
@@ -1649,6 +1652,9 @@ export default function ParkGame() {
 
     // How close (tiles) Koala must be for a radio to start playing.
     const RADIO_REACH = 2.5
+    // Don't auto-play until the player has actually walked — so spawning next to
+    // a radio on entry stays silent (and it satisfies audio autoplay rules).
+    // Set true on the first movement in updateCat.
 
     function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
@@ -1659,8 +1665,10 @@ export default function ParkGame() {
         // Shop-placed decorations render via the shared sprite module (with
         // pop-in / pre-expiry blink); base objects use their own art below.
         if (obj.placedAt != null) {
-          // A radio plays (pulses + notes + sound) while Koala is near it.
+          // A radio plays (pulses + notes + sound) while Koala is near it — but
+          // only once she's walked, so entering the world doesn't trigger it.
           const playing =
+            hasWalked &&
             obj.type === 'radio' &&
             Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
               RADIO_REACH
@@ -2212,6 +2220,7 @@ export default function ParkGame() {
       if (moving) {
         cat.idleFrames = 0
         cat.state = 'standing'
+        hasWalked = true // first real movement enables radio playback
       } else {
         // Accumulate in 60fps-frame units (dt * 0.06) so idle timing is
         // frame-rate-independent: ~10s to lie, ~20s to sleep.
