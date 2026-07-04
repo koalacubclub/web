@@ -7,7 +7,13 @@
 // Each fn draws with the object's top-left at (obj.x*PIXEL, obj.y*PIXEL); the
 // caller sets up any world translate / device-resolution transform.
 
-import { COLORS, PIXEL, SCALE } from './constants'
+import { COLORS, NIGHT, PIXEL, SCALE, night } from './constants'
+
+// Active palette + ink for the current draw: night-tinted for the in-game park,
+// bright for shop previews. Set at the top of drawShopSprite; the internal draw
+// helpers read these module-level values so their signatures stay unchanged.
+let PAL: typeof COLORS = COLORS
+let INK: (c: string) => string = (c) => c
 
 export interface SpriteObject {
   type: string
@@ -46,13 +52,13 @@ function drawTree(ctx: Ctx, obj: SpriteObject) {
   const s = 0.9 + rng() * 0.22
   const jx = (rng() - 0.5) * PIXEL * 0.16
   const jy = (rng() - 0.5) * PIXEL * 0.12
-  ctx.fillStyle = COLORS.treeTrunk
+  ctx.fillStyle = PAL.treeTrunk
   ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
-  ctx.fillStyle = COLORS.treeLeaves
+  ctx.fillStyle = PAL.treeLeaves
   ctx.beginPath()
   ctx.arc(x + PIXEL + jx, y + PIXEL * 0.6 + jy, PIXEL * 0.9 * s, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = COLORS.treeLeavesLight
+  ctx.fillStyle = PAL.treeLeavesLight
   ctx.beginPath()
   ctx.arc(
     x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
@@ -76,12 +82,12 @@ function drawTree(ctx: Ctx, obj: SpriteObject) {
 function drawBench(ctx: Ctx, obj: SpriteObject) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
-  ctx.fillStyle = COLORS.bench
+  ctx.fillStyle = PAL.bench
   ctx.fillRect(x + SCALE * 3, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
   ctx.fillRect(x + PIXEL * 1.5, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-  ctx.fillStyle = COLORS.benchLight
+  ctx.fillStyle = PAL.benchLight
   ctx.fillRect(x, y + PIXEL * 0.3, PIXEL * 2, SCALE * 4)
-  ctx.fillStyle = COLORS.bench
+  ctx.fillStyle = PAL.bench
   ctx.fillRect(x, y + PIXEL * 0.2, PIXEL * 2, SCALE * 2)
   ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
 }
@@ -90,11 +96,11 @@ function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const palette = [
-    COLORS.flower1,
-    COLORS.flower2,
-    COLORS.flower3,
-    COLORS.heart,
-    COLORS.butterfly,
+    PAL.flower1,
+    PAL.flower2,
+    PAL.flower3,
+    PAL.heart,
+    PAL.butterfly,
   ]
   const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
   const bobOffset = Math.sin(frameCount * 0.05 + obj.x) * 2
@@ -105,13 +111,13 @@ function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
     const petalR = SCALE * 2.5
     const stemH = SCALE * 4
-    ctx.fillStyle = COLORS.grassDark
+    ctx.fillStyle = PAL.grassDark
     ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
     ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
     ctx.fill()
-    ctx.fillStyle = COLORS.fishBowl
+    ctx.fillStyle = PAL.fishBowl
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
     ctx.fill()
@@ -123,7 +129,7 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  ctx.fillStyle = COLORS.water
+  ctx.fillStyle = PAL.water
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.5,
@@ -135,7 +141,7 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     Math.PI * 2,
   )
   ctx.fill()
-  ctx.fillStyle = COLORS.waterLight
+  ctx.fillStyle = PAL.waterLight
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.2,
@@ -151,7 +157,7 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     const angle = (i / 6) * Math.PI * 2
     const sx = x + PIXEL * 1.5 + Math.cos(angle) * PIXEL * 1.3
     const sy = y + PIXEL + Math.sin(angle) * PIXEL * 0.7
-    ctx.fillStyle = i % 2 === 0 ? COLORS.stone : COLORS.stoneDark
+    ctx.fillStyle = i % 2 === 0 ? PAL.stone : PAL.stoneDark
     ctx.beginPath()
     ctx.arc(sx, sy, SCALE * 2, 0, Math.PI * 2)
     ctx.fill()
@@ -174,7 +180,7 @@ function drawBall(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     Math.PI * 2,
   )
   ctx.fill()
-  ctx.fillStyle = '#FF6B6B'
+  ctx.fillStyle = INK('#FF6B6B')
   ctx.beginPath()
   ctx.arc(
     x + PIXEL * 0.5,
@@ -184,7 +190,7 @@ function drawBall(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     Math.PI * 2,
   )
   ctx.fill()
-  ctx.fillStyle = COLORS.fishBowl
+  ctx.fillStyle = PAL.fishBowl
   ctx.beginPath()
   ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.4 - bounce, SCALE, 0, Math.PI * 2)
   ctx.fill()
@@ -193,7 +199,7 @@ function drawBall(ctx: Ctx, obj: SpriteObject, frameCount: number) {
 function drawStone(ctx: Ctx, obj: SpriteObject) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
-  ctx.fillStyle = COLORS.stone
+  ctx.fillStyle = PAL.stone
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 0.5,
@@ -210,13 +216,13 @@ function drawStone(ctx: Ctx, obj: SpriteObject) {
 function drawMushroom(ctx: Ctx, obj: SpriteObject) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
-  ctx.fillStyle = '#F5F5DC'
+  ctx.fillStyle = INK('#F5F5DC')
   ctx.fillRect(x + PIXEL * 0.35, y + PIXEL * 0.5, PIXEL * 0.3, PIXEL * 0.4)
-  ctx.fillStyle = '#FF6B6B'
+  ctx.fillStyle = INK('#FF6B6B')
   ctx.beginPath()
   ctx.arc(x + PIXEL * 0.5, y + PIXEL * 0.45, PIXEL * 0.35, Math.PI, 0)
   ctx.fill()
-  ctx.fillStyle = COLORS.white
+  ctx.fillStyle = PAL.white
   ctx.beginPath()
   ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.35, SCALE, 0, Math.PI * 2)
   ctx.fill()
@@ -246,7 +252,7 @@ function drawSnowcat(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   )
   ctx.fill()
 
-  ctx.fillStyle = COLORS.white
+  ctx.fillStyle = PAL.white
   ctx.beginPath()
   ctx.arc(cx, y + PIXEL * 0.68 + bob, PIXEL * 0.3, 0, Math.PI * 2)
   ctx.fill()
@@ -258,7 +264,7 @@ function drawSnowcat(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   // Big pointy cat ears with pink inners
   const earBaseY = hy - PIXEL * 0.13
   const earTipY = hy - PIXEL * 0.36
-  ctx.fillStyle = COLORS.white
+  ctx.fillStyle = PAL.white
   ctx.beginPath()
   ctx.moveTo(cx - PIXEL * 0.21, earBaseY)
   ctx.lineTo(cx - PIXEL * 0.12, earTipY)
@@ -271,7 +277,7 @@ function drawSnowcat(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   ctx.lineTo(cx + PIXEL * 0.02, earBaseY)
   ctx.closePath()
   ctx.fill()
-  ctx.fillStyle = COLORS.heart
+  ctx.fillStyle = PAL.heart
   ctx.beginPath()
   ctx.moveTo(cx - PIXEL * 0.16, earBaseY - PIXEL * 0.01)
   ctx.lineTo(cx - PIXEL * 0.12, earTipY + PIXEL * 0.07)
@@ -285,14 +291,14 @@ function drawSnowcat(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   ctx.closePath()
   ctx.fill()
 
-  ctx.fillStyle = COLORS.charcoal
+  ctx.fillStyle = PAL.charcoal
   ctx.beginPath()
   ctx.arc(cx - PIXEL * 0.08, hy - PIXEL * 0.02, s * 0.7, 0, Math.PI * 2)
   ctx.fill()
   ctx.beginPath()
   ctx.arc(cx + PIXEL * 0.08, hy - PIXEL * 0.02, s * 0.7, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = COLORS.fishBowl
+  ctx.fillStyle = PAL.fishBowl
   ctx.beginPath()
   ctx.moveTo(cx, hy + PIXEL * 0.02)
   ctx.lineTo(cx + PIXEL * 0.09, hy + PIXEL * 0.05)
@@ -325,11 +331,11 @@ function drawCardbox(ctx: Ctx, obj: SpriteObject) {
   const by = y + PIXEL * 0.36
   const bh = PIXEL * 0.52
 
-  ctx.fillStyle = COLORS.dirt
+  ctx.fillStyle = PAL.dirt
   ctx.fillRect(bx, by, bw, bh)
-  ctx.fillStyle = '#C4A06A'
+  ctx.fillStyle = INK('#C4A06A')
   ctx.fillRect(bx + bw * 0.78, by, bw * 0.22, bh)
-  ctx.fillStyle = '#A87B4A'
+  ctx.fillStyle = INK('#A87B4A')
   ctx.beginPath()
   ctx.moveTo(bx, by)
   ctx.lineTo(bx + bw, by)
@@ -338,7 +344,7 @@ function drawCardbox(ctx: Ctx, obj: SpriteObject) {
   ctx.closePath()
   ctx.fill()
 
-  ctx.fillStyle = COLORS.dirtLight
+  ctx.fillStyle = PAL.dirtLight
   ctx.beginPath()
   ctx.moveTo(bx, by)
   ctx.lineTo(bx - PIXEL * 0.16, by - PIXEL * 0.18)
@@ -352,13 +358,13 @@ function drawCardbox(ctx: Ctx, obj: SpriteObject) {
   ctx.closePath()
   ctx.fill()
 
-  ctx.strokeStyle = '#B5895A'
+  ctx.strokeStyle = INK('#B5895A')
   ctx.lineWidth = SCALE * 0.5
   ctx.beginPath()
   ctx.moveTo(bx + bw * 0.5, by + PIXEL * 0.12)
   ctx.lineTo(bx + bw * 0.5, by + bh)
   ctx.stroke()
-  ctx.strokeStyle = COLORS.dirtLight
+  ctx.strokeStyle = PAL.dirtLight
   ctx.lineWidth = SCALE
   ctx.beginPath()
   ctx.moveTo(bx + bw * 0.5, by)
@@ -375,14 +381,14 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   const W = obj.w * PIXEL
   const H = obj.h * PIXEL
 
-  const trim = '#EFEBE0'
-  const wall = '#8C9096'
-  const wallLine = '#767A80'
-  const roof = '#A6A29A'
-  const roofLine = '#8C877E'
-  const glass = '#6E7E88'
-  const door = '#E2D896'
-  const brick = '#A5503F'
+  const trim = INK('#EFEBE0')
+  const wall = INK('#8C9096')
+  const wallLine = INK('#767A80')
+  const roof = INK('#A6A29A')
+  const roofLine = INK('#8C877E')
+  const glass = INK('#6E7E88')
+  const door = INK('#E2D896')
+  const brick = INK('#A5503F')
 
   ctx.fillStyle = 'rgba(0,0,0,0.16)'
   ctx.beginPath()
@@ -411,7 +417,7 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   const chimW = W * 0.08
   ctx.fillStyle = brick
   ctx.fillRect(chimX, y + H * 0.02, chimW, H * 0.26)
-  ctx.fillStyle = COLORS.charcoal
+  ctx.fillStyle = PAL.charcoal
   ctx.fillRect(chimX - W * 0.01, y + H * 0.02, chimW + W * 0.02, H * 0.03)
 
   ctx.fillStyle = wall
@@ -458,7 +464,7 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   )
   ctx.fillStyle = door
   ctx.fillRect(doorX, doorY, doorW, doorH)
-  ctx.fillStyle = COLORS.charcoal
+  ctx.fillStyle = PAL.charcoal
   ctx.beginPath()
   ctx.arc(doorX + doorW * 0.8, doorY + doorH * 0.5, SCALE * 0.5, 0, Math.PI * 2)
   ctx.fill()
@@ -503,6 +509,8 @@ export interface DrawSpriteOptions {
   // placed items. Omit (previews) for a static, full-size, fully-opaque draw.
   now?: number
   reducedMotion?: boolean
+  // In-game placed decor draws night-tinted; shop previews (omit) stay bright.
+  night?: boolean
 }
 
 // Draw a shop sprite, wrapping placed items in a pop-in scale and a pre-expiry
@@ -515,6 +523,8 @@ export function drawShopSprite(
   opts: DrawSpriteOptions = {},
 ) {
   const { now, reducedMotion } = opts
+  PAL = opts.night ? NIGHT : COLORS
+  INK = opts.night ? night : (c) => c
   let scale = 1
   let alpha = 1
   if (now != null && !reducedMotion) {
