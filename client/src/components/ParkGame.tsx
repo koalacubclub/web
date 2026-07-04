@@ -5,6 +5,7 @@ import { COLLECT_RADIUS, FOOD_TTL_MS, foodCap } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
+import { radio } from '@/game/radio'
 import { NIGHT, night } from '@/game/constants'
 import * as parkStore from '@/game/parkStore'
 
@@ -1646,16 +1647,29 @@ export default function ParkGame() {
       }
     }
 
+    // How close (tiles) Koala must be for a radio to start playing.
+    const RADIO_REACH = 2.5
+
     function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
+      const catX = g.cat.x + 0.5
+      const catY = g.cat.y + 0.5
+      let radioPlaying = false
       sorted.forEach((obj) => {
         // Shop-placed decorations render via the shared sprite module (with
         // pop-in / pre-expiry blink); base objects use their own art below.
         if (obj.placedAt != null) {
+          // A radio plays (pulses + notes + sound) while Koala is near it.
+          const playing =
+            obj.type === 'radio' &&
+            Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
+              RADIO_REACH
+          if (playing) radioPlaying = true
           drawShopSprite(ctx!, obj, g.frameCount, {
             now,
             reducedMotion,
             night: true,
+            playing,
           })
           return
         }
@@ -1688,6 +1702,8 @@ export default function ParkGame() {
             break
         }
       })
+      // Fade the radio jingle in/out with proximity (idempotent per frame).
+      radio.setNear(radioPlaying)
     }
 
     function drawPopups(f: number) {
@@ -2530,7 +2546,13 @@ export default function ParkGame() {
     }
 
     const ensureRunning = () => {
-      if (active() && !animId) animId = requestAnimationFrame(gameLoop)
+      if (active()) {
+        if (!animId) animId = requestAnimationFrame(gameLoop)
+      } else {
+        // Paused (scrolled away / tab hidden): the loop stops updating radio
+        // proximity, so silence it now rather than leave it playing.
+        radio.setNear(false)
+      }
     }
     // The hero is position:fixed, so it always intersects the viewport
     // geometrically — track scroll to pause once it's covered by the content.
@@ -2595,6 +2617,7 @@ export default function ParkGame() {
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
       ro?.disconnect()
+      radio.dispose()
       clearHold()
       document.body.classList.remove('kcc-dragging')
       mp?.close()

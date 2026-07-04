@@ -588,6 +588,130 @@ function drawLightTree(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   ctx.fill()
 }
 
+// A single music note (head + stem + flag), drawn in a raw bright colour so it
+// glows against the night like the fairy lights. Used by the radio when playing.
+function drawNote(
+  ctx: Ctx,
+  nx: number,
+  ny: number,
+  size: number,
+  color: string,
+) {
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.ellipse(nx, ny, size * 0.6, size * 0.45, -0.35, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillRect(nx + size * 0.45, ny - size * 1.9, size * 0.28, size * 1.9)
+  ctx.beginPath()
+  ctx.moveTo(nx + size * 0.73, ny - size * 1.9)
+  ctx.quadraticCurveTo(
+    nx + size * 1.5,
+    ny - size * 1.5,
+    nx + size * 0.73,
+    ny - size * 0.8,
+  )
+  ctx.fill()
+}
+
+// A retro portable radio / boombox (1×1): a rounded body with two speakers, a
+// carry handle, and a stubby antenna. When `playing` (a koala is near) the
+// speaker cones pulse and little notes drift up out of it.
+function drawRadio(
+  ctx: Ctx,
+  obj: SpriteObject,
+  frameCount: number,
+  playing: boolean,
+) {
+  const x = obj.x * PIXEL
+  const y = obj.y * PIXEL
+  const cx = x + PIXEL * 0.5
+  const s = SCALE
+
+  // Ground shadow.
+  ctx.fillStyle = 'rgba(0,0,0,0.16)'
+  ctx.beginPath()
+  ctx.ellipse(
+    cx,
+    y + PIXEL * 0.92,
+    PIXEL * 0.34,
+    PIXEL * 0.08,
+    0,
+    0,
+    Math.PI * 2,
+  )
+  ctx.fill()
+
+  const bx = x + PIXEL * 0.16
+  const bw = PIXEL * 0.68
+  const by = y + PIXEL * 0.42
+  const bh = PIXEL * 0.46
+
+  // Carry handle (arc) + antenna, behind the body.
+  ctx.strokeStyle = INK('#6E6E6E')
+  ctx.lineWidth = s * 1.1
+  ctx.beginPath()
+  ctx.arc(cx, by + s, PIXEL * 0.24, Math.PI * 1.08, Math.PI * 1.92)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(bx + bw * 0.88, by + s)
+  ctx.lineTo(bx + bw * 1.02, by - PIXEL * 0.32)
+  ctx.stroke()
+  ctx.fillStyle = INK('#C9C9C9')
+  ctx.beginPath()
+  ctx.arc(bx + bw * 1.02, by - PIXEL * 0.32, s * 0.9, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Body.
+  ctx.fillStyle = INK('#C0554B')
+  ctx.beginPath()
+  ctx.roundRect(bx, by, bw, bh, s * 1.6)
+  ctx.fill()
+  // Darker top band (controls strip).
+  ctx.fillStyle = INK('#8E3E37')
+  ctx.beginPath()
+  ctx.roundRect(bx + s, by + s * 0.8, bw - s * 2, bh * 0.24, s * 0.8)
+  ctx.fill()
+  // Little tuning knobs on the strip.
+  ctx.fillStyle = INK('#E8C9A0')
+  for (const fx of [0.28, 0.5, 0.72]) {
+    ctx.beginPath()
+    ctx.arc(bx + bw * fx, by + s * 1.9, s * 0.6, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // Two speakers. Their cones pulse while playing.
+  const spY = by + bh * 0.62
+  const pulse = playing ? 1 + Math.sin(frameCount * 0.35) * 0.12 : 1
+  for (const fx of [0.32, 0.68]) {
+    const sxp = bx + bw * fx
+    ctx.fillStyle = INK('#2E2E2E')
+    ctx.beginPath()
+    ctx.arc(sxp, spY, bh * 0.28, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = INK('#4A4A4A')
+    ctx.beginPath()
+    ctx.arc(sxp, spY, bh * 0.28 * 0.55 * pulse, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  if (!playing) return
+
+  // Music notes drifting up out of the radio (bright, so they glow).
+  const noteCols = ['#FFE97A', '#7CFF9E', '#6EC6FF']
+  for (let i = 0; i < 3; i++) {
+    const phase = (((frameCount * 0.012 + i / 3) % 1) + 1) % 1
+    const alpha = Math.sin(phase * Math.PI)
+    if (alpha <= 0.02) continue
+    const nx =
+      cx + Math.sin(frameCount * 0.05 + i * 2) * PIXEL * 0.16 + (i - 1) * s
+    const ny = by - phase * PIXEL * 0.85
+    ctx.save()
+    ctx.globalAlpha *= alpha
+    drawNote(ctx, nx, ny, s * 1.5, noteCols[i % noteCols.length])
+    ctx.restore()
+  }
+}
+
 export interface DrawSpriteOptions {
   // Wall-clock time (Date.now()) — drives the pop-in + pre-expiry blink for
   // placed items. Omit (previews) for a static, full-size, fully-opaque draw.
@@ -595,6 +719,9 @@ export interface DrawSpriteOptions {
   reducedMotion?: boolean
   // In-game placed decor draws night-tinted; shop previews (omit) stay bright.
   night?: boolean
+  // Set on a placed radio when a koala is near it: pulses its speakers and
+  // makes music notes drift up. Ignored by every other sprite.
+  playing?: boolean
 }
 
 // Draw a shop sprite, wrapping placed items in a pop-in scale and a pre-expiry
@@ -673,6 +800,9 @@ export function drawShopSprite(
       break
     case 'lighttree':
       drawLightTree(ctx, obj, frameCount)
+      break
+    case 'radio':
+      drawRadio(ctx, obj, frameCount, opts.playing === true)
       break
   }
 
