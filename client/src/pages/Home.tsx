@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
+import Shop from '@/components/Shop'
 import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
@@ -399,6 +400,9 @@ function HeroControls() {
           />
         </motion.span>
       </button>
+
+      {/* Shop — trigger (bottom-right) + bottom-sheet carousel */}
+      <Shop atTop={atTop} />
     </div>
   )
 }
