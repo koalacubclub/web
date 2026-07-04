@@ -108,7 +108,8 @@ A **shop** spends coins to buy decorations that spawn at Koala's tile. Its trigg
 lives in the **bottom control bar** (`client/src/components/BottomBar.tsx`) — a
 centered cluster grouping the score/likes pill · **Shop** · **Settings**. Shop
 opens a **bottom sheet** that leaves the park visible so you can see where things
-land; Settings (multiplayer only) holds the display-name field, the live online
+land; Settings is always available and holds the **radio mute** toggle (persisted
+to `localStorage`), plus — when connected — the display-name field, the live online
 roster, and the world stats. It's bridged through a small framework-agnostic store
 so the React UI and the imperative canvas never fight.
 
