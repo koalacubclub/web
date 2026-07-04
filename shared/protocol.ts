@@ -97,10 +97,8 @@ export const JUMP_DURATION_MS = 620 // length of the hop arc
 export const JUMP_COOLDOWN_MS = 750 // min gap between jumps (anti-spam + feel)
 export const JUMP_PEAK_TILES = 1.5 // how high the koala rises, in tiles (render)
 
-// Airborne food lives in its own small pool alongside ground food, on a slower
-// cadence, so the single ground slot (MAX_FOOD) is never starved by it.
-export const MAX_AIR_FOOD = 1
-export const AIR_SPAWN_COOLDOWN_MS = 9000
+// Airborne food shares the ground food's foodCap budget: each spawn is a coin
+// flip (ground or airborne, equal chance), so it never adds beyond the cap.
 export const AIR_FOOD_TTL_MS = 20000
 export const AIR_COLLECT_RADIUS = 0.95 // a touch more forgiving (timing-gated)
 export const AIR_HEIGHT_TILES = 1.35 // how high air food floats above its tile

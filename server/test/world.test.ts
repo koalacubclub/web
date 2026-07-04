@@ -641,9 +641,10 @@ describe('GameWorld stats', () => {
 const sendJump = (ws: WebSocket) => ws.send(JSON.stringify({ t: 'jump' }))
 
 // Grab a currently-live AIRBORNE food. Airborne food shares the foodCap budget
-// with ground food, so on a small/solo park (cap 1) an airborne food only
-// spawns once the slot is free during ground's cooldown. We nudge that along by
-// collecting any ground food we see, freeing the slot for airborne to claim.
+// with ground food (each spawn is a 50/50 coin flip), so on a small/solo park
+// (cap 1) the single slot may currently hold a ground food. We free it by
+// collecting any ground food we see; each freed slot has a 50% chance of
+// becoming airborne, so one shows up within a few rounds.
 async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
   const grabbed = new Set<string>()
   for (let i = 0; i < 24; i++) {
