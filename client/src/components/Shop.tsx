@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
+} from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingBag, X } from 'lucide-react'
 import * as parkStore from '@/game/parkStore'
@@ -113,8 +120,8 @@ export default function Shop({ atTop }: { atTop: boolean }) {
             // Stop pointer/touch-downs on the sheet from reaching the window
             // listeners that would otherwise start walking Koala underneath it.
             // (No full-screen backdrop, so the park above stays interactive.)
-            onPointerDownCapture={(e) => e.stopPropagation()}
-            onTouchStartCapture={(e) => e.stopPropagation()}
+            onPointerDownCapture={(e: ReactPointerEvent) => e.stopPropagation()}
+            onTouchStartCapture={(e: ReactTouchEvent) => e.stopPropagation()}
           >
             {/* Close button — floats just above the sheet, over the park */}
             <button

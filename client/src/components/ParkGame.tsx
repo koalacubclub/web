@@ -792,7 +792,7 @@ export default function ParkGame() {
       drawBlobPatch(PIXEL * 19, PIXEL * 5, PIXEL * 1.2, PIXEL * 0.9, 17.3)
     }
 
-    function drawStarsAndMoon() {
+    function drawStars() {
       if (!ctx) return
       // Stars
       const stars = [
@@ -820,33 +820,68 @@ export default function ParkGame() {
       stars.forEach((star) => {
         const twinkle = 0.5 + 0.5 * Math.sin(g.frameCount * 0.03 + star.x * 0.1)
         ctx.fillStyle = `rgba(255, 255, 230, ${twinkle * 0.9})`
-        ctx.beginPath()
-        ctx.arc(star.x, star.y, star.s, 0, Math.PI * 2)
-        ctx.fill()
+        if (star.s >= 2.5) {
+          // A few 4-point sparkle stars, with slightly uneven points (seeded by
+          // position so the shape is stable — only the brightness twinkles).
+          const rng = makeRng(Math.round(star.x) + 1)
+          const inner = star.s * 0.8
+          ctx.beginPath()
+          for (let i = 0; i < 8; i++) {
+            const ang = (i / 8) * Math.PI * 2 - Math.PI / 2
+            const rr = i % 2 === 0 ? star.s * (1.8 + rng() * 1.2) : inner
+            const px = star.x + Math.cos(ang) * rr
+            const py = star.y + Math.sin(ang) * rr
+            if (i === 0) ctx.moveTo(px, py)
+            else ctx.lineTo(px, py)
+          }
+          ctx.closePath()
+          ctx.fill()
+        } else {
+          ctx.beginPath()
+          ctx.arc(star.x, star.y, star.s, 0, Math.PI * 2)
+          ctx.fill()
+        }
       })
+    }
 
-      // Moon (crescent)
+    // Full moon, baked into the sky BEHIND the hills (drawn in screen coords in
+    // renderStaticBackground, before the wavy ridge). Smaller so the ridge only
+    // clips its lower edge.
+    function drawMoon() {
+      if (!ctx) return
       const moonX = CANVAS_WIDTH - PIXEL * 1.2
-      const moonY = PIXEL * 0.35
-      const moonR = PIXEL * 0.5
+      const moonY = WORLD_OFFSET + PIXEL * 0.1
+      const moonR = PIXEL * 0.38
+      // Soft halo.
+      ctx.fillStyle = 'rgba(255, 253, 232, 0.12)'
+      ctx.beginPath()
+      ctx.arc(moonX, moonY, moonR * 1.7, 0, Math.PI * 2)
+      ctx.fill()
+      // Disc.
       ctx.fillStyle = '#FFFDE8'
       ctx.beginPath()
       ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = 'rgba(255, 253, 232, 0.15)'
-      ctx.beginPath()
-      ctx.arc(moonX, moonY, moonR * 1.6, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = COLORS.sky
-      ctx.beginPath()
-      ctx.arc(
-        moonX + moonR * 0.4,
-        moonY - moonR * 0.1,
-        moonR * 0.8,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      // Craters (slightly darker translucent spots).
+      ctx.fillStyle = 'rgba(208, 202, 175, 0.55)'
+      const craters: [number, number, number][] = [
+        [-0.35, -0.18, 0.16],
+        [0.28, -0.3, 0.1],
+        [0.12, 0.3, 0.14],
+        [-0.12, 0.16, 0.08],
+        [0.4, 0.1, 0.09],
+      ]
+      craters.forEach(([dx, dy, r]) => {
+        ctx!.beginPath()
+        ctx!.arc(
+          moonX + dx * moonR,
+          moonY + dy * moonR,
+          r * moonR,
+          0,
+          Math.PI * 2,
+        )
+        ctx!.fill()
+      })
     }
 
     function drawDreamBubble() {
@@ -1110,6 +1145,14 @@ export default function ParkGame() {
       const bs = PIXEL * 0.52
       const bx = cx - bs / 2
       const by = y + PIXEL * 0.06
+      // Soft halo that follows the badge's rounded-rect shape (a flat, slightly
+      // larger rounded rect behind it).
+      const tint = ig ? '255,150,205' : '255,255,255' // IG pink / TikTok white
+      const m = bs * 0.16
+      ctx.fillStyle = `rgba(${tint},0.16)`
+      ctx.beginPath()
+      ctx.roundRect(bx - m, by - m, bs + 2 * m, bs + 2 * m, bs * 0.28 + m)
+      ctx.fill()
       ctx.fillStyle = ig ? '#E1306C' : '#111318'
       ctx.beginPath()
       ctx.roundRect(bx, by, bs, bs, bs * 0.28)
@@ -1597,9 +1640,6 @@ export default function ParkGame() {
             break
           case 'stone':
             drawStone(obj)
-            break
-          case 'social':
-            drawSocialSign(obj)
             break
           case 'photo':
             drawPhoto(obj)
@@ -2264,8 +2304,9 @@ export default function ParkGame() {
       skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
       ctx!.fillStyle = skyGrad
       ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
-      // Ridge on the sky FIRST, so the textured grass patches drawn by
-      // drawGround() render on top of the wave rather than being covered by it.
+      // Ridge on the sky, so the textured grass patches drawn by drawGround()
+      // render on top of the wave. (Stars + moon are drawn in the loop, above the
+      // wash, so they stay bright rather than being dimmed by the night overlay.)
       drawWavyHorizon()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
@@ -2358,10 +2399,19 @@ export default function ParkGame() {
       ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       ctx!.restore()
 
-      // Above overlay, in the shifted world space (stars/moon just above ground).
+      // Above the wash (bright, not dimmed): the sky (stars + moon), the IG/TikTok
+      // billboards (lit), then the dream bubble, food, and popups.
+      drawMoon()
+      // Stars sit higher in the sky (a smaller offset than the world).
+      ctx!.save()
+      ctx!.translate(0, WORLD_OFFSET * 0.65)
+      drawStars()
+      ctx!.restore()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      drawStarsAndMoon()
+      g.objects.forEach((o) => {
+        if (o.type === 'social') drawSocialSign(o)
+      })
       drawDreamBubble()
       drawFoods()
       drawPopups(f)
