@@ -36,6 +36,20 @@ describe('BottomBar', () => {
     expect(rename).toHaveBeenCalledWith('Pixel')
   })
 
+  it('toggles the radio mute from the settings popover (persisted)', () => {
+    render(<BottomBar atTop={true} />)
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    // Starts unmuted.
+    const muteBtn = screen.getByRole('button', { name: /mute radio/i })
+    expect(muteBtn).toHaveAttribute('aria-pressed', 'false')
+    // Click → muted, and the preference is persisted.
+    fireEvent.click(muteBtn)
+    expect(
+      screen.getByRole('button', { name: /unmute radio/i }),
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(localStorage.getItem('kcc-muted')).toBe('1')
+  })
+
   it('lists online players and world stats in the settings menu', () => {
     store.applyServerPresence([
       { id: 'a', name: 'Alice', self: true },

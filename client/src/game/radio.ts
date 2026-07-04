@@ -37,6 +37,17 @@ const LEAD = [A4, C5, E5, A5, E5, C5, A4, C5, E5, A5, E5, C5, A4, C5, E5, A5]
 const PEAK = 0.14 // master gain when playing (limiter catches the peaks)
 const FADE = 0.3 // seconds to fade in / out
 
+// Persisted mute preference (survives reloads). Read defensively so private-mode
+// / SSR never throws.
+const MUTE_KEY = 'kcc-muted'
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 class RadioAudio {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
@@ -45,6 +56,7 @@ class RadioAudio {
   private nextTime = 0
   private step = 0
   private near = false
+  private muted = readMuted()
 
   // Lazily build the context, master gain and a limiter. Returns false if Web
   // Audio is missing (so the caller silently gets no sound).
@@ -90,7 +102,28 @@ class RadioAudio {
   setNear(near: boolean) {
     if (near === this.near) return
     this.near = near
-    if (near) this.start()
+    this.reconcile()
+  }
+
+  // Toggle the persisted mute preference. Plays/stops immediately to match.
+  setMuted(muted: boolean) {
+    if (muted === this.muted) return
+    this.muted = muted
+    try {
+      localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+    } catch {
+      /* private mode — keep the in-memory preference for this session */
+    }
+    this.reconcile()
+  }
+
+  isMuted(): boolean {
+    return this.muted
+  }
+
+  // Play only when a koala is near AND we're not muted.
+  private reconcile() {
+    if (this.near && !this.muted) this.start()
     else this.fadeOut()
   }
 
