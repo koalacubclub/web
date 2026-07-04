@@ -248,9 +248,14 @@ export function sanitizeName(raw: unknown): string | null {
   for (const ch of raw) {
     const c = ch.codePointAt(0) ?? 0
     if (c < 0x20 || c === 0x7f) continue // drop control chars
+    if (ch.length === 1 && c >= 0xd800 && c <= 0xdfff) continue // lone surrogate
     out += ch
   }
-  const cleaned = out.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX)
+  // Cap by CODE POINTS (not UTF-16 units) so the limit is consistent and an
+  // emoji at the boundary is never split into a broken surrogate.
+  const cleaned = [...out.replace(/\s+/g, ' ').trim()]
+    .slice(0, NAME_MAX)
+    .join('')
   return cleaned.length >= NAME_MIN ? cleaned : null
 }
 

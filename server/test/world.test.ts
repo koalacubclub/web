@@ -510,3 +510,19 @@ describe('GameWorld names', () => {
     expect(msgs.filter((m) => m.t === 'renamed').length).toBe(before) // no broadcast
   })
 })
+
+describe('GameWorld names (unicode)', () => {
+  it('caps by code points and never stores a split/lone surrogate', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'setName', name: '😀'.repeat(25) }))
+    await wait(80)
+    const rn = msgs.find((m) => m.t === 'renamed' && m.id === a.id)
+    expect(rn).toBeTruthy()
+    expect([...rn.name].length).toBeLessThanOrEqual(NAME_MAX)
+    const loneSurrogate =
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+    expect(loneSurrogate.test(rn.name)).toBe(false)
+  })
+})
