@@ -68,7 +68,7 @@ export default function Shop({
 
   const Coin = ({ value }: { value: number }) => (
     <span className="inline-flex items-center gap-1 text-[oklch(0.82_0.13_78)]">
-      <span aria-hidden="true">★</span>
+      <span aria-hidden="true">♥</span>
       <span>{value}</span>
     </span>
   )
