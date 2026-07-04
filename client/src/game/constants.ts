@@ -38,6 +38,7 @@ export const COLORS = {
   catOrange: '#A07850',
   catDark: '#8B5E3C',
   catStripe: '#6D4C2A',
+  catEar: '#FFC9D9', // light pink inner ear
   white: '#FFFFFF',
   heart: '#FF6B9D',
   fishBowl: '#FFD93D',
