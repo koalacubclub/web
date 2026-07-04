@@ -12,7 +12,7 @@ import {
   AIR_COLLECT_RADIUS,
   AIR_FOOD_TTL_MS,
   AIR_POINTS_MULT,
-  AIR_SPAWN_COOLDOWN_MS,
+  AIR_SPAWN_SHARE,
   COLLECT_RADIUS,
   FOOD_SPAWN_COOLDOWN_MS,
   FOOD_TTL_MS,
@@ -21,7 +21,6 @@ import {
   foodCap,
   JUMP_COOLDOWN_MS,
   JUMP_DURATION_MS,
-  MAX_AIR_FOOD,
   MAX_INBOUND_MSGS_PER_SEC,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
@@ -72,7 +71,6 @@ export class GameWorld extends DurableObject<Env> {
   // positions): a hibernation wake starts empty and refills via lazy top-up.
   private food = new Map<string, Food>()
   private lastSpawnAt = 0
-  private lastAirSpawnAt = 0
 
   // When each session last started a jump (epoch ms). Ephemeral (jumps are
   // transient): used to gate airborne-food collection to a live jump window.
@@ -510,11 +508,9 @@ export class GameWorld extends DurableObject<Env> {
   // ---- collectibles (no game tick: lazy top-up on player traffic) ----
 
   /** Sweep expired food and top up the map. One shared budget — foodCap(players)
-   *  (~half the crowd, rounded up) — covers BOTH ground and airborne food, so the
-   *  total on the map never exceeds the cap. Any free slot can become ground OR
-   *  airborne: ground takes it on the normal cooldown, and airborne claims a free
-   *  slot on its own (slower) cooldown when ground isn't due — so even a solo park
-   *  (cap 1) sees an occasional airborne treat, never an extra one. */
+   *  (~half the crowd, rounded up) — and one cooldown. Each spawn rolls
+   *  AIR_SPAWN_SHARE to be airborne (else ground), so the total never exceeds the
+   *  cap and airborne food can appear at any player count (including solo). */
   private maybeSpawn(now: number): void {
     for (const [id, f] of this.food) {
       const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
@@ -524,29 +520,12 @@ export class GameWorld extends DurableObject<Env> {
       }
     }
     const cap = foodCap(this.ctx.getWebSockets().length)
-    let total = this.food.size
-    let air = 0
-    for (const f of this.food.values()) if (f.air) air++
-
-    // Ground food takes a free slot on its normal cooldown.
-    if (total < cap && now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS) {
-      this.lastSpawnAt = now
-      const f = this.spawnFood(now, false)
-      if (f) {
-        this.broadcast({ t: 'spawn', f })
-        total++
-      }
-    }
-    // Airborne food claims a still-free slot on its own slower cooldown — so it
-    // shares the same budget (never adds beyond the cap) but can still appear
-    // when ground isn't due, including on a solo park after a slot frees up.
     if (
-      total < cap &&
-      air < MAX_AIR_FOOD &&
-      now - this.lastAirSpawnAt >= AIR_SPAWN_COOLDOWN_MS
+      this.food.size < cap &&
+      now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS
     ) {
-      this.lastAirSpawnAt = now
-      const f = this.spawnFood(now, true)
+      this.lastSpawnAt = now
+      const f = this.spawnFood(now, Math.random() < AIR_SPAWN_SHARE)
       if (f) this.broadcast({ t: 'spawn', f })
     }
   }
