@@ -8,6 +8,7 @@ import type {
   ServerMessage,
 } from '@koala/shared'
 import {
+  ABILITY_COOLDOWNS_MS,
   ACTIVE_WINDOW_MS,
   AIR_COLLECT_RADIUS,
   AIR_FOOD_TTL_MS,
@@ -20,11 +21,11 @@ import {
   FOODS,
   FOOD_TOTAL_WEIGHT,
   foodCap,
-  JUMP_COOLDOWN_MS,
   JUMP_DURATION_MS,
   MAX_INBOUND_MSGS_PER_SEC,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
+  sanitizeAction,
   sanitizeBuy,
   sanitizeCollect,
   sanitizeName,
@@ -77,6 +78,10 @@ export class GameWorld extends DurableObject<Env> {
   // When each session last started a jump (epoch ms). Ephemeral (jumps are
   // transient): used to gate airborne-food collection to a live jump window.
   private jumpAt = new Map<string, number>()
+
+  // Per-(session, ability) last-used epoch ms for cooldown enforcement, keyed
+  // `${sessionId}::${ability}`. Ephemeral; cleared on disconnect.
+  private lastActionAt = new Map<string, number>()
 
   // Server-owned placed decorations (bought with likes). Shared across players,
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
@@ -301,13 +306,18 @@ export class GameWorld extends DurableObject<Env> {
       return
     }
 
-    if (msg.t === 'jump') {
-      // Rate-limited (independent of the flood budget) + opens the airborne-food
-      // collect window; broadcast so everyone else can play the hop.
-      const last = this.jumpAt.get(a.id) ?? 0
-      if (now - last < JUMP_COOLDOWN_MS) return
-      this.jumpAt.set(a.id, now)
-      this.broadcast({ t: 'jumped', id: a.id }, a.id)
+    if (msg.t === 'action') {
+      const act = sanitizeAction(msg)
+      if (!act) return
+      // Per-ability cooldown (independent of the flood budget).
+      const ck = `${a.id}::${act.a}`
+      const last = this.lastActionAt.get(ck) ?? 0
+      if (now - last < ABILITY_COOLDOWNS_MS[act.a]) return
+      this.lastActionAt.set(ck, now)
+      // Jump additionally opens this session's airborne-food collect window.
+      if (act.a === 'jump') this.jumpAt.set(a.id, now)
+      // Broadcast so everyone else can animate it (the actor plays it locally).
+      this.broadcast({ t: 'acted', id: a.id, a: act.a }, a.id)
       return
     }
 
@@ -433,6 +443,9 @@ export class GameWorld extends DurableObject<Env> {
       this.positions.delete(a.id)
       this.rate.delete(a.id)
       this.jumpAt.delete(a.id)
+      for (const k of this.lastActionAt.keys()) {
+        if (k.startsWith(`${a.id}::`)) this.lastActionAt.delete(k)
+      }
       this.broadcast({ t: 'leave', id: a.id }, a.id)
     }
   }

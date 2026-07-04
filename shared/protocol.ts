@@ -88,14 +88,41 @@ export interface Food {
   air?: boolean
 }
 
-// ---- Jump ability + airborne food ----
-// Jump is a transient, broadcast action: press space (or double-tap on touch) to
-// hop. It's purely a vertical animation (x/y never change), but it unlocks a class
-// of AIRBORNE collectibles you can only grab while in the air — so the server must
-// know your jump window to validate those catches.
+// ---- Abilities (transient, broadcast actions) + airborne food ----
+// An ability is a fire-and-forget action a player triggers (space / on-screen
+// button). The server rate-limits per kind, may apply a side effect (jump opens
+// the airborne-food window), and rebroadcasts it so peers can animate it. Only
+// jump (air food) + dash (reposition) are functional; bite/hand/meow are cosmetic
+// emotes until enemies (rats) exist.
+export type AbilityKind = 'jump' | 'dash' | 'bite' | 'hand' | 'meow'
+export const ABILITIES: readonly AbilityKind[] = [
+  'jump',
+  'dash',
+  'bite',
+  'hand',
+  'meow',
+]
+
+// Jump: a vertical hop (x/y never change) that unlocks airborne-food collection.
 export const JUMP_DURATION_MS = 620 // length of the hop arc
 export const JUMP_COOLDOWN_MS = 750 // min gap between jumps (anti-spam + feel)
 export const JUMP_PEAK_TILES = 1.5 // how high the koala rises, in tiles (render)
+
+// Dash: a quick forward lunge that actually repositions the koala (server-clamped).
+export const DASH_DURATION_MS = 220
+export const DASH_TILES = 3 // distance the lunge covers
+export const DASH_COOLDOWN_MS = 1200
+// Emotes (bite/hand/meow): cosmetic animation length.
+export const EMOTE_DURATION_MS = 500
+
+// Per-ability cooldowns (server-enforced + mirrored client-side for the sweep).
+export const ABILITY_COOLDOWNS_MS: Record<AbilityKind, number> = {
+  jump: JUMP_COOLDOWN_MS,
+  dash: DASH_COOLDOWN_MS,
+  bite: 600,
+  hand: 600,
+  meow: 1500,
+}
 
 // Airborne food shares the ground food's foodCap budget: each spawn rolls this
 // probability to be airborne (else ground), so it never adds beyond the cap.
@@ -224,9 +251,9 @@ export type ClientMessage =
   | { t: 'buy'; key: string; x: number; y: number }
   // Change this session's display name (server validates + persists + broadcasts).
   | { t: 'setName'; name: string }
-  // Trigger a jump (no payload). Server rate-limits, opens this session's jump
-  // window (for airborne collects), and broadcasts a `jumped` to the others.
-  | { t: 'jump' }
+  // Trigger an ability. Server rate-limits per kind, applies any side effect
+  // (jump opens this session's airborne-collect window), and broadcasts `acted`.
+  | { t: 'action'; a: AbilityKind }
 
 export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
@@ -261,8 +288,8 @@ export type ServerMessage =
   // Refreshed global stats, broadcast when a brand-new session joins (so open
   // Settings menus update). Per-viewer `yourVisits` only travels in `welcome`.
   | { t: 'stats'; active24h: number; totalSessions: number }
-  // A player jumped — broadcast to everyone else so they can play the hop.
-  | { t: 'jumped'; id: string }
+  // A player used an ability — broadcast to everyone else so they animate it.
+  | { t: 'acted'; id: string; a: AbilityKind }
 
 export const PROTOCOL_VERSION = 1
 
@@ -307,6 +334,15 @@ export function sanitizeCollect(raw: unknown): { id: string } | null {
   const id = (raw as Record<string, unknown>).id
   if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
   return { id }
+}
+
+// Validate an untrusted ability request against the known ability set.
+export function sanitizeAction(raw: unknown): { a: AbilityKind } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const a = (raw as Record<string, unknown>).a
+  return typeof a === 'string' && (ABILITIES as readonly string[]).includes(a)
+    ? { a: a as AbilityKind }
+    : null
 }
 
 // Validate an untrusted display name: strip control chars, collapse whitespace,
