@@ -1,83 +1,53 @@
-// Web Audio jingle for the park's portable radio.
+// Web Audio "rave" loop for the park's portable radio.
 //
-// A short, upbeat electronic loop that fades IN when Koala walks near a placed
-// radio and fades OUT when she wanders away. The AudioContext is created lazily
-// on first use — browser autoplay rules require a prior user gesture, and
-// walking the cat (keyboard / pointer) is one, so by the time she reaches a
-// radio the context can resume. Everything is a no-op when Web Audio is
-// unavailable (SSR / very old browsers), so callers never need to guard.
+// A driving four-on-the-floor electronic-dance loop that fades IN when Koala
+// walks near a placed radio and fades OUT when she wanders away. The
+// AudioContext is created lazily on first use — browser autoplay rules require a
+// prior user gesture, and walking the cat (keyboard / pointer) is one, so by the
+// time she reaches a radio the context can resume. Everything is a no-op when
+// Web Audio is unavailable (SSR / very old browsers), so callers never guard.
 //
-// The synth is a detuned-saw lead through a resonant low-pass (with a pluck
-// filter sweep) over a square-wave bass — a small 16-step C-pentatonic groove,
-// so it stays consonant while sounding like a chiptune/synth, not a beeper.
+// Voices: a synthesised kick (four-on-the-floor), a noise clap on beats 2 & 4,
+// closed hi-hats on the offbeats, an offbeat saw bass, and a detuned-saw arp
+// lead through a resonant low-pass — all glued by a limiter so the busy mix
+// never clips. A minor pentatonic (A) keeps it dark and consonant.
 
 type Ctor = typeof AudioContext
 
-// Pitches (Hz). Lead sits around octave 5; bass around octaves 2–3.
-const C5 = 523.25
-const D5 = 587.33
-const E5 = 659.25
-const G5 = 783.99
-const A5 = 880.0
-const C6 = 1046.5
-const C3 = 130.81
-const G2 = 98.0
+// Pitches (Hz), A-minor pentatonic (A C D E G). Bass low, arp lead up high.
 const A2 = 110.0
+const E2 = 82.41
+const A4 = 440.0
+const C5 = 523.25
+const E5 = 659.25
+const A5 = 880.0
 const _ = 0 // rest
 
-// 16-step grid (a 2.4s loop at STEP=0.15). LEAD is a bouncy pentatonic riff;
-// BASS pulses a root note at the start of each 4-step bar for the groove.
-const STEP = 0.15 // seconds per step (fast → upbeat)
-const LEAD: readonly number[] = [
-  C5,
-  E5,
-  G5,
-  C6,
-  A5,
-  G5,
-  E5,
-  D5,
-  C5,
-  E5,
-  G5,
-  A5,
-  C6,
-  G5,
-  E5,
-  G5,
-]
-const BASS: readonly number[] = [
-  C3,
-  _,
-  _,
-  _,
-  A2,
-  _,
-  _,
-  _,
-  G2,
-  _,
-  _,
-  _,
-  C3,
-  _,
-  _,
-  _,
-]
+// 16-step grid = one bar. At STEP≈0.107s that's ~140 BPM (a rave tempo).
+const STEP = 0.107
+// Four-on-the-floor kick; clap on beats 2 & 4; closed hats on the offbeats.
+const KICK = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+const CLAP = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+const HAT = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
+// Offbeat bass (the classic house/rave pump), root A with an E turnaround.
+const BASS = [_, _, A2, _, _, _, A2, _, _, _, A2, _, _, _, E2, _]
+// Sixteenth-note arp lead — a rising/falling A-minor figure.
+const LEAD = [A4, C5, E5, A5, E5, C5, A4, C5, E5, A5, E5, C5, A4, C5, E5, A5]
 
-const PEAK = 0.13 // master gain when playing (deliberately quiet)
-const FADE = 0.35 // seconds to fade in / out
+const PEAK = 0.22 // master gain when playing (limiter catches the peaks)
+const FADE = 0.3 // seconds to fade in / out
 
 class RadioAudio {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
+  private noise: AudioBuffer | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private nextTime = 0
   private step = 0
   private near = false
 
-  // Lazily build the context + master gain. Returns false if Web Audio is
-  // missing (so the caller silently gets no sound).
+  // Lazily build the context, master gain and a limiter. Returns false if Web
+  // Audio is missing (so the caller silently gets no sound).
   private ensure(): boolean {
     if (this.ctx) return true
     if (typeof window === 'undefined') return false
@@ -92,8 +62,28 @@ class RadioAudio {
     }
     this.master = this.ctx.createGain()
     this.master.gain.value = 0
-    this.master.connect(this.ctx.destination)
+    // A limiter glues the busy drum/bass/lead mix and stops it clipping.
+    const limiter = this.ctx.createDynamicsCompressor()
+    limiter.threshold.value = -10
+    limiter.knee.value = 6
+    limiter.ratio.value = 12
+    limiter.attack.value = 0.003
+    limiter.release.value = 0.12
+    this.master.connect(limiter)
+    limiter.connect(this.ctx.destination)
     return true
+  }
+
+  // One shared white-noise buffer for the percussion (clap + hats).
+  private noiseBuffer(): AudioBuffer {
+    if (this.noise) return this.noise
+    const ctx = this.ctx as AudioContext
+    const len = Math.floor(ctx.sampleRate * 0.4)
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1
+    this.noise = buf
+    return buf
   }
 
   // Toggle proximity. Idempotent — safe to call every frame.
@@ -131,70 +121,134 @@ class RadioAudio {
     }
   }
 
-  // Look-ahead scheduler: queue any steps falling within the next 0.2s. Each
-  // step fires a lead note and (on bar starts) a bass note, both on one grid.
+  // Look-ahead scheduler: queue any 16th-note steps within the next 0.2s, each
+  // firing whichever voices its patterns call for.
   private schedule() {
     if (!this.ctx || !this.master) return
     const LOOKAHEAD = 0.2
     while (this.nextTime < this.ctx.currentTime + LOOKAHEAD) {
-      const i = this.step % LEAD.length
-      if (LEAD[i] > 0) this.playLead(LEAD[i], this.nextTime)
-      if (BASS[i] > 0) this.playBass(BASS[i], this.nextTime)
+      const i = this.step % 16
+      const at = this.nextTime
+      if (KICK[i]) this.kick(at)
+      if (CLAP[i]) this.clap(at)
+      if (HAT[i]) this.hat(at)
+      if (BASS[i] > 0) this.bass(BASS[i], at)
+      if (LEAD[i] > 0) this.lead(LEAD[i], at)
       this.nextTime += STEP
       this.step++
     }
   }
 
-  // Detuned-saw lead through a resonant low-pass with a downward filter sweep —
-  // a classic synth "pluck". Two oscillators a few cents apart give it width.
-  private playLead(freq: number, at: number) {
+  // Punchy kick: a sine pitched from ~160Hz down to ~45Hz with a fast decay.
+  private kick(at: number) {
     const ctx = this.ctx
     const master = this.master
     if (!ctx || !master) return
-    const dur = STEP * 0.95
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.Q.value = 7
-    filter.frequency.setValueAtTime(4200, at)
-    filter.frequency.exponentialRampToValueAtTime(1100, at + dur)
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(160, at)
+    osc.frequency.exponentialRampToValueAtTime(45, at + 0.11)
     const g = ctx.createGain()
-    g.gain.setValueAtTime(0, at)
-    g.gain.linearRampToValueAtTime(0.3, at + 0.008)
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-    filter.connect(g)
+    g.gain.setValueAtTime(0.9, at)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.16)
+    osc.connect(g)
     g.connect(master)
-    for (const detune of [-7, 7]) {
+    osc.start(at)
+    osc.stop(at + 0.18)
+  }
+
+  // Clap: a band-passed noise burst with a quick decay.
+  private clap(at: number) {
+    const ctx = this.ctx
+    const master = this.master
+    if (!ctx || !master) return
+    const src = ctx.createBufferSource()
+    src.buffer = this.noiseBuffer()
+    const bp = ctx.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 1600
+    bp.Q.value = 0.8
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(0.5, at + 0.005)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.12)
+    src.connect(bp)
+    bp.connect(g)
+    g.connect(master)
+    src.start(at)
+    src.stop(at + 0.14)
+  }
+
+  // Closed hi-hat: a very short high-passed noise tick.
+  private hat(at: number) {
+    const ctx = this.ctx
+    const master = this.master
+    if (!ctx || !master) return
+    const src = ctx.createBufferSource()
+    src.buffer = this.noiseBuffer()
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 7000
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.22, at)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.04)
+    src.connect(hp)
+    hp.connect(g)
+    g.connect(master)
+    src.start(at)
+    src.stop(at + 0.05)
+  }
+
+  // Offbeat saw bass through a low-pass — the pump under the kick.
+  private bass(freq: number, at: number) {
+    const ctx = this.ctx
+    const master = this.master
+    if (!ctx || !master) return
+    const dur = STEP * 0.9
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.value = freq
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = 700
+    lp.Q.value = 4
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(0.45, at + 0.01)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+    osc.connect(lp)
+    lp.connect(g)
+    g.connect(master)
+    osc.start(at)
+    osc.stop(at + dur)
+  }
+
+  // Detuned-saw arp stab through a resonant low-pass with a downward sweep.
+  private lead(freq: number, at: number) {
+    const ctx = this.ctx
+    const master = this.master
+    if (!ctx || !master) return
+    const dur = STEP * 0.9
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.Q.value = 8
+    lp.frequency.setValueAtTime(3800, at)
+    lp.frequency.exponentialRampToValueAtTime(900, at + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, at)
+    g.gain.exponentialRampToValueAtTime(0.2, at + 0.006)
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
+    lp.connect(g)
+    g.connect(master)
+    for (const detune of [-8, 8]) {
       const osc = ctx.createOscillator()
       osc.type = 'sawtooth'
       osc.frequency.value = freq
       osc.detune.value = detune
-      osc.connect(filter)
+      osc.connect(lp)
       osc.start(at)
       osc.stop(at + dur)
     }
-  }
-
-  // Punchy square-wave bass, held ~one bar, low-passed so it thumps not buzzes.
-  private playBass(freq: number, at: number) {
-    const ctx = this.ctx
-    const master = this.master
-    if (!ctx || !master) return
-    const dur = STEP * 3.6
-    const filter = ctx.createBiquadFilter()
-    filter.type = 'lowpass'
-    filter.frequency.value = 600
-    const osc = ctx.createOscillator()
-    osc.type = 'square'
-    osc.frequency.value = freq
-    const g = ctx.createGain()
-    g.gain.setValueAtTime(0, at)
-    g.gain.linearRampToValueAtTime(0.32, at + 0.01)
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur)
-    osc.connect(filter)
-    filter.connect(g)
-    g.connect(master)
-    osc.start(at)
-    osc.stop(at + dur)
   }
 
   // Tear down entirely (component unmount). Safe to call multiple times.
@@ -206,6 +260,7 @@ class RadioAudio {
     void this.ctx?.close()
     this.ctx = null
     this.master = null
+    this.noise = null
     this.near = false
     this.step = 0
   }
