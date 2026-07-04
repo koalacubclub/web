@@ -263,6 +263,9 @@ export class GameWorld extends DurableObject<Env> {
         this.sendTo(ws, { t: 'buyfail', reason: 'occupied' })
         return
       }
+      // Spend only when the player can afford it, so addLikes() never drives a
+      // balance negative (a session's row is first created positive by a
+      // collect; a spend of <= balance keeps it >= 0).
       if (this.getLikes(a.id) < b.item.price) {
         this.sendTo(ws, { t: 'buyfail', reason: 'insufficient' })
         return
@@ -280,7 +283,8 @@ export class GameWorld extends DurableObject<Env> {
         placedAt: now,
         expiresAt: now + PLACED_TTL_MS,
       }
-      this.placed.set(item.id, item)
+      // Persist first, then mirror in memory — so an (unlikely) SQL throw rolls
+      // back the whole turn (DO transaction) without leaving an orphan in memory.
       this.ctx.storage.sql.exec(
         `INSERT INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -295,6 +299,7 @@ export class GameWorld extends DurableObject<Env> {
         item.placedAt,
         item.expiresAt,
       )
+      this.placed.set(item.id, item)
       this.broadcast({ t: 'placed', item }) // everyone, incl. buyer
       this.sendTo(ws, { t: 'wallet', likes }) // buyer's new balance
     }

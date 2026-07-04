@@ -240,6 +240,7 @@ export function setServerBuyer(
 
 /** Mirror the server's authoritative wallet. */
 export function applyServerWallet(serverCoins: number) {
+  if (serverCoins === coins) return // no change → no re-render
   coins = serverCoins
   if (coins > best) best = coins
   rebuildSnapshot()
