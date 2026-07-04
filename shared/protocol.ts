@@ -125,6 +125,14 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   { key: 'pond', label: 'Pond', type: 'pond', w: 3, h: 2, price: 150 },
   { key: 'tree', label: 'Tree', type: 'tree', w: 2, h: 2, price: 180 },
   {
+    key: 'lighttree',
+    label: 'Fairy-light tree',
+    type: 'lighttree',
+    w: 2,
+    h: 2,
+    price: 200,
+  },
+  {
     key: 'house',
     label: 'Little house',
     type: 'house',
