@@ -99,9 +99,12 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 
 ## Shop & placed decorations
 
-A **shop** (trigger bottom-right of the hero → a **bottom sheet** that leaves the
-park visible so you can see where things land) spends coins to buy decorations
-that spawn at Koala's tile. It's bridged through a small framework-agnostic store
+A **shop** spends coins to buy decorations that spawn at Koala's tile. Its trigger
+lives in the **bottom control bar** (`client/src/components/BottomBar.tsx`) — a
+centered cluster grouping the score/likes pill · **Shop** · **Settings**. Shop
+opens a **bottom sheet** that leaves the park visible so you can see where things
+land; Settings (multiplayer only) holds the display-name field, the live online
+roster, and the world stats. It's bridged through a small framework-agnostic store
 so the React UI and the imperative canvas never fight.
 
 > **Multiplayer vs solo.** When connected, the **server owns the whole economy**
@@ -203,8 +206,12 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   drawn unlabelled, each remote one is drawn from a reused scratch object with a
   name tag, depth-sorted by `y`. Remote positions are interpolated toward their
   latest target (`rx/ry` lerp) so they glide between updates instead of teleporting.
-- **Presence:** a small `data-testid="mp-presence"` badge (`● N in the park`) is
-  updated imperatively from the loop to avoid per-frame React re-renders.
+- **Presence + stats:** the connection exposes a live roster (`onPresence` → self
+  - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
+    ever, this session's visit count). Both are fed into `parkStore` and shown inside
+    the **Settings menu** (in the bottom control bar) — there's no on-canvas badge.
+    "Online" is derived client-side from the roster; the server broadcasts a `stats`
+    message when a brand-new session joins so open menus refresh.
 - **Economy (server-owned):** the connection also holds the server's `food` +
   `placed` maps and the `likes` wallet. The loop renders server food and, on
   proximity, `sendCollect(id)`s (with a short retry so a momentarily-stale server

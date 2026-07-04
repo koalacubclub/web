@@ -168,6 +168,20 @@ export interface PlacedItem {
 export const NAME_MIN = 1
 export const NAME_MAX = 20
 
+// ---- World stats (shown in the Settings menu) ----
+// Numbers the server derives from its durable session ledger. They don't need to
+// be exact — `active24h`/`totalSessions` count distinct sessions ever seen and in
+// the last 24h; `yourVisits` is how many times THIS session has (re)joined. The
+// live "online" count isn't here: the client derives it from the presence roster.
+export interface WorldStats {
+  active24h: number
+  totalSessions: number
+  yourVisits: number
+}
+
+// Window for the "active in the last 24h" stat.
+export const ACTIVE_WINDOW_MS = 24 * 60 * 60 * 1000
+
 // ---- Client -> Server ----
 export type ClientMessage =
   | { t: 'state'; s: PlayerState }
@@ -190,6 +204,7 @@ export type ServerMessage =
       placed: PlacedItem[]
       authors: Record<string, string> // ownerId → current name (incl. offline owners)
       likes: number
+      stats: WorldStats
       now: number
     }
   | { t: 'join'; p: Player }
@@ -203,6 +218,9 @@ export type ServerMessage =
   | { t: 'wallet'; likes: number } // the recipient's new balance after a spend
   | { t: 'buyfail'; reason: BuyFailReason } // sent only to the buyer
   | { t: 'renamed'; id: string; name: string } // broadcast; also acks the sender
+  // Refreshed global stats, broadcast when a brand-new session joins (so open
+  // Settings menus update). Per-viewer `yourVisits` only travels in `welcome`.
+  | { t: 'stats'; active24h: number; totalSessions: number }
 
 export const PROTOCOL_VERSION = 1
 

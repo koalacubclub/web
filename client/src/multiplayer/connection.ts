@@ -19,8 +19,16 @@ import type {
   Player,
   PlayerState,
   ServerMessage,
+  WorldStats,
 } from '@koala/shared'
 import { CLIENT_SEND_HZ, NAME_MAX } from '@koala/shared'
+
+/** A player currently connected to the world (self included), for the roster. */
+export interface OnlinePlayer {
+  id: string
+  name: string
+  self: boolean
+}
 
 export interface RemotePlayer {
   id: string
@@ -54,6 +62,8 @@ export interface Multiplayer {
   /** serverNow - clientNow (ms), from welcome. Add to Date.now() to read the
    *  server clock, so food TTL/pop timing is correct despite client clock skew. */
   clockOffset: number
+  /** Durable world stats from the server (null until the first welcome). */
+  stats: WorldStats | null
   /** Send local koala state; internally throttled to CLIENT_SEND_HZ. */
   sendState(s: PlayerState): void
   /** Ask the server to collect a food by id; the server validates + awards. */
@@ -91,6 +101,10 @@ export function createMultiplayer(
     onBuyFail?: (reason: BuyFailReason) => void
     /** Fired with this player's own name (on welcome and on rename). */
     onName?: (name: string) => void
+    /** Fired with the live roster (self + remotes) whenever presence changes. */
+    onPresence?: (players: OnlinePlayer[]) => void
+    /** Fired with the durable world stats (on welcome and on stats updates). */
+    onStats?: (stats: WorldStats) => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
@@ -113,6 +127,7 @@ export function createMultiplayer(
     connected: false,
     likes: 0,
     clockOffset: 0,
+    stats: null,
     sendState,
     sendCollect,
     sendBuy,
@@ -129,6 +144,23 @@ export function createMultiplayer(
     opts.onName?.(name)
   }
   const emitPlaced = () => opts.onPlaced?.([...placed.values()])
+  // The live roster = self (if known) + every remote player, sorted by name so
+  // the Settings list is stable frame to frame.
+  const emitPresence = () => {
+    if (!opts.onPresence) return
+    // While disconnected there is no live roster — even our own entry is gone.
+    if (!handle.connected) {
+      opts.onPresence([])
+      return
+    }
+    const roster: OnlinePlayer[] = []
+    if (handle.self)
+      roster.push({ id: handle.self.id, name: handle.self.name, self: true })
+    for (const p of players.values())
+      roster.push({ id: p.id, name: p.name, self: false })
+    roster.sort((a, b) => a.name.localeCompare(b.name))
+    opts.onPresence(roster)
+  }
 
   const setConnected = (v: boolean) => {
     if (handle.connected !== v) {
@@ -175,13 +207,18 @@ export function createMultiplayer(
         for (const [oid, nm] of Object.entries(msg.authors ?? {}))
           authors.set(oid, nm)
         setLikes(msg.likes ?? 0)
+        handle.stats = msg.stats
+        if (msg.stats) opts.onStats?.(msg.stats)
         emitPlaced()
+        emitPresence()
         break
       case 'join':
         upsert(msg.p)
+        emitPresence()
         break
       case 'leave':
         players.delete(msg.id)
+        emitPresence()
         break
       case 'state': {
         if (handle.self && msg.id === handle.self.id) break
@@ -228,7 +265,19 @@ export function createMultiplayer(
         // One update relabels ALL of this owner's items (author labels resolve
         // through this map), so a rename propagates to previously-placed items.
         authors.set(msg.id, msg.name)
+        emitPresence() // roster name may have changed
         break
+      case 'stats': {
+        // Merge the fresh globals, preserving this viewer's own visit count.
+        const next: WorldStats = {
+          active24h: msg.active24h,
+          totalSessions: msg.totalSessions,
+          yourVisits: handle.stats?.yourVisits ?? 0,
+        }
+        handle.stats = next
+        opts.onStats?.(next)
+        break
+      }
     }
   }
 
@@ -255,6 +304,7 @@ export function createMultiplayer(
       placed.clear()
       authors.clear()
       emitPlaced()
+      emitPresence()
       scheduleReconnect()
     })
     // 'error' is always followed by 'close'; let close handle reconnection.

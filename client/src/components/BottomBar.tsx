@@ -133,10 +133,15 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                   transition={{ duration: 0.18 }}
                   onPointerDownCapture={(e) => e.stopPropagation()}
                   onTouchStartCapture={(e) => e.stopPropagation()}
-                  className="absolute bottom-[calc(100%+10px)] right-0 w-64 rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md"
+                  className="absolute bottom-[calc(100%+10px)] right-0 w-72 rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md"
                 >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm text-white/80">Your name</span>
+                  <div className="mb-3 flex items-center justify-between">
+                    <span
+                      className="text-base text-white/90"
+                      style={{ fontFamily: DISPLAY_FONT }}
+                    >
+                      Settings
+                    </span>
                     <button
                       type="button"
                       onClick={closeSettings}
@@ -146,6 +151,11 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
+
+                  {/* Display name */}
+                  <label className="mb-1 block text-xs text-white/50">
+                    Your name
+                  </label>
                   <form
                     onSubmit={(e) => {
                       e.preventDefault()
@@ -170,6 +180,48 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                       Save
                     </button>
                   </form>
+
+                  {/* Who's here right now */}
+                  <div className="mt-4 mb-1 flex items-baseline justify-between">
+                    <span className="text-xs text-white/50">Online now</span>
+                    <span className="text-xs tabular-nums text-white/40">
+                      {snap.online.length}
+                    </span>
+                  </div>
+                  {snap.online.length ? (
+                    <ul className="max-h-32 space-y-0.5 overflow-y-auto pr-1">
+                      {snap.online.map((p) => (
+                        <li
+                          key={p.id}
+                          className="flex items-center gap-2 text-sm text-white/85"
+                        >
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400"
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 truncate">{p.name}</span>
+                          {p.self && (
+                            <span className="shrink-0 text-xs text-white/40">
+                              you
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-white/40">Connecting…</p>
+                  )}
+
+                  {/* Durable world stats */}
+                  <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-white/10 pt-3">
+                    <Stat label="Active (24h)" value={snap.stats?.active24h} />
+                    <Stat label="Your visits" value={snap.stats?.yourVisits} />
+                    <Stat
+                      label="Total sessions"
+                      value={snap.stats?.totalSessions}
+                    />
+                    <Stat label="Online" value={snap.online.length} />
+                  </dl>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -179,5 +231,17 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
 
       <Shop open={shopOpen} onClose={() => setShopOpen(false)} />
     </>
+  )
+}
+
+// One stat cell in the Settings footer. Shows an em-dash until the number arrives.
+function Stat({ label, value }: { label: string; value: number | undefined }) {
+  return (
+    <div>
+      <dt className="text-xs text-white/45">{label}</dt>
+      <dd className="text-lg leading-tight tabular-nums text-white/90">
+        {value == null ? '—' : value.toLocaleString()}
+      </dd>
+    </div>
   )
 }

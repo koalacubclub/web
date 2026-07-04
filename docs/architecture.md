@@ -65,6 +65,7 @@ server/                 # Cloudflare Worker + Durable Object (deployed to game.k
   src/worker.ts         # routes: POST /session (signed cookie), /world/main (WS upgrade)
   src/GameWorld.ts      # the Durable Object: presence/movement relay + server-owned
                         #   economy (food, likes/coins, shop purchases + placed items in SQLite)
+                        #   + names + a session ledger powering the Settings stats
   src/session.ts        # HMAC-signed anonymous session cookie
   wrangler.jsonc        # Worker config (name, custom domain, DO migration, account_id)
   test/world.test.ts    # DO tests in real workerd (vitest-pool-workers)
