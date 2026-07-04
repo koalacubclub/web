@@ -17,7 +17,13 @@ import {
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { jumpLiftTiles } from '@/game/jump'
-import { slapPhase } from '@/game/slap'
+import {
+  slapPhase,
+  slapShake,
+  updateSlappables,
+  drawEffects,
+  type SlapEffect,
+} from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
@@ -214,16 +220,6 @@ interface Popup {
   text: string
   x: number
   y: number
-  life: number
-}
-
-// A short-lived slap impact burst (impact stars, or a pond splash ring), in
-// canvas px. `born` is a frameCount stamp; `life` counts down in frame-units.
-interface SlapEffect {
-  kind: 'stars' | 'splash'
-  x: number
-  y: number
-  born: number
   life: number
 }
 
@@ -2024,48 +2020,6 @@ export default function ParkGame() {
     // a radio on entry stays silent (and it satisfies audio autoplay rules).
     // Set true on the first movement in updateCat.
 
-    // Integrate objects knocked by a slap (currently the ball): move by velocity
-    // (tiles/ms × dt), decelerate with friction, bounce off the map edges, and
-    // stop once slow (velocity cleared so it drops out of this loop).
-    function updateSlappables(dt: number) {
-      for (const o of g.objects) {
-        if (o.vx == null || o.vy == null) continue
-        o.x += o.vx * dt
-        o.y += o.vy * dt
-        const fr = Math.max(0, 1 - 0.006 * dt)
-        o.vx *= fr
-        o.vy *= fr
-        if (o.x < 0) {
-          o.x = 0
-          o.vx = -o.vx * 0.6
-        } else if (o.x > MAP_COLS - o.w) {
-          o.x = MAP_COLS - o.w
-          o.vx = -o.vx * 0.6
-        }
-        if (o.y < 1) {
-          o.y = 1
-          o.vy = -o.vy * 0.6
-        } else if (o.y > GROUND_ROWS - o.h) {
-          o.y = GROUND_ROWS - o.h
-          o.vy = -o.vy * 0.6
-        }
-        if (Math.hypot(o.vx, o.vy) < 0.0003) {
-          o.vx = undefined
-          o.vy = undefined
-        }
-      }
-    }
-
-    // A decaying horizontal wobble (canvas px) for ~350ms after an object is
-    // slapped, applied around its draw so any object type "reacts".
-    const SLAP_SHAKE_MS = 350
-    function slapShake(hitAt: number): number {
-      const age = performance.now() - hitAt
-      if (age < 0 || age > SLAP_SHAKE_MS) return 0
-      const k = 1 - age / SLAP_SHAKE_MS
-      return Math.sin(age * 0.05) * k * PIXEL * 0.12
-    }
-
     function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
       const catX = g.cat.x + 0.5
@@ -2073,7 +2027,9 @@ export default function ParkGame() {
       let radioPlaying = false
       sorted.forEach((obj) => {
         // A freshly-slapped object jitters briefly (wrap its whole draw).
-        const shake = obj.hitAt ? slapShake(obj.hitAt) : 0
+        const shake = obj.hitAt
+          ? slapShake(obj.hitAt, performance.now(), PIXEL)
+          : 0
         if (shake) {
           ctx!.save()
           ctx!.translate(shake, 0)
@@ -2130,53 +2086,6 @@ export default function ParkGame() {
       })
       // Fade the radio jingle in/out with proximity (idempotent per frame).
       radio.setNear(radioPlaying)
-    }
-
-    // Slap impact bursts (impact stars + pond splash rings), fading out.
-    function drawEffects(fr: number) {
-      if (!ctx) return
-      g.effects = g.effects.filter((e) => e.life > 0)
-      g.effects.forEach((e) => {
-        e.life -= fr
-        const total = e.kind === 'splash' ? 28 : 20
-        const p = Math.min(1, (g.frameCount - e.born) / total)
-        ctx!.save()
-        ctx!.globalAlpha = Math.max(0, 1 - p)
-        if (e.kind === 'stars') {
-          ctx!.fillStyle = '#FFE97A'
-          for (let i = 0; i < 5; i++) {
-            const a = (i / 5) * Math.PI * 2
-            const r = p * PIXEL * 0.5
-            ctx!.beginPath()
-            ctx!.arc(
-              e.x + Math.cos(a) * r,
-              e.y + Math.sin(a) * r,
-              2 + (1 - p) * 2,
-              0,
-              Math.PI * 2,
-            )
-            ctx!.fill()
-          }
-        } else {
-          // Splash: a ring of droplets arcing up/out (no ripple ring).
-          ctx!.fillStyle = 'rgba(200,235,255,0.95)'
-          for (let i = 0; i < 6; i++) {
-            const a = (i / 6) * Math.PI * 2
-            const rr = p * PIXEL * 1.1
-            const lift = -Math.sin(p * Math.PI) * PIXEL * 0.5
-            ctx!.beginPath()
-            ctx!.arc(
-              e.x + Math.cos(a) * rr,
-              e.y + Math.sin(a) * rr * 0.5 + lift,
-              2.5 * (1 - p) + 1,
-              0,
-              Math.PI * 2,
-            )
-            ctx!.fill()
-          }
-        }
-        ctx!.restore()
-      })
     }
 
     function drawPopups(f: number) {
@@ -3032,7 +2941,8 @@ export default function ParkGame() {
       // Dynamic world, pushed down so the sky has room above it.
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      updateSlappables(dt) // integrate knocked objects (ball) before drawing them
+      // integrate knocked objects (ball) before drawing them
+      updateSlappables(g.objects, dt, MAP_COLS, GROUND_ROWS)
       drawObjects(wallNow)
       drawButterflies(f)
       updateCat(dt)
@@ -3091,7 +3001,7 @@ export default function ParkGame() {
       ctx!.translate(0, WORLD_OFFSET)
       drawDreamBubble()
       drawFoods()
-      drawEffects(f)
+      g.effects = drawEffects(ctx!, g.effects, g.frameCount, PIXEL, f)
       drawAuthorLabels()
       drawPopups(f)
       ctx!.restore()

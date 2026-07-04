@@ -19,14 +19,15 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   above the wash).
 - **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
   toward the pointer (release to stop). Mouse/pen engage immediately. **Space** =
-  jump (see Multiplayer → Jump ability).
+  jump (see Multiplayer → Jump ability); **X** = slap (see Slap action).
 - **Controls (touch):** gesture-disambiguated so the full-screen hero doesn't
   hijack the page scroll — a **quick swipe scrolls the page**, while a **~150ms
   hold** (finger still, moved < ~10px) "grabs" Koala and the subsequent drag steers
   her, calling `preventDefault` so the page won't scroll. A **double-tap** (two
-  quick, still, non-hotspot taps) jumps. There is **no on-screen D-pad**. During a
-  drag a `kcc-dragging` class on `<body>` disables text selection / the iOS
-  long-press callout (the rest of the page stays selectable).
+  quick, still, non-hotspot taps) jumps. There is **no on-screen D-pad**. An
+  on-screen **🐾 button** (bottom-left, shown while the hero is in view) triggers
+  a slap. During a drag a `kcc-dragging` class on `<body>` disables text selection
+  / the iOS long-press callout (the rest of the page stays selectable).
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
@@ -215,7 +216,7 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   pose/dir/interacting change through immediately. Only that minimal state travels
   — leg/tail/idle animation is derived locally from the shared `frameCount`, so it
   never needs sending.
-- **Drawing:** `drawCat(cat = g.cat, label?, jumpPx?)` is generalized — the local
+- **Drawing:** `drawCat(cat = g.cat, label?, jumpPx?, slap?)` is generalized — the local
   koala is drawn unlabelled, each remote one is drawn from a reused scratch object
   with a name tag, depth-sorted by `y`. Remote positions are interpolated toward
   their latest target (`rx/ry` lerp) so they glide between updates instead of
@@ -236,6 +237,19 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   at any player count, including solo. A pity timer (`AIR_PITY_MS`) forces the
   next spawn airborne if none has appeared for a while, so an unlucky run of
   ground rolls can't leave airborne food absent.
+- **Slap action:** `X` (desktop) or the on-screen 🐾 button triggers a paw-swipe —
+  Koala raises a white front arm and chops it down (`slapPhase` in
+  `client/src/game/slap.ts` drives the wind-up → fast strike → hold; the front
+  leg is hidden during the swing so she isn't five-legged). It targets the nearest
+  object within `SLAP_REACH` (distance to the object's **box**, so big objects like
+  the pond are reachable at an edge): the base **ball** is knocked directly away
+  from the cat (`updateSlappables` integrates velocity + friction + edge bounce),
+  the **pond** splashes, a **radio** toggles its music, and everything else does a
+  brief `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble
+  and shop-placed decor never moves. Like jump it's a transient broadcast —
+  `mp.sendSlap()` → server rebroadcasts `slapped` → peers set `RemotePlayer.slapAt`
+  and render the swipe pose (`SLAP_COOLDOWN_MS` gates spam). **Object reactions are
+  client-local** (see the PR follow-ups: syncing reactions + a shared ball).
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside
