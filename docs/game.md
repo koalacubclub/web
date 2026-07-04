@@ -83,7 +83,9 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 - **Spawning:** every ~4–9s, up to `foodCap(players)` on screen — ≈half the crowd
   rounded up (1 solo, 2 for 3 players, 5 for 10), on a random free ground
   tile (weighted by `weight`, avoiding objects/other food/the cat). Each has a
-  ~30s lifespan (`FOOD_TTL_MS`; blinks before despawning).
+  ~30s lifespan (`FOOD_TTL_MS`; blinks before despawning). This cap is a **single
+  budget** shared with airborne food (below) — the total on the map, ground +
+  airborne, never exceeds `foodCap(players)`.
 - **Collecting:** walk within ~0.85 tile → coins `+= points`, a `+N` popup pops,
   and Koala shows hearts. Rarer/higher-point items (goldfish = 50) spawn less
   often.
@@ -227,8 +229,10 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   **Airborne food** floats above its tile (drawn lifted with a grounded, shrinking
   shadow) and can **only** be collected mid-jump — the client suppresses the collect
   request off-jump and the **server enforces** it against its jump window. Airborne
-  food is a separate small pool (`MAX_AIR_FOOD`/`AIR_SPAWN_COOLDOWN_MS`) worth
-  `AIR_POINTS_MULT`× so it never starves the single ground slot (`MAX_FOOD`).
+  food is worth `AIR_POINTS_MULT`× and has its own smaller cap (`MAX_AIR_FOOD`) +
+  slower cadence (`AIR_SPAWN_COOLDOWN_MS`), but it **shares the `foodCap(players)`
+  budget** with ground food: ground fills the budget first and airborne only
+  spawns when there's room left, so the two together never exceed the cap.
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside
