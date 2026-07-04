@@ -10,12 +10,13 @@ const IS_TOUCH =
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(pointer: coarse)').matches
 
-// The controls are deliberately DISCREET — faint golden glass (gold = the ♥ score
-// colour) so the park shows through, firming up only while in use.
+// Gold = the ♥ score colour. Controls are kept as SEE-THROUGH as possible: thin
+// gold outlines + a knob, almost no fill, so the park shows through.
+const gold = (a: number) => `oklch(0.82 0.13 78 / ${a})`
 
 // The on-screen control overlay, shown only in Gamer mode while the hero is up.
-// Rendered inside Home's pointer-events-none hero layer, so only these control
-// zones capture touch — an empty-center swipe still scrolls the page.
+// Lives inside Home's pointer-events-none hero layer, so only these control zones
+// capture touch — an empty-area swipe still scrolls the page.
 export default function GamerControls({ atTop }: { atTop: boolean }) {
   const gamer = useSyncExternalStore(
     controls.subscribe,
@@ -31,10 +32,11 @@ export default function GamerControls({ atTop }: { atTop: boolean }) {
   )
 }
 
-// A fixed, always-visible analog joystick anchored bottom-left (so it's obvious
-// what steers and everything else scrolls). Faint when idle, brighter while held.
-// It's a <button> (so the canvas' window-level touch handlers bail via their
-// `a,button` gate) with touchAction none + stopPropagation.
+// A fixed analog joystick anchored bottom-left, shaped like a cat food bowl (a
+// rimmed bowl with two ears) so it reads as a toy, drawn as a thin gold outline
+// with NO fill. The knob is a little cosmetic "pole" (lever + ball). It's a
+// <button> (so the canvas' window touch handlers bail via their `a,button` gate)
+// with touchAction none + stopPropagation.
 function Joystick() {
   const baseRef = useRef<HTMLButtonElement>(null)
   const pointerId = useRef<number | null>(null)
@@ -80,6 +82,7 @@ function Joystick() {
     controls.clearMove()
   }
 
+  const line = gold(held ? 0.5 : 0.32)
   return (
     <button
       ref={baseRef}
@@ -89,31 +92,53 @@ function Joystick() {
       onPointerMove={onMove}
       onPointerUp={release}
       onPointerCancel={release}
-      className="pointer-events-auto absolute h-28 w-28 rounded-full backdrop-blur-[2px] transition-opacity duration-200"
+      className="pointer-events-auto absolute h-28 w-28 transition-opacity duration-200"
       style={{
-        left: 'max(1.25rem, env(safe-area-inset-left))',
-        bottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+        left: 'max(1rem, env(safe-area-inset-left))',
+        bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
         touchAction: 'none',
-        background: cssGold(0.08),
-        boxShadow: `inset 0 0 0 1px ${cssGold(held ? 0.5 : 0.28)}`,
-        opacity: held ? 1 : 0.55,
+        opacity: held ? 1 : 0.7,
       }}
     >
+      {/* Cat-bowl outline (no fill) */}
+      <svg
+        viewBox="0 0 100 100"
+        className="absolute inset-0 h-full w-full"
+        fill="none"
+        stroke={line}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {/* ears */}
+        <path d="M26 30 L20 15 L38 24 Z" />
+        <path d="M74 30 L80 15 L62 24 Z" />
+        {/* bowl: rim ellipse + rounded body */}
+        <ellipse cx="50" cy="34" rx="34" ry="10" />
+        <path d="M16 34 C18 64, 30 82, 50 82 C70 82, 82 64, 84 34" />
+      </svg>
+      {/* Cosmetic pole (lever) + ball knob, moved with the drag */}
       <span
         aria-hidden="true"
-        className="absolute left-1/2 top-1/2 h-12 w-12 rounded-full"
+        className="absolute left-1/2 top-1/2"
         style={{
-          background: cssGold(held ? 0.8 : 0.5),
-          boxShadow: `0 0 12px ${cssGold(held ? 0.5 : 0.25)}`,
           transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
         }}
-      />
+      >
+        <span
+          className="block h-10 w-1.5 -translate-y-4 rounded-full"
+          style={{ background: gold(held ? 0.45 : 0.28) }}
+        />
+        <span
+          className="absolute left-1/2 top-0 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            background: gold(held ? 0.7 : 0.45),
+            boxShadow: `0 0 10px ${gold(held ? 0.4 : 0.2)}`,
+          }}
+        />
+      </span>
     </button>
   )
-}
-
-function cssGold(alpha: number): string {
-  return `oklch(0.82 0.13 78 / ${alpha})`
 }
 
 const ABILITY_META: Record<
@@ -127,23 +152,58 @@ const ABILITY_META: Record<
   meow: { label: 'Meow', Icon: MessageCircle },
 }
 
-// Ability cluster anchored bottom-right: a big Jump + a 2×2 grid of the rest.
+// Ability WHEEL: Jump anchored in the bottom-right corner; the four others fan out
+// in a quarter-arc hugging it (top → left), so the cluster stays compact.
+const JUMP_SIZE = 60
+const ARC_BTN = 42
+// Radius from the jump centre. Must be large enough that adjacent arc buttons
+// (30° apart) don't overlap: chord = 2·R·sin15° ≥ ARC_BTN ⇒ R ≥ ~81. Use 88 for
+// a comfortable gap.
+const ARC_R = 88
+const ARC = [
+  { a: 'dash' as const, deg: 90 }, // straight above jump
+  { a: 'bite' as const, deg: 120 },
+  { a: 'hand' as const, deg: 150 },
+  { a: 'meow' as const, deg: 180 }, // straight left of jump
+]
+// Box big enough to hold the arc (jump centre sits at its bottom-right).
+const BOX = JUMP_SIZE / 2 + ARC_R + ARC_BTN / 2
+
 function AbilityDock() {
   return (
     <div
-      className="pointer-events-none absolute flex items-end gap-2.5"
+      className="pointer-events-none absolute"
       style={{
-        right: 'max(1rem, env(safe-area-inset-right))',
-        bottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+        right: 'max(0.75rem, env(safe-area-inset-right))',
+        bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
+        width: BOX,
+        height: BOX,
       }}
     >
-      <div className="grid grid-cols-2 gap-2">
-        <AbilityBtn a="dash" size={48} />
-        <AbilityBtn a="bite" size={48} />
-        <AbilityBtn a="hand" size={48} />
-        <AbilityBtn a="meow" size={48} />
-      </div>
-      <AbilityBtn a="jump" size={64} primary />
+      {ARC.map(({ a, deg }) => {
+        const rad = (deg * Math.PI) / 180
+        // Centre offset from the jump centre (which is at the box's bottom-right).
+        const centreRight = JUMP_SIZE / 2 - ARC_R * Math.cos(rad)
+        const centreBottom = JUMP_SIZE / 2 + ARC_R * Math.sin(rad)
+        return (
+          <AbilityBtn
+            key={a}
+            a={a}
+            size={ARC_BTN}
+            style={{
+              position: 'absolute',
+              right: centreRight - ARC_BTN / 2,
+              bottom: centreBottom - ARC_BTN / 2,
+            }}
+          />
+        )
+      })}
+      <AbilityBtn
+        a="jump"
+        size={JUMP_SIZE}
+        primary
+        style={{ position: 'absolute', right: 0, bottom: 0 }}
+      />
     </div>
   )
 }
@@ -152,10 +212,12 @@ function AbilityBtn({
   a,
   size,
   primary,
+  style,
 }: {
   a: AbilityKind
   size: number
   primary?: boolean
+  style?: React.CSSProperties
 }) {
   const { label, Icon } = ABILITY_META[a]
   // A cooldown wedge that sweeps away as the ability recovers (rAF-polled).
@@ -173,22 +235,23 @@ function AbilityBtn({
   }, [a])
 
   // Fire on click so keyboard (Enter/Space) + assistive tech work — a native
-  // button turns those into `click`, never `pointerdown`. onPointerDown only
-  // stops the event reaching the canvas' window-level gesture handlers.
+  // button turns those into `click`, never `pointerdown`. onPointerDown only stops
+  // the event reaching the canvas' window-level gesture handlers.
   return (
     <button
       type="button"
       aria-label={label}
       onClick={() => controls.fireAbility(a)}
       onPointerDown={(e) => e.stopPropagation()}
-      className="pointer-events-auto relative flex items-center justify-center rounded-full backdrop-blur-[2px] transition-colors"
+      className="pointer-events-auto flex items-center justify-center rounded-full backdrop-blur-[1px] transition-colors"
       style={{
         width: size,
         height: size,
         touchAction: 'manipulation',
-        background: cssGold(primary ? 0.2 : 0.1),
-        boxShadow: `inset 0 0 0 1px ${cssGold(primary ? 0.5 : 0.3)}`,
-        color: primary ? '#fff' : 'rgba(255,255,255,0.9)',
+        background: gold(primary ? 0.14 : 0.07),
+        boxShadow: `inset 0 0 0 1.5px ${gold(primary ? 0.55 : 0.4)}`,
+        color: primary ? '#fff' : 'rgba(255,255,255,0.92)',
+        ...style,
       }}
     >
       <Icon style={{ width: size * 0.42, height: size * 0.42 }} />
@@ -197,7 +260,7 @@ function AbilityBtn({
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 rounded-full"
           style={{
-            background: `conic-gradient(rgba(0,0,0,0.5) ${cooldown * 360}deg, transparent 0deg)`,
+            background: `conic-gradient(rgba(0,0,0,0.45) ${cooldown * 360}deg, transparent 0deg)`,
           }}
         />
       )}

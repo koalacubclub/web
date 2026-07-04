@@ -11,7 +11,7 @@
 
 import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence, useInView, MotionConfig } from 'framer-motion'
-import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
+import { Instagram, Mail, ChevronDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
@@ -289,7 +289,7 @@ function FixedHero() {
           the game's night sky. */}
       <div className="absolute top-4 left-5 sm:top-6 sm:left-8 z-20">
         <p
-          className="text-[oklch(0.82_0.13_78)] text-2xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
+          className="text-[oklch(0.82_0.13_78)] text-xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
           style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
         >
           Koala Cub Club
@@ -307,12 +307,22 @@ function FixedHero() {
 // (and fade out) once the hero is scrolled out of view.
 function HeroControls() {
   const [atTop, setAtTop] = useState(true)
+  // The scroll cue is a gentle hint: show it briefly on load, then fade it out
+  // (or as soon as the user scrolls at all).
+  const [scrollCue, setScrollCue] = useState(true)
 
   useEffect(() => {
-    const onScroll = () => setAtTop(window.scrollY < window.innerHeight * 0.6)
+    const onScroll = () => {
+      setAtTop(window.scrollY < window.innerHeight * 0.6)
+      if (window.scrollY > 4) setScrollCue(false)
+    }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    const fade = window.setTimeout(() => setScrollCue(false), 6000)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      clearTimeout(fade)
+    }
   }, [])
 
   const scrollToContent = () =>
@@ -329,15 +339,16 @@ function HeroControls() {
       }`}
       aria-hidden={!atTop}
     >
-      {/* Social icons, top-right */}
+      {/* Top-right cluster: Likes (opens shop) + Settings + the social icons. */}
       <div
-        className={`absolute top-5 right-5 sm:top-7 sm:right-7 flex items-center gap-3 ${interactive}`}
+        className={`absolute top-4 right-4 sm:top-7 sm:right-7 flex items-center gap-2 sm:gap-3 ${interactive}`}
       >
+        <BottomBar atTop={atTop} />
         <a
           href="https://www.instagram.com/koalacubclub/"
           target="_blank"
           rel="noopener noreferrer"
-          className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
+          className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
           aria-label="Instagram"
         >
           <Instagram className="w-4 h-4" />
@@ -346,38 +357,37 @@ function HeroControls() {
           href="https://tiktok.com/@koalacubclub"
           target="_blank"
           rel="noopener noreferrer"
-          className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
+          className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
           aria-label="TikTok"
         >
           <TikTokIcon className="w-4 h-4" />
         </a>
       </div>
 
-      {/* Scroll-to-content button — sits just above the bottom control bar. */}
+      {/* Scroll-to-content cue — a quiet, low-opacity chevron that auto-fades
+          (the page is obviously scrollable now). Still tappable while shown. */}
       <button
         type="button"
         onClick={scrollToContent}
         aria-label="Scroll to content"
-        className={`absolute bottom-24 left-1/2 -translate-x-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20 sm:bottom-28 ${interactive}`}
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center text-white/40 transition-opacity duration-700 hover:text-white/70 ${
+          scrollCue ? interactive : 'pointer-events-none opacity-0'
+        }`}
       >
         <motion.span
-          animate={{ y: [0, 6, 0] }}
-          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{ y: [0, 5, 0] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
           className="flex"
         >
-          <ArrowDown
-            className="h-5 w-5 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]"
+          <ChevronDown
+            className="h-6 w-6 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]"
             strokeWidth={2}
           />
         </motion.span>
       </button>
 
-      {/* Bottom control bar: score/likes (opens shop) + Settings. */}
-      <BottomBar atTop={atTop} />
-
-      {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Sibling of
-          the bar so it persists while shop/settings are open; lives in this
-          pointer-events-none layer so only its control zones capture touch. */}
+      {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Lives in
+          this pointer-events-none layer so only its control zones capture touch. */}
       <GamerControls atTop={atTop} />
     </div>
   )
