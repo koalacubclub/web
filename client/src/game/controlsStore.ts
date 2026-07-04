@@ -79,11 +79,25 @@ export function getFiredAt(a: AbilityKind): number {
   return firedAt[a] ?? -Infinity
 }
 
+// ── Global cooldown (game → UI) ────────────────────────────────────────────
+// The game sets when the shared GCD ends so every ability button can draw the
+// same short recovery sweep (WoW-style), polled via rAF alongside per-ability CDs.
+let gcdUntil = -Infinity
+/** Called by the game when a GCD ability fires, with performance.now()+GCD. */
+export function markGcd(until: number): void {
+  gcdUntil = until
+}
+/** performance.now() at which the global cooldown ends (−Infinity if none). */
+export function getGcdUntil(): number {
+  return gcdUntil
+}
+
 // Test-only: reset module state between tests.
 export function __resetForTests(): void {
   gamer = false
   clearMove()
   abilityFn = null
+  gcdUntil = -Infinity
   for (const k of Object.keys(firedAt)) delete firedAt[k]
   listeners.clear()
 }
