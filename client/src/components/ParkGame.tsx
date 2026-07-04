@@ -1739,6 +1739,18 @@ export default function ParkGame() {
       ctx.lineTo(s * 4.6, s * 1)
       ctx.fill()
 
+      // Little open mouth while airborne (with a tiny pink tongue).
+      if (airborne) {
+        ctx.fillStyle = night('#5A2A2A')
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catEar
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 2.2, s * 0.4, s * 0.4, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
       // Whiskers
       ctx.strokeStyle = NIGHT.charcoal
       ctx.lineWidth = 1
