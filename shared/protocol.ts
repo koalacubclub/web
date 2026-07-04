@@ -250,17 +250,19 @@ export function sanitizeCollect(raw: unknown): { id: string } | null {
 // Validate an untrusted display name: strip control chars, collapse whitespace,
 // trim, cap at NAME_MAX. Returns null if nothing usable remains. Used by the
 // client to pre-validate and by the server, which never trusts the wire.
+// Allowlist for display names: Unicode letters + numbers, spaces, and a little
+// name punctuation (dot, underscore, apostrophe, hyphen). Everything else —
+// symbols, emoji, quotes, control chars, lone surrogates — is dropped. The
+// server's SQL is parameterized (so injection is already impossible); this
+// controlled set is defense-in-depth and keeps names tidy/renderable.
+const NAME_ALLOWED = /[\p{L}\p{N} ._'-]/u
+
 export function sanitizeName(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   let out = ''
-  for (const ch of raw) {
-    const c = ch.codePointAt(0) ?? 0
-    if (c < 0x20 || c === 0x7f) continue // drop control chars
-    if (ch.length === 1 && c >= 0xd800 && c <= 0xdfff) continue // lone surrogate
-    out += ch
-  }
+  for (const ch of raw) if (NAME_ALLOWED.test(ch)) out += ch
   // Cap by CODE POINTS (not UTF-16 units) so the limit is consistent and an
-  // emoji at the boundary is never split into a broken surrogate.
+  // astral letter at the boundary is never split.
   const cleaned = [...out.replace(/\s+/g, ' ').trim()]
     .slice(0, NAME_MAX)
     .join('')
