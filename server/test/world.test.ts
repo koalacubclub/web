@@ -261,7 +261,7 @@ describe('GameWorld likes', () => {
     // collectable too (harmless for ground food), then collect.
     sendState(ws, food.x, food.y)
     await wait(80)
-    ws.send(JSON.stringify({ t: 'jump' }))
+    ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
     await wait(150)
     const collected = msgs.find((m) => m.t === 'collected' && m.id === food.id)
@@ -285,7 +285,7 @@ describe('GameWorld likes', () => {
     // collect is rejected (airborne food would otherwise need a jump window).
     sendState(ws, food.x > 9 ? 1 : 18, food.y)
     await wait(80)
-    ws.send(JSON.stringify({ t: 'jump' }))
+    ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
     await wait(150)
     expect(msgs.some((m) => m.t === 'collected' && m.id === food.id)).toBe(
@@ -300,7 +300,7 @@ describe('GameWorld likes', () => {
     const food = await obtainFood(ws, msgs)
     sendState(ws, food.x, food.y)
     await wait(80)
-    ws.send(JSON.stringify({ t: 'jump' })) // so airborne food is collectable too
+    ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // so airborne food is collectable too
     sendCollect(ws, food.id)
     sendCollect(ws, food.id)
     await wait(150)
@@ -315,7 +315,7 @@ describe('GameWorld likes', () => {
     const food = await obtainFood(first.ws, first.msgs)
     sendState(first.ws, food.x, food.y)
     await wait(80)
-    first.ws.send(JSON.stringify({ t: 'jump' })) // airborne food is collectable too
+    first.ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // airborne food is collectable too
     sendCollect(first.ws, food.id)
     await wait(150)
     const collected = first.msgs.find(
@@ -382,7 +382,7 @@ async function earnAtLeast(
     sendState(ws, f.x, f.y)
     // Jump so an AIRBORNE food (which now shares the foodCap budget) is
     // collectable too; harmless for ground food, which collects regardless.
-    ws.send(JSON.stringify({ t: 'jump' }))
+    ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     await wait(70)
     sendCollect(ws, f.id)
     await wait(120)
@@ -646,7 +646,9 @@ describe('GameWorld stats', () => {
 
 // ---- jump ability + airborne food ----
 
-const sendJump = (ws: WebSocket) => ws.send(JSON.stringify({ t: 'jump' }))
+const sendAction = (ws: WebSocket, a: string) =>
+  ws.send(JSON.stringify({ t: 'action', a }))
+const sendJump = (ws: WebSocket) => sendAction(ws, 'jump')
 
 // Grab a currently-live AIRBORNE food. Airborne food shares the foodCap budget
 // with ground food (each spawn rolls AIR_SPAWN_SHARE to be airborne), so on a
@@ -675,31 +677,57 @@ async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
   throw new Error('no airborne food spawned in time')
 }
 
-describe('GameWorld jump', () => {
-  it('broadcasts a jump to other players (not the sender)', async () => {
+describe('GameWorld abilities', () => {
+  it('broadcasts an ability to other players (not the sender)', async () => {
     const a = await session()
     const { ws: wsA, msgs: msgsA } = await connect(a.cookie)
     const b = await session()
     const { msgs: msgsB } = await connect(b.cookie)
     await wait(50)
-    sendJump(wsA)
+    sendAction(wsA, 'bite')
     await wait(80)
-    expect(msgsB.some((m) => m.t === 'jumped' && m.id === a.id)).toBe(true)
-    // The sender animates locally, so it should NOT receive its own jumped.
-    expect(msgsA.some((m) => m.t === 'jumped')).toBe(false)
+    expect(
+      msgsB.some((m) => m.t === 'acted' && m.id === a.id && m.a === 'bite'),
+    ).toBe(true)
+    // The sender animates locally, so it should NOT receive its own action.
+    expect(msgsA.some((m) => m.t === 'acted')).toBe(false)
   })
 
-  it('drops a second jump inside the cooldown', async () => {
+  it('drops a repeat of the same ability inside its cooldown', async () => {
     const a = await session()
     const { ws: wsA } = await connect(a.cookie)
     const b = await session()
     const { msgs: msgsB } = await connect(b.cookie)
     await wait(50)
     sendJump(wsA)
-    sendJump(wsA) // immediately again → within cooldown
+    sendJump(wsA) // immediately again → within the jump cooldown
     await wait(120)
-    const jumps = msgsB.filter((m) => m.t === 'jumped' && m.id === a.id)
+    const jumps = msgsB.filter((m) => m.t === 'acted' && m.a === 'jump')
     expect(jumps.length).toBe(1)
+  })
+
+  it('cooldowns are per-ability (a dash is not blocked by a jump)', async () => {
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+    sendJump(wsA)
+    sendAction(wsA, 'dash')
+    await wait(120)
+    expect(msgsB.some((m) => m.t === 'acted' && m.a === 'jump')).toBe(true)
+    expect(msgsB.some((m) => m.t === 'acted' && m.a === 'dash')).toBe(true)
+  })
+
+  it('ignores an unknown ability', async () => {
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+    sendAction(wsA, 'nuke')
+    await wait(100)
+    expect(msgsB.some((m) => m.t === 'acted')).toBe(false)
   })
 })
 

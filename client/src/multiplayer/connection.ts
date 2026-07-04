@@ -11,6 +11,7 @@
 // for network reasons — if the backend is down the game simply runs solo.
 
 import type {
+  AbilityKind,
   Dir,
   BuyFailReason,
   CatPose,
@@ -43,14 +44,13 @@ export interface RemotePlayer {
   // koalas glide between the ~12Hz updates instead of teleporting.
   rx: number
   ry: number
-  // performance.now() when this player's most recent jump started (set on a
-  // `jumped` message); the game loop reads it to animate the hop arc. Undefined
-  // until they've jumped.
+  // performance.now() when this player's most recent jump started; the game loop
+  // reads it to animate the hop arc. Undefined until they've jumped.
   jumpAt?: number
-  // performance.now() when this player's most recent slap started (set on a
-  // `slapped` message); the game loop reads it to animate the swipe. Undefined
-  // until they've slapped.
-  slapAt?: number
+  // Latest ability + when it started (performance.now()), for the game loop to
+  // animate emotes (bite/hand/meow). `act==='jump'` also sets jumpAt above.
+  act?: AbilityKind
+  actAt?: number
 }
 
 export interface Multiplayer {
@@ -80,12 +80,9 @@ export interface Multiplayer {
   sendBuy(key: string, x: number, y: number): void
   /** Change this session's display name; server validates + persists + broadcasts. */
   sendName(name: string): void
-  /** Tell the server this player jumped (opens the airborne-collect window and
-   *  broadcasts the hop to others). The caller animates its own hop locally. */
-  sendJump(): void
-  /** Tell the server this player slapped; broadcasts the swipe pose to others.
-   *  The caller animates its own swipe locally. */
-  sendSlap(): void
+  /** Tell the server this player used an ability (jump opens the airborne-collect
+   *  window; all are broadcast to others). The caller animates its own locally. */
+  sendAction(a: AbilityKind): void
   close(): void
 }
 
@@ -146,8 +143,7 @@ export function createMultiplayer(
     sendCollect,
     sendBuy,
     sendName,
-    sendJump,
-    sendSlap,
+    sendAction,
     close,
   }
 
@@ -254,6 +250,12 @@ export function createMultiplayer(
       case 'despawn':
         food.delete(msg.id)
         break
+      case 'foods':
+        // Full resync (server woke from hibernation) — replace our set so any
+        // stale food that never got a despawn stops rendering.
+        food.clear()
+        for (const f of msg.food ?? []) food.set(f.id, f)
+        break
       case 'collected':
         // The server awards likes; only OUR total is echoed back to us.
         if (handle.self && msg.by === handle.self.id) setLikes(msg.likes)
@@ -294,16 +296,15 @@ export function createMultiplayer(
         opts.onStats?.(next)
         break
       }
-      case 'jumped': {
-        // Kick off this remote player's hop animation locally.
+      case 'acted': {
+        // Kick off this remote player's ability animation locally.
         const p = players.get(msg.id)
-        if (p) p.jumpAt = performance.now()
-        break
-      }
-      case 'slapped': {
-        // Kick off this remote player's swipe animation locally.
-        const p = players.get(msg.id)
-        if (p) p.slapAt = performance.now()
+        if (p) {
+          const at = performance.now()
+          p.act = msg.a
+          p.actAt = at
+          if (msg.a === 'jump') p.jumpAt = at // drives the existing hop arc
+        }
         break
       }
     }
@@ -415,20 +416,11 @@ export function createMultiplayer(
   }
 
   // Fire-and-forget; the caller (game loop) already applies a local cooldown, and
-  // the server rate-limits jumps independently of the flood budget.
-  function sendJump() {
+  // the server rate-limits each ability independently of the flood budget.
+  function sendAction(a: AbilityKind) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     try {
-      ws.send(JSON.stringify({ t: 'jump' }))
-    } catch {
-      /* socket closing; the reconnect path will recover */
-    }
-  }
-
-  function sendSlap() {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
-    try {
-      ws.send(JSON.stringify({ t: 'slap' }))
+      ws.send(JSON.stringify({ t: 'action', a }))
     } catch {
       /* socket closing; the reconnect path will recover */
     }

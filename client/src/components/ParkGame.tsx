@@ -3,17 +3,20 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
 import {
+  ABILITY_COOLDOWNS_MS,
   AIR_COLLECT_RADIUS,
   AIR_FOOD_TTL_MS,
   AIR_HEIGHT_TILES,
   AIR_POINTS_MULT,
   COLLECT_RADIUS,
+  DASH_DURATION_MS,
+  DASH_TILES,
+  EMOTE_DURATION_MS,
   FOOD_TTL_MS,
   foodCap,
-  JUMP_COOLDOWN_MS,
   JUMP_DURATION_MS,
-  SLAP_COOLDOWN_MS,
   SLAP_REACH,
+  type AbilityKind,
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { jumpLiftTiles } from '@/game/jump'
@@ -29,6 +32,7 @@ import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import { NIGHT, night } from '@/game/constants'
 import * as parkStore from '@/game/parkStore'
+import * as controls from '@/game/controlsStore'
 
 /**
  * ParkGame - A Neko Atsume-inspired pixel-art park where Koala the tabby cat
@@ -255,9 +259,6 @@ type DrawableCat = {
 
 export default function ParkGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  // Set inside the game effect to its `startSlap`, so the on-screen slap button
-  // (rendered in React, outside the effect) can trigger a swipe.
-  const slapFnRef = useRef<(() => void) | null>(null)
   // Interactive-hotspot UI (driven from the canvas hit-testing in the effect).
   const [hover, setHover] = useState<{
     kind: 'text' | 'photo'
@@ -291,20 +292,6 @@ export default function ParkGame() {
     () => parkStore.lsGet('kcc-hint-moved') !== '1',
   )
   const hintMovedRef = useRef(parkStore.lsGet('kcc-hint-moved') === '1')
-
-  // Floating touch joystick. `joyBase` (client coords) is set once per touch so
-  // the ring renders at the finger; the knob is moved imperatively via `joyKnob`
-  // on every touchmove (no per-frame re-render). null = hidden.
-  const [joyBase, setJoyBase] = useState<{ x: number; y: number } | null>(null)
-  const joyKnobRef = useRef<HTMLDivElement>(null)
-  // Show the on-screen slap button only while the hero is in view.
-  const [atTop, setAtTop] = useState(true)
-  useEffect(() => {
-    const onScroll = () => setAtTop(window.scrollY < window.innerHeight * 0.6)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   const gameRef = useRef({
     cat: {
@@ -344,8 +331,13 @@ export default function ParkGame() {
     hudShift: 0, // canvas-px X offset to keep the HUD pinned against the camera pan
     hudShiftY: 0, // canvas-px Y offset (vertical camera), same purpose
     frameCount: 0,
-    // Analog touch joystick vector, each component in [-1, 1] (0 = idle).
-    joy: { x: 0, y: 0 },
+    // Dash lunge (functional reposition): when it started + the from/to tiles.
+    dashAt: -Infinity,
+    dashFrom: { x: 0, y: 0 },
+    dashTo: { x: 0, y: 0 },
+    // Latest emote (bite/hand/meow) + when it started, for the local overlay.
+    emote: null as AbilityKind | null,
+    emoteAt: -Infinity,
   })
 
   const initObjects = useCallback(() => {
@@ -546,10 +538,10 @@ export default function ParkGame() {
     bgCanvas.height = CANVAS_HEIGHT
     const bgCtx = bgCanvas.getContext('2d')
 
-    // Whether a jump input should act right now: hero on-screen, not typing in a
-    // field, and no lightbox open. When false, keys (e.g. space) keep their normal
-    // browser behaviour (page scroll / text entry).
-    const jumpAllowed = () => {
+    // Whether an ability input should act right now: hero on-screen, not typing
+    // in a field, and no lightbox open. When false, keys (e.g. space) keep their
+    // normal browser behaviour (page scroll / text entry).
+    const actionAllowed = () => {
       if (lightboxRef.current) return false
       const el = typeof document !== 'undefined' ? document.activeElement : null
       const tag = el?.tagName
@@ -562,32 +554,77 @@ export default function ParkGame() {
       }
       return window.scrollY < window.innerHeight // hero in view
     }
-    // Start a hop: respects the cooldown, wakes a resting koala (drawCat skips
-    // lying/sleeping), and tells the server (which opens the airborne-collect
-    // window + broadcasts the hop to others). The local hop animates immediately.
-    const startJump = () => {
-      const now = performance.now()
-      if (now - g.jumpAt < JUMP_COOLDOWN_MS) return
-      g.jumpAt = now
-      g.cat.state = 'standing'
-      g.cat.idle = false
-      g.cat.idleFrames = 0
-      mp?.sendJump()
+
+    // Set up a dash lunge: pick a direction (active move vector, else facing),
+    // then the clamped landing tile. Advanced each frame in the game loop.
+    const startDash = (now: number) => {
+      const cat = g.cat
+      let dx = 0
+      let dy = 0
+      const mv = controls.getMove()
+      if (mv && (mv.x !== 0 || mv.y !== 0)) {
+        dx = mv.x
+        dy = mv.y
+      } else {
+        if (g.keys['arrowleft'] || g.keys['a']) dx -= 1
+        if (g.keys['arrowright'] || g.keys['d']) dx += 1
+        if (g.keys['arrowup'] || g.keys['w']) dy -= 1
+        if (g.keys['arrowdown'] || g.keys['s']) dy += 1
+      }
+      if (dx === 0 && dy === 0) dx = cat.dir === 'left' ? -1 : 1
+      const mag = Math.hypot(dx, dy) || 1
+      dx /= mag
+      dy /= mag
+      g.dashFrom = { x: cat.x, y: cat.y }
+      g.dashTo = {
+        x: Math.max(0, Math.min(MAP_COLS - 1, cat.x + dx * DASH_TILES)),
+        y: Math.max(1, Math.min(GROUND_ROWS - 1.5, cat.y + dy * DASH_TILES)),
+      }
+      g.dashAt = now
+      if (dx < -0.2) cat.dir = 'left'
+      else if (dx > 0.2) cat.dir = 'right'
     }
 
-    // Start a paw-swipe: respects the cooldown, wakes a resting koala, plays the
-    // swipe pose (broadcast to others), and jostles the nearest object it can
-    // reach (ball rolls, pond splashes, radio toggles; everything else wobbles +
-    // pops "thwap!"). Object reactions are client-local.
-    const startSlap = () => {
+    // Fire an ability: cooldown-gated (shared per-ability cooldown, mirrored to
+    // the UI sweep), wakes a resting koala, applies the local effect immediately,
+    // and tells the server (which broadcasts it; jump opens the air-food window).
+    const startAbility = (a: AbilityKind) => {
       const now = performance.now()
-      if (now - g.slapAt < SLAP_COOLDOWN_MS) return
-      g.slapAt = now
+      if (now - controls.getFiredAt(a) < ABILITY_COOLDOWNS_MS[a]) return
+      controls.markFired(a)
       g.cat.state = 'standing'
       g.cat.idle = false
       g.cat.idleFrames = 0
-      mp?.sendSlap()
+      if (a === 'jump') {
+        g.jumpAt = now // drives the hop arc + airborne-food window
+      } else if (a === 'dash') {
+        startDash(now)
+      } else if (a === 'hand') {
+        g.slapAt = now // `hand` is the paw-slap: drives the swipe pose
+        slapReact(now) // jostle the nearest reachable object (client-local)
+      } else {
+        g.emote = a // bite / meow
+        g.emoteAt = now
+      }
+      mp?.sendAction(a)
+    }
+    // Let the React control overlay fire abilities through the same path.
+    controls.registerAbility(startAbility)
 
+    // Desktop shortcuts for the extra abilities (jump = space, always). These are
+    // gamer-mode only; jump works regardless (it's a core mechanic).
+    const EXTRA_ABILITY_KEYS: Record<string, AbilityKind> = {
+      shift: 'dash',
+      '1': 'bite',
+      '2': 'hand', // paw-slap
+      '3': 'meow',
+    }
+
+    // Jostle the nearest object the koala can reach when it slaps (ball rolls,
+    // pond splashes, radio toggles; everything else wobbles + sparks). Called by
+    // startAbility('hand') on the local player only — object reactions aren't
+    // synced, so remote slaps show the pose but move nothing.
+    const slapReact = (now: number) => {
       // Nearest slappable object within reach — distance to the object's BOX (not
       // its centre), so big objects like the pond/house are reachable when the cat
       // is beside an edge. Skip UI hotspots.
@@ -663,26 +700,21 @@ export default function ParkGame() {
         })
       }
     }
-    // Exposed to the on-screen slap button (see the React overlay below).
-    slapFnRef.current = startSlap
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
       // Space = jump. Only preventDefault (blocking page scroll) when we actually
       // handle it, so space still scrolls / types when the game isn't in focus.
       if (key === ' ') {
-        if (jumpAllowed()) {
+        if (actionAllowed()) {
           e.preventDefault()
-          startJump()
+          startAbility('jump')
         }
         return
       }
-      // X = slap (the second action). Same gating as jump.
-      if (key === 'x') {
-        if (jumpAllowed()) {
-          e.preventDefault()
-          startSlap()
-        }
+      const extra = EXTRA_ABILITY_KEYS[key]
+      if (extra) {
+        if (controls.getGamerMode() && actionAllowed()) startAbility(extra)
         return
       }
       g.keys[key] = true
@@ -848,25 +880,17 @@ export default function ParkGame() {
       disengage()
     }
 
-    // ── Touch: a Wild-Rift-style FLOATING joystick. Pressing inside the canvas
-    // spawns a joystick at the finger; dragging steers Koala in 2D and the page
-    // is captured (no scroll) so play and scroll never fight. A quick tap (no
-    // steer) still double-taps to jump; a tap on a hotspot opens it. Touches
-    // that don't start on the canvas (or when the hero is scrolled away) never
-    // engage — scrolling to the content stays on the down-arrow. ──
-    const JOY_RADIUS = 48 // px the knob can travel from the base center
-    const JOY_DEAD = 0.14 // ignore wobble below this fraction of the radius
-    const MOVE_TOL = 10 // px before a non-joystick touch counts as a scroll
+    // ── Touch: the hero stays a SCROLLABLE hero. A swipe scrolls the page
+    // (we never preventDefault here); a tap on a channel sign / photo opens it;
+    // a double-tap jumps. Movement is via the on-screen joystick (Gamer mode) —
+    // the canvas itself never steers by touch, so scroll and play never fight. ──
+    const MOVE_TOL = 10 // px of drift before a tap counts as a swipe (→ scroll)
     const DOUBLE_TAP_MS = 300 // two quick taps within this window = jump
     const TAP_TOL = 28 // px the two taps must land within
     let touchId: number | null = null
     let touchStartX = 0
     let touchStartY = 0
     let touchMoved = false
-    let joyActive = false // is the floating joystick engaged for this touch?
-    let joySteered = false // did the knob leave the dead zone (steer vs tap)?
-    let joyBaseX = 0
-    let joyBaseY = 0
     // Double-tap tracking (kept in the outer scope so it survives per-touch resets).
     let lastTapAt = 0
     let lastTapX = 0
@@ -876,11 +900,6 @@ export default function ParkGame() {
         if (list[i].identifier === touchId) return list[i]
       }
       return null
-    }
-    const setKnob = (dx: number, dy: number) => {
-      if (joyKnobRef.current) {
-        joyKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`
-      }
     }
     const handleTouchStart = (e: TouchEvent) => {
       if (touchId !== null) return // already tracking one touch
@@ -892,81 +911,27 @@ export default function ParkGame() {
       touchStartY = t.clientY
       touchMoved = false
       touchHotspot = hotspotAt(t.clientX, t.clientY)
-      if (touchHotspot) {
-        g.joy.x = 0 // defensive: never leave stale steering when not engaging
-        g.joy.y = 0
-        return // a hotspot tap opens on touchend — no joystick
-      }
-      // Spawn the floating joystick at the finger.
-      joyActive = true
-      joySteered = false
-      joyBaseX = t.clientX
-      joyBaseY = t.clientY
-      g.joy.x = 0
-      g.joy.y = 0
-      document.body.classList.add('kcc-dragging')
-      // Clamp the visible ring inside the viewport (radius 56 = half of h-28) so
-      // it never overflows near an edge. The steering origin (joyBaseX/Y) stays
-      // at the real finger, so the knob starts centered — no jump on engage.
-      const R = 56
-      setJoyBase({
-        x: Math.max(R, Math.min(t.clientX, window.innerWidth - R)),
-        y: Math.max(R, Math.min(t.clientY, window.innerHeight - R)),
-      })
+      // No preventDefault anywhere in the touch path → the page scrolls freely.
     }
     const handleTouchMove = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
       if (!t) return
-      if (!joyActive) {
-        // A hotspot press that turned into a drag → let it scroll natively.
-        if (
-          Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
-          Math.abs(t.clientY - touchStartY) > MOVE_TOL
-        ) {
-          touchMoved = true
-        }
-        return
-      }
-      // Steering — capture the gesture so the page can't scroll under the thumb.
-      e.preventDefault()
-      const dx = t.clientX - joyBaseX
-      const dy = t.clientY - joyBaseY
-      const dist = Math.hypot(dx, dy)
-      const clamped = Math.min(dist, JOY_RADIUS)
-      const ux = dist > 0 ? dx / dist : 0
-      const uy = dist > 0 ? dy / dist : 0
-      setKnob(ux * clamped, uy * clamped)
-      const mag = clamped / JOY_RADIUS // 0..1
-      if (mag > JOY_DEAD) {
-        joySteered = true
-        g.joy.x = ux * mag
-        g.joy.y = uy * mag
-      } else {
-        g.joy.x = 0
-        g.joy.y = 0
+      if (
+        Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
+        Math.abs(t.clientY - touchStartY) > MOVE_TOL
+      ) {
+        touchMoved = true // it's a swipe (scroll), not a tap
       }
     }
     const endTouch = () => {
       touchId = null
       touchMoved = false
       touchHotspot = null
-      if (joyActive) {
-        joyActive = false
-        joySteered = false
-        g.joy.x = 0
-        g.joy.y = 0
-        setKnob(0, 0)
-        setJoyBase(null) // fade out
-        document.body.classList.remove('kcc-dragging')
-      }
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
-      // Ignore touchend/cancel for a DIFFERENT finger — otherwise a second
-      // finger lifting would tear down the joystick mid-gesture and freeze the
-      // cat while the tracked finger is still down.
       if (!t) return
       // Tap on a channel sign / photo → open it.
       if (touchHotspot) {
@@ -976,15 +941,15 @@ export default function ParkGame() {
         endTouch()
         return
       }
-      // A joystick press that never steered is a clean tap → two quick taps jump.
-      if (joyActive && !joySteered) {
+      // A clean tap (no hotspot, no swipe) → two quick taps jump.
+      if (!touchMoved) {
         const now = Date.now()
         if (
           now - lastTapAt < DOUBLE_TAP_MS &&
           Math.abs(t.clientX - lastTapX) < TAP_TOL &&
           Math.abs(t.clientY - lastTapY) < TAP_TOL
         ) {
-          if (jumpAllowed()) startJump()
+          if (actionAllowed()) startAbility('jump')
           lastTapAt = 0 // consume; a third tap starts a fresh pair
         } else {
           lastTapAt = now
@@ -2088,6 +2053,76 @@ export default function ParkGame() {
       radio.setNear(radioPlaying)
     }
 
+    // Cosmetic ability emote drawn over a koala's head/face. `t` is 0→1 progress
+    // (alpha eases in then out). Bite = a chomp near the mouth, hand = a paw
+    // swipe in front, meow = a little speech bubble. tx/ty are tile coords.
+    function drawEmote(
+      tx: number,
+      ty: number,
+      dir: 'left' | 'right',
+      kind: AbilityKind,
+      t: number,
+    ) {
+      if (!ctx) return
+      const cx = tx * PIXEL + PIXEL * 0.5
+      const cy = ty * PIXEL
+      const front = dir === 'left' ? -1 : 1
+      const alpha = Math.sin(Math.min(1, Math.max(0, t)) * Math.PI) // 0→1→0
+      ctx.save()
+      ctx.globalAlpha = alpha
+      if (kind === 'meow') {
+        const bx = cx
+        const by = cy - PIXEL * 0.55
+        ctx.font = `${SCALE * 4}px 'Cormorant Garamond', Georgia, serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        const w = ctx.measureText('meow').width + SCALE * 6
+        const h = SCALE * 8
+        ctx.fillStyle = 'rgba(255,255,255,0.95)'
+        ctx.beginPath()
+        ctx.roundRect(bx - w / 2, by - h / 2, w, h, SCALE * 3)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(bx - SCALE * 2, by + h / 2)
+        ctx.lineTo(bx + SCALE * 2, by + h / 2)
+        ctx.lineTo(bx, by + h / 2 + SCALE * 3)
+        ctx.closePath()
+        ctx.fill()
+        ctx.fillStyle = COLORS.charcoal
+        ctx.fillText('meow', bx, by)
+      } else if (kind === 'bite') {
+        const fx = cx + front * PIXEL * 0.4
+        const fy = cy + PIXEL * 0.2
+        const open = (0.5 - Math.abs(t - 0.5)) * PIXEL * 0.5 // opens then shuts
+        const s = PIXEL * 0.26
+        ctx.fillStyle = 'rgba(255,255,255,0.95)'
+        ctx.beginPath()
+        ctx.moveTo(fx - s, fy - open)
+        ctx.lineTo(fx + s, fy - open)
+        ctx.lineTo(fx, fy - open - s * 0.7)
+        ctx.closePath()
+        ctx.fill()
+        ctx.beginPath()
+        ctx.moveTo(fx - s, fy + open)
+        ctx.lineTo(fx + s, fy + open)
+        ctx.lineTo(fx, fy + open + s * 0.7)
+        ctx.closePath()
+        ctx.fill()
+      } else if (kind === 'hand') {
+        const fx = cx + front * PIXEL * 0.45
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+        ctx.lineWidth = SCALE
+        for (let i = 0; i < 3; i++) {
+          const r = PIXEL * (0.2 + i * 0.12)
+          const a0 = -0.6 + t * 1.2
+          ctx.beginPath()
+          ctx.arc(fx, cy + PIXEL * 0.1, r, a0, a0 + 0.7 * front, front < 0)
+          ctx.stroke()
+        }
+      }
+      ctx.restore()
+    }
+
     function drawPopups(f: number) {
       if (!ctx) return
       g.popups = g.popups.filter((p) => p.life > 0)
@@ -2626,12 +2661,13 @@ export default function ParkGame() {
         moving = true
       }
 
-      // Analog touch joystick — a direct 2D vector (magnitude scales speed), the
-      // same feel as the keyboard but continuous.
-      if (g.joy.x !== 0 || g.joy.y !== 0) {
-        newX += g.joy.x * speed
-        newY += g.joy.y * speed
-        if (Math.abs(g.joy.x) > 0.01) cat.dir = g.joy.x < 0 ? 'left' : 'right'
+      // Analog on-screen joystick (Gamer mode) — a direct 2D vector whose
+      // magnitude scales speed, same feel as the keyboard but continuous.
+      const mv = controls.getMove()
+      if (mv && (mv.x !== 0 || mv.y !== 0)) {
+        newX += mv.x * speed
+        newY += mv.y * speed
+        if (Math.abs(mv.x) > 0.2) cat.dir = mv.x < 0 ? 'left' : 'right'
         moving = true
       }
 
@@ -2946,6 +2982,17 @@ export default function ParkGame() {
       drawObjects(wallNow)
       drawButterflies(f)
       updateCat(dt)
+      // Dash lunge: while active, ease the koala from dashFrom→dashTo, overriding
+      // this frame's movement so the lunged position propagates + renders.
+      // (dashAt inits to -Infinity, so the guard is false until the first dash.)
+      {
+        const dEl = performance.now() - g.dashAt
+        if (dEl >= 0 && dEl < DASH_DURATION_MS) {
+          const e = 1 - Math.pow(1 - dEl / DASH_DURATION_MS, 3) // easeOutCubic
+          g.cat.x = g.dashFrom.x + (g.dashTo.x - g.dashFrom.x) * e
+          g.cat.y = g.dashFrom.y + (g.dashTo.y - g.dashFrom.y) * e
+        }
+      }
       parkStore.setCatTile(g.cat.x, g.cat.y)
       updateFoods()
       // Publish our position (throttled inside sendState).
@@ -2963,6 +3010,12 @@ export default function ParkGame() {
         jumpLiftTiles(g.jumpAt, nowMs) * PIXEL,
         slapPhase(g.slapAt, nowMs),
       )
+      if (g.emote) {
+        const et = (nowMs - g.emoteAt) / EMOTE_DURATION_MS
+        if (et >= 0 && et <= 1)
+          drawEmote(g.cat.x, g.cat.y, g.cat.dir, g.emote, et)
+        else g.emote = null
+      }
       // Remote koalas, interpolated toward their latest target and depth-sorted
       // with each other (drawn after the local cat, like all other players).
       if (mp && mp.players.size) {
@@ -2980,8 +3033,14 @@ export default function ParkGame() {
           remoteCat.idle = !moving && p.pose === 'standing'
           remoteCat.interacting = p.interacting
           const rjump = p.jumpAt ? jumpLiftTiles(p.jumpAt, nowMs) * PIXEL : 0
-          const rslap = p.slapAt ? slapPhase(p.slapAt, nowMs) : 0
+          // `hand` is the paw-slap: play the swipe pose, not an emote.
+          const rslap =
+            p.act === 'hand' && p.actAt ? slapPhase(p.actAt, nowMs) : 0
           drawCat(remoteCat, p.name, rjump, rslap)
+          if (p.act === 'bite' || p.act === 'meow') {
+            const et = (nowMs - (p.actAt ?? -Infinity)) / EMOTE_DURATION_MS
+            if (et >= 0 && et <= 1) drawEmote(p.rx, p.ry, p.dir, p.act, et)
+          }
         }
       }
       ctx!.restore()
@@ -3070,6 +3129,8 @@ export default function ParkGame() {
     return () => {
       cancelAnimationFrame(animId)
       unsubscribeStore()
+      controls.registerAbility(null)
+      controls.clearMove()
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('pointerdown', handlePointerDown)
@@ -3104,7 +3165,7 @@ export default function ParkGame() {
         // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or touch and drag anywhere in the park to steer her with an on-screen joystick, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD (or turn on Gamer controls in Settings for an on-screen joystick + ability buttons), and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
@@ -3175,10 +3236,10 @@ export default function ParkGame() {
                 </button>
               </div>
             )}
-            {/* First-run control hint — dismisses on first move (see updateCat).
-                Also hidden while the joystick is up so they never overlap. */}
+            {/* First-run control hint (desktop only — on touch, play is via the
+                Gamer-mode joystick). Dismisses on first move (see updateCat). */}
             <AnimatePresence>
-              {showHint && !joyBase && (
+              {showHint && !isTouch && (
                 <motion.div
                   aria-hidden="true"
                   className="pointer-events-none fixed inset-x-0 bottom-32 z-30 flex justify-center px-6 sm:bottom-36"
@@ -3199,83 +3260,31 @@ export default function ParkGame() {
                 >
                   <span className="inline-flex select-none items-center gap-2.5 rounded-full bg-black/35 px-4 py-2 text-xs font-medium text-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.45)] ring-1 ring-white/15 backdrop-blur-md sm:px-5 sm:py-2.5 sm:text-sm">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[oklch(0.82_0.13_78)] shadow-[0_0_8px_oklch(0.82_0.13_78_/_0.6)]" />
-                    {isTouch ? (
-                      <span>
-                        {'Drag '}
-                        <span className="text-white/55">to move Koala</span>
-                      </span>
-                    ) : (
-                      <>
-                        {/* Arrow cluster hides on narrow (non-touch) widths so
-                            the chip never overflows — WASD alone carries it. */}
-                        <span className="hidden items-center gap-1 sm:inline-flex">
-                          {['↑', '↓', '←', '→'].map((k) => (
-                            <kbd
-                              key={k}
-                              className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
-                            >
-                              {k}
-                            </kbd>
-                          ))}
-                        </span>
-                        <span className="hidden text-white/30 sm:inline">
-                          /
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          {['W', 'A', 'S', 'D'].map((k) => (
-                            <kbd
-                              key={k}
-                              className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
-                            >
-                              {k}
-                            </kbd>
-                          ))}
-                        </span>
-                        <span className="text-white/55">to move Koala</span>
-                      </>
-                    )}
+                    {/* Arrow cluster hides on narrow widths so the chip never
+                        overflows — WASD alone carries it. */}
+                    <span className="hidden items-center gap-1 sm:inline-flex">
+                      {['↑', '↓', '←', '→'].map((k) => (
+                        <kbd
+                          key={k}
+                          className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
+                    </span>
+                    <span className="hidden text-white/30 sm:inline">/</span>
+                    <span className="inline-flex items-center gap-1">
+                      {['W', 'A', 'S', 'D'].map((k) => (
+                        <kbd
+                          key={k}
+                          className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
+                        >
+                          {k}
+                        </kbd>
+                      ))}
+                    </span>
+                    <span className="text-white/55">to move Koala</span>
                   </span>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Slap button — dedicated action control (desktop also has the `x`
-                key). A real <button>, so the window touch/pointer handlers skip
-                it (canEngageAt ignores closest('a, button')) and it doesn't start
-                the joystick. Only shown while the hero is in view. */}
-            {atTop && (
-              <button
-                type="button"
-                aria-label="Slap"
-                onClick={() => slapFnRef.current?.()}
-                className="pointer-events-auto fixed bottom-6 left-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[oklch(0.82_0.13_78)]/80 text-2xl shadow-[0_6px_20px_rgba(0,0,0,0.4)] ring-1 ring-white/30 backdrop-blur-sm transition-transform active:scale-90"
-              >
-                🐾
-              </button>
-            )}
-
-            {/* Floating touch joystick — spawns at the finger; the knob is moved
-                imperatively (joyKnobRef) each touchmove, so only mount/unmount
-                re-renders. Purely visual (pointer-events-none); the touch is
-                handled on window. */}
-            <AnimatePresence>
-              {joyBase && (
-                <motion.div
-                  aria-hidden="true"
-                  className="pointer-events-none fixed z-40 flex h-28 w-28 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-[oklch(0.82_0.13_78)]/40 backdrop-blur-[2px]"
-                  style={{ left: joyBase.x, top: joyBase.y }}
-                  initial={{
-                    opacity: 0,
-                    scale: prefersReducedMotion ? 1 : 0.85,
-                  }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: prefersReducedMotion ? 1 : 0.85 }}
-                  transition={{ duration: prefersReducedMotion ? 0.1 : 0.16 }}
-                >
-                  <div
-                    ref={joyKnobRef}
-                    className="h-11 w-11 rounded-full bg-[oklch(0.82_0.13_78)]/70 shadow-[0_0_12px_oklch(0.82_0.13_78_/_0.5)] ring-1 ring-white/30"
-                  />
                 </motion.div>
               )}
             </AnimatePresence>

@@ -236,6 +236,26 @@ describe('createMultiplayer', () => {
     expect(mp.food.has('f1')).toBe(false)
   })
 
+  it('replaces the whole food set on a resync (server woke from hibernation)', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [food('stale')],
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.food.has('stale')).toBe(true)
+    // A resync drops the stale food and installs whatever the server now has.
+    ws.receive({ t: 'foods', food: [food('fresh')] })
+    expect(mp.food.has('stale')).toBe(false)
+    expect(mp.food.has('fresh')).toBe(true)
+    // An empty resync clears everything.
+    ws.receive({ t: 'foods', food: [] })
+    expect(mp.food.size).toBe(0)
+  })
+
   it('updates own likes only when the collector is us', async () => {
     const { mp, ws } = await startConnected()
     ws.receive({
@@ -549,16 +569,18 @@ describe('createMultiplayer — presence + stats', () => {
     mp.close()
   })
 
-  it('sendJump emits a jump request on the wire', async () => {
+  it('sendAction emits an action request on the wire', async () => {
     const { mp, ws } = await startConnected()
     ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
-    mp.sendJump()
+    mp.sendAction('jump')
+    mp.sendAction('dash')
     const sent = ws.sent.map((s) => JSON.parse(s))
-    expect(sent).toContainEqual({ t: 'jump' })
+    expect(sent).toContainEqual({ t: 'action', a: 'jump' })
+    expect(sent).toContainEqual({ t: 'action', a: 'dash' })
     mp.close()
   })
 
-  it('marks a remote player mid-jump on a jumped message', async () => {
+  it('stamps a remote player on an acted message (jump also sets jumpAt)', async () => {
     const { mp, ws } = await startConnected()
     ws.receive({
       t: 'welcome',
@@ -566,22 +588,17 @@ describe('createMultiplayer — presence + stats', () => {
       players: [player('b')],
       now: 0,
     })
-    expect(mp.players.get('b')?.jumpAt).toBeUndefined()
-    ws.receive({ t: 'jumped', id: 'b' })
+    expect(mp.players.get('b')?.actAt).toBeUndefined()
+    ws.receive({ t: 'acted', id: 'b', a: 'jump' })
+    expect(mp.players.get('b')?.act).toBe('jump')
     expect(typeof mp.players.get('b')?.jumpAt).toBe('number')
+    // A non-jump ability stamps act/actAt but not jumpAt.
+    ws.receive({ t: 'acted', id: 'b', a: 'bite' })
+    expect(mp.players.get('b')?.act).toBe('bite')
     mp.close()
   })
 
-  it('sendSlap emits a slap request on the wire', async () => {
-    const { mp, ws } = await startConnected()
-    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
-    mp.sendSlap()
-    const sent = ws.sent.map((s) => JSON.parse(s))
-    expect(sent).toContainEqual({ t: 'slap' })
-    mp.close()
-  })
-
-  it('marks a remote player mid-slap on a slapped message', async () => {
+  it('sends the hand paw-slap through the ability path and stamps a remote slapper', async () => {
     const { mp, ws } = await startConnected()
     ws.receive({
       t: 'welcome',
@@ -589,9 +606,15 @@ describe('createMultiplayer — presence + stats', () => {
       players: [player('b')],
       now: 0,
     })
-    expect(mp.players.get('b')?.slapAt).toBeUndefined()
-    ws.receive({ t: 'slapped', id: 'b' })
-    expect(typeof mp.players.get('b')?.slapAt).toBe('number')
+    mp.sendAction('hand')
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'action', a: 'hand' })
+    // A hand slap stamps act/actAt but not jumpAt.
+    expect(mp.players.get('b')?.act).toBeUndefined()
+    ws.receive({ t: 'acted', id: 'b', a: 'hand' })
+    expect(mp.players.get('b')?.act).toBe('hand')
+    expect(typeof mp.players.get('b')?.actAt).toBe('number')
+    expect(mp.players.get('b')?.jumpAt).toBeUndefined()
     mp.close()
   })
 

@@ -15,6 +15,7 @@ import { Instagram, Mail, ArrowDown, Github, Play } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
+import GamerControls from '@/components/GamerControls'
 import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
@@ -371,8 +372,13 @@ function HeroControls() {
         </motion.span>
       </button>
 
-      {/* Bottom control bar: score/likes + Shop + Settings (rename) grouped. */}
+      {/* Bottom control bar: score/likes (opens shop) + Settings. */}
       <BottomBar atTop={atTop} />
+
+      {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Sibling of
+          the bar so it persists while shop/settings are open; lives in this
+          pointer-events-none layer so only its control zones capture touch. */}
+      <GamerControls atTop={atTop} />
     </div>
   )
 }
