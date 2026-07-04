@@ -72,23 +72,17 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
       <div
         className={`absolute bottom-6 left-1/2 flex -translate-x-1/2 items-end gap-3 transition-opacity duration-300 sm:bottom-7 ${barVisibility}`}
       >
-        {/* Score / likes readout (was the on-canvas HUD pill). */}
+        {/* Score / likes readout (was the on-canvas HUD pill). Current money
+            only — the personal best is still tracked, just not displayed. */}
         <div
-          className="flex flex-col items-center rounded-2xl bg-black/40 px-4 py-1.5 ring-1 ring-white/10 backdrop-blur-md"
+          className="flex items-center gap-1.5 rounded-full bg-black/40 px-4 py-2 leading-none text-white ring-1 ring-white/10 backdrop-blur-md"
+          style={{ fontFamily: DISPLAY_FONT }}
           aria-label={`${snap.coins} likes`}
         >
-          <span
-            className="flex items-center gap-1.5 leading-none text-white"
-            style={{ fontFamily: DISPLAY_FONT }}
-          >
-            <span className="text-[oklch(0.82_0.13_78)]" aria-hidden="true">
-              ★
-            </span>
-            <span className="text-xl tabular-nums">{snap.coins}</span>
+          <span className="text-[oklch(0.82_0.13_78)]" aria-hidden="true">
+            ★
           </span>
-          <span className="mt-0.5 text-[11px] leading-none text-white/55 tabular-nums">
-            Best {snap.best}
-          </span>
+          <span className="text-xl tabular-nums">{snap.coins}</span>
         </div>
 
         {/* Shop trigger */}

@@ -9,11 +9,11 @@ beforeEach(() => {
 })
 
 describe('BottomBar', () => {
-  it('shows the score/likes and best from the store', () => {
+  it('shows the current score/likes (not the best) from the store', () => {
     store.earn(500)
     render(<BottomBar atTop={true} />)
     expect(screen.getByText('500')).toBeInTheDocument()
-    expect(screen.getByText(/best 500/i)).toBeInTheDocument()
+    expect(screen.queryByText(/best/i)).not.toBeInTheDocument()
   })
 
   it('opens the shop from its trigger', () => {
