@@ -14,7 +14,7 @@ import {
   FOOD_TTL_MS,
   FOODS,
   FOOD_TOTAL_WEIGHT,
-  MAX_FOOD,
+  foodCap,
   MAX_INBOUND_MSGS_PER_SEC,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
@@ -486,7 +486,8 @@ export class GameWorld extends DurableObject<Env> {
         this.broadcast({ t: 'despawn', id, reason: 'expired' })
       }
     }
-    if (this.food.size >= MAX_FOOD) return
+    // Cap scales with the crowd: ~half the connected players, rounded up.
+    if (this.food.size >= foodCap(this.ctx.getWebSockets().length)) return
     if (now - this.lastSpawnAt < FOOD_SPAWN_COOLDOWN_MS) return
     this.lastSpawnAt = now
     const f = this.spawnFood(now)
