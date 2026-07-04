@@ -407,8 +407,12 @@ export default function ParkGame() {
     const mp: Multiplayer | null = createMultiplayer({
       onWallet: (likes) => parkStore.applyServerWallet(likes),
       onPlaced: (items) => parkStore.applyServerPlaced(items),
+      onName: (name) => parkStore.applyServerName(name),
     })
-    if (mp) parkStore.setServerBuyer(mp.sendBuy)
+    if (mp) {
+      parkStore.setServerBuyer(mp.sendBuy)
+      parkStore.setServerRenamer(mp.sendName)
+    }
     // Scratch object reused each frame to render remote koalas without churn.
     const remoteCat: DrawableCat = {
       x: 0,
@@ -2128,36 +2132,6 @@ export default function ParkGame() {
       })
     }
 
-    function drawHUD() {
-      if (!ctx) return
-      ctx.save()
-      ctx.translate(g.hudShift, g.hudShiftY)
-      const pad = PIXEL * 0.28
-      // Single-line score pill. The personal-best line was removed from the UI;
-      // g.best is still tracked (see updateFoods), just not displayed.
-      const pillH = 34
-      const top = WORLD_OFFSET + PIXEL - pillH - PIXEL * 0.2
-      ctx.textAlign = 'left'
-      ctx.textBaseline = 'middle'
-      const scoreText = `${g.score}`
-      ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
-      const scoreW = ctx.measureText(scoreText).width
-      const pillW = scoreW + 30 + 22
-
-      ctx.fillStyle = 'rgba(20,16,12,0.5)'
-      ctx.beginPath()
-      ctx.roundRect(pad, top, pillW, pillH, 12)
-      ctx.fill()
-
-      ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
-      ctx.fillStyle = COLORS.fishBowl // HUD star stays bright (above the wash)
-      ctx.fillText('★', pad + 12, top + pillH / 2)
-      ctx.fillStyle = COLORS.white
-      ctx.fillText(scoreText, pad + 30, top + pillH / 2)
-      ctx.textBaseline = 'alphabetic'
-      ctx.restore()
-    }
-
     function updateCat(dt: number) {
       const cat = g.cat
       // Time-based speed so the cat walks at the same real-world pace regardless
@@ -2538,8 +2512,7 @@ export default function ParkGame() {
       ctx!.restore()
 
       updateCamera()
-      // HUD last, pinned against the horizontal camera pan (see updateCamera).
-      drawHUD()
+      // (The score/likes HUD now lives in the DOM BottomBar, not on the canvas.)
 
       // Bare-minimum presence readout (imperative to avoid per-frame React
       // re-renders). Empty string hides it when solo / disconnected.
@@ -2621,6 +2594,7 @@ export default function ParkGame() {
       document.body.classList.remove('kcc-dragging')
       mp?.close()
       parkStore.setServerBuyer(null) // back to solo/localStorage economy
+      parkStore.setServerRenamer(null)
     }
   }, [initObjects])
 

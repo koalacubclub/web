@@ -44,6 +44,7 @@ export interface ParkSnapshot {
   coins: number
   best: number
   placed: PlacedItem[]
+  name: string // this player's display name (server-fed in MP; '' in solo)
 }
 
 export type PurchaseResult = 'ok' | 'insufficient' | 'no-room'
@@ -124,6 +125,7 @@ const sync = {
       coins: Number(lsGet(COINS_KEY)) || 0,
       best: Number(lsGet(BEST_KEY)) || 0,
       placed: parsePlaced(lsGet(PLACED_KEY)),
+      name: '', // names are server-owned; solo has none
     }
   },
   saveWallet(coins: number, best: number) {
@@ -144,7 +146,8 @@ let mapCols = MAP_COLS
 let groundRows = GROUND_ROWS
 let obstacles: Rect[] = [] // static base-object footprints (set once by the game)
 
-let snapshot: ParkSnapshot = { coins, best, placed }
+let selfName = '' // this player's display name (server-fed in MP)
+let snapshot: ParkSnapshot = { coins, best, placed, name: selfName }
 const listeners = new Set<() => void>()
 let loaded = false
 
@@ -153,9 +156,10 @@ let loaded = false
 // mirror fed by applyServer*(), purchases are routed to the server, and nothing
 // is written to localStorage. `serverBuyer` is set (via setServerBuyer) iff so.
 let serverBuyer: ((key: string, x: number, y: number) => void) | null = null
+let serverRenamer: ((name: string) => void) | null = null
 
 function rebuildSnapshot() {
-  snapshot = { coins, best, placed }
+  snapshot = { coins, best, placed, name: selfName }
 }
 function emit() {
   for (const cb of listeners) cb()
@@ -242,9 +246,25 @@ export function setServerBuyer(
     coins = 0
     best = 0
     placed = []
+    selfName = ''
     rebuildSnapshot()
     emit()
   }
+}
+
+/** Inject the connection's rename sender (null in solo). */
+export function setServerRenamer(fn: ((name: string) => void) | null) {
+  serverRenamer = fn
+}
+
+/** Change this player's name — routes to the server when connected. */
+export function rename(name: string) {
+  serverRenamer?.(name)
+}
+
+/** This player's display name (server-fed; '' until a welcome arrives). */
+export function getName(): string {
+  return selfName
 }
 
 /** Mirror the server's authoritative wallet. */
@@ -252,6 +272,14 @@ export function applyServerWallet(serverCoins: number) {
   if (serverCoins === coins) return // no change → no re-render
   coins = serverCoins
   if (coins > best) best = coins
+  rebuildSnapshot()
+  emit()
+}
+
+/** Mirror the server's view of our display name. */
+export function applyServerName(name: string) {
+  if (name === selfName) return
+  selfName = name
   rebuildSnapshot()
   emit()
 }
@@ -386,5 +414,7 @@ export function __resetForTests() {
   listeners.clear()
   loaded = false
   serverBuyer = null
+  serverRenamer = null
+  selfName = ''
   rebuildSnapshot()
 }

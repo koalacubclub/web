@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
-import Shop from '@/components/Shop'
+import BottomBar from '@/components/BottomBar'
 import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
@@ -382,12 +382,12 @@ function HeroControls() {
         </a>
       </div>
 
-      {/* Scroll-to-content button, bottom-center */}
+      {/* Scroll-to-content button — sits just above the bottom control bar. */}
       <button
         type="button"
         onClick={scrollToContent}
         aria-label="Scroll to content"
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20 ${interactive}`}
+        className={`absolute bottom-24 left-1/2 -translate-x-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 backdrop-blur-sm ring-1 ring-white/20 sm:bottom-28 ${interactive}`}
       >
         <motion.span
           animate={{ y: [0, 6, 0] }}
@@ -401,8 +401,8 @@ function HeroControls() {
         </motion.span>
       </button>
 
-      {/* Shop — trigger (bottom-right) + bottom-sheet carousel */}
-      <Shop atTop={atTop} />
+      {/* Bottom control bar: score/likes + Shop + Settings (rename) grouped. */}
+      <BottomBar atTop={atTop} />
     </div>
   )
 }

@@ -19,6 +19,7 @@ import {
   PROTOCOL_VERSION,
   sanitizeBuy,
   sanitizeCollect,
+  sanitizeName,
   sanitizeState,
   WORLD,
 } from '@koala/shared'
@@ -83,6 +84,13 @@ export class GameWorld extends DurableObject<Env> {
        )`,
     )
     sql.exec(
+      `CREATE TABLE IF NOT EXISTS names (
+         session TEXT PRIMARY KEY,
+         name    TEXT NOT NULL,
+         updated INTEGER NOT NULL
+       )`,
+    )
+    sql.exec(
       `CREATE TABLE IF NOT EXISTS placed (
          id       TEXT PRIMARY KEY,
          owner    TEXT NOT NULL,
@@ -141,8 +149,10 @@ export class GameWorld extends DurableObject<Env> {
     // overwritten upstream).
     const url = new URL(req.url)
     const id = url.searchParams.get('sid')
-    const name = url.searchParams.get('name') ?? 'Koala'
     if (!id) return new Response('missing sid', { status: 400 })
+    // A stored username (set via the shop's Settings) wins over the Worker's
+    // default nameFor(id); first-timers get the default.
+    const name = this.getName(id) ?? url.searchParams.get('name') ?? 'Koala'
 
     const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server)
@@ -226,6 +236,21 @@ export class GameWorld extends DurableObject<Env> {
       // Persist last-known position on the socket so it survives hibernation.
       ws.serializeAttachment({ ...a, s } satisfies Attachment)
       this.broadcast({ t: 'state', id: a.id, s }, a.id)
+      return
+    }
+
+    if (msg.t === 'setName') {
+      const name = sanitizeName(msg.name)
+      if (!name) return // invalid → no write, no broadcast
+      this.saveName(a.id, name)
+      // Update this socket's attachment + any sibling sockets of the same
+      // session (e.g. a second tab) so their name tag stays right on reconnect.
+      for (const other of this.ctx.getWebSockets()) {
+        const oa = other.deserializeAttachment() as Attachment | null
+        if (oa?.id === a.id)
+          other.serializeAttachment({ ...oa, name } satisfies Attachment)
+      }
+      this.broadcast({ t: 'renamed', id: a.id, name }) // everyone incl. sender = ack
       return
     }
 
@@ -438,6 +463,25 @@ export class GameWorld extends DurableObject<Env> {
       return f
     }
     return null
+  }
+
+  // ---- display names (durable, per session) ----
+
+  private getName(id: string): string | null {
+    const rows = this.ctx.storage.sql
+      .exec('SELECT name FROM names WHERE session = ?', id)
+      .toArray()
+    return rows.length ? String(rows[0].name) : null
+  }
+
+  private saveName(id: string, name: string): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO names (session, name, updated) VALUES (?, ?, ?)
+       ON CONFLICT(session) DO UPDATE SET name = excluded.name, updated = excluded.updated`,
+      id,
+      name,
+      Date.now(),
+    )
   }
 
   // ---- placed items (durable, shared) ----

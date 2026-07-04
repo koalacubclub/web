@@ -147,3 +147,23 @@ describe('snapshot stability', () => {
     expect(cb).toHaveBeenCalledTimes(1) // unsubscribed
   })
 })
+
+describe('parkStore — display name (server-fed)', () => {
+  it('mirrors the server name into the snapshot', () => {
+    expect(store.getSnapshot().name).toBe('')
+    store.applyServerName('Pixel')
+    expect(store.getSnapshot().name).toBe('Pixel')
+    expect(store.getName()).toBe('Pixel')
+  })
+
+  it('routes rename() to the injected server renamer', () => {
+    const sender = vi.fn()
+    store.setServerRenamer(sender)
+    store.rename('Mochi')
+    expect(sender).toHaveBeenCalledWith('Mochi')
+  })
+
+  it('is a no-op rename without a server renamer (solo)', () => {
+    expect(() => store.rename('Solo')).not.toThrow()
+  })
+})
