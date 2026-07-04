@@ -35,6 +35,7 @@ export interface PlacedItem {
   y: number
   w: number // footprint tiles
   h: number
+  ownerName?: string // author's display name (server-fed; shown on proximity)
   placedAt: number // Date.now() at purchase — drives the pop-in flourish
   expiresAt: number // Date.now() TTL — server may later own this value
 }
@@ -265,6 +266,7 @@ export function applyServerPlaced(items: ServerPlacedItem[]) {
     y: p.y,
     w: p.w,
     h: p.h,
+    ownerName: p.ownerName,
     placedAt: p.placedAt,
     expiresAt: p.expiresAt,
   }))

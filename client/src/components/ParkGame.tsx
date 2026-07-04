@@ -175,6 +175,7 @@ interface GameObject {
   key?: string
   placedAt?: number
   expiresAt?: number
+  ownerName?: string // author's name, shown when Koala walks up to the item
 }
 
 interface Butterfly {
@@ -440,6 +441,7 @@ export default function ParkGame() {
           key: p.key,
           placedAt: p.placedAt,
           expiresAt: p.expiresAt,
+          ownerName: p.ownerName,
         })),
       )
     }
@@ -2026,6 +2028,36 @@ export default function ParkGame() {
       ctx.restore()
     }
 
+    // Authorship: a shop item shows its buyer's name in a small, subtle label
+    // underneath — but only while Koala is standing near it (fades in with
+    // proximity), like the object tooltips. Purely cosmetic pride.
+    function drawAuthorLabels() {
+      if (!ctx) return
+      const catX = g.cat.x + 0.5
+      const catY = g.cat.y + 0.5
+      const REACH = 2.2 // tiles within which the author is revealed
+      for (const obj of g.objects) {
+        if (obj.placedAt == null || !obj.ownerName) continue
+        const ix = obj.x + obj.w / 2
+        const iy = obj.y + obj.h / 2
+        const d = Math.hypot(catX - ix, catY - iy)
+        if (d > REACH) continue
+        const alpha = Math.min(0.8, ((REACH - d) / REACH) * 1.4)
+        const px = ix * PIXEL
+        const py = (obj.y + obj.h) * PIXEL + 4
+        ctx.save()
+        ctx.font = `${SCALE * 3}px 'Inter', system-ui, sans-serif`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'top'
+        ctx.lineWidth = SCALE
+        ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.6})`
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`
+        ctx.strokeText(obj.ownerName, px, py)
+        ctx.fillText(obj.ownerName, px, py)
+        ctx.restore()
+      }
+    }
+
     function drawFoods() {
       if (!ctx) return
       foodsToRender().forEach((f) => {
@@ -2498,6 +2530,7 @@ export default function ParkGame() {
       })
       drawDreamBubble()
       drawFoods()
+      drawAuthorLabels()
       drawPopups(f)
       ctx!.restore()
 
