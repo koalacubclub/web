@@ -274,6 +274,12 @@ export default function ParkGame() {
   )
   const hintMovedRef = useRef(parkStore.lsGet('kcc-hint-moved') === '1')
 
+  // Floating touch joystick. `joyBase` (client coords) is set once per touch so
+  // the ring renders at the finger; the knob is moved imperatively via `joyKnob`
+  // on every touchmove (no per-frame re-render). null = hidden.
+  const [joyBase, setJoyBase] = useState<{ x: number; y: number } | null>(null)
+  const joyKnobRef = useRef<HTMLDivElement>(null)
+
   const gameRef = useRef({
     cat: {
       x: 9,
@@ -307,6 +313,8 @@ export default function ParkGame() {
     hudShift: 0, // canvas-px X offset to keep the HUD pinned against the camera pan
     hudShiftY: 0, // canvas-px Y offset (vertical camera), same purpose
     frameCount: 0,
+    // Analog touch joystick vector, each component in [-1, 1] (0 = idle).
+    joy: { x: 0, y: 0 },
   })
 
   const initObjects = useCallback(() => {
@@ -710,19 +718,25 @@ export default function ParkGame() {
       disengage()
     }
 
-    // ── Touch: a TAP walks the cat to that spot; a drag/swipe just scrolls the
-    // page (native — we never preventDefault). A double-tap jumps; a tap on a
-    // hotspot opens it. There is deliberately no hold-to-steer: separating
-    // "move" (tap) from "scroll" (drag) by gesture TYPE removes the old
-    // ambiguity where an eager drag-to-move was mistaken for a scroll (and vice
-    // versa), and lets the page scroll smoothly for scanning. ──
-    const MOVE_TOL = 10 // px of movement that turns a tap into a scroll
+    // ── Touch: a Wild-Rift-style FLOATING joystick. Pressing inside the canvas
+    // spawns a joystick at the finger; dragging steers Koala in 2D and the page
+    // is captured (no scroll) so play and scroll never fight. A quick tap (no
+    // steer) still double-taps to jump; a tap on a hotspot opens it. Touches
+    // that don't start on the canvas (or when the hero is scrolled away) never
+    // engage — scrolling to the content stays on the down-arrow. ──
+    const JOY_RADIUS = 48 // px the knob can travel from the base center
+    const JOY_DEAD = 0.14 // ignore wobble below this fraction of the radius
+    const MOVE_TOL = 10 // px before a non-joystick touch counts as a scroll
     const DOUBLE_TAP_MS = 300 // two quick taps within this window = jump
     const TAP_TOL = 28 // px the two taps must land within
     let touchId: number | null = null
     let touchStartX = 0
     let touchStartY = 0
     let touchMoved = false
+    let joyActive = false // is the floating joystick engaged for this touch?
+    let joySteered = false // did the knob leave the dead zone (steer vs tap)?
+    let joyBaseX = 0
+    let joyBaseY = 0
     // Double-tap tracking (kept in the outer scope so it survives per-touch resets).
     let lastTapAt = 0
     let lastTapX = 0
@@ -732,6 +746,11 @@ export default function ParkGame() {
         if (list[i].identifier === touchId) return list[i]
       }
       return null
+    }
+    const setKnob = (dx: number, dy: number) => {
+      if (joyKnobRef.current) {
+        joyKnobRef.current.style.transform = `translate(${dx}px, ${dy}px)`
+      }
     }
     const handleTouchStart = (e: TouchEvent) => {
       if (touchId !== null) return // already tracking one touch
@@ -743,41 +762,92 @@ export default function ParkGame() {
       touchStartY = t.clientY
       touchMoved = false
       touchHotspot = hotspotAt(t.clientX, t.clientY)
+      if (touchHotspot) {
+        g.joy.x = 0 // defensive: never leave stale steering when not engaging
+        g.joy.y = 0
+        return // a hotspot tap opens on touchend — no joystick
+      }
+      // Spawn the floating joystick at the finger.
+      joyActive = true
+      joySteered = false
+      joyBaseX = t.clientX
+      joyBaseY = t.clientY
+      g.joy.x = 0
+      g.joy.y = 0
+      document.body.classList.add('kcc-dragging')
+      // Clamp the visible ring inside the viewport (radius 56 = half of h-28) so
+      // it never overflows near an edge. The steering origin (joyBaseX/Y) stays
+      // at the real finger, so the knob starts centered — no jump on engage.
+      const R = 56
+      setJoyBase({
+        x: Math.max(R, Math.min(t.clientX, window.innerWidth - R)),
+        y: Math.max(R, Math.min(t.clientY, window.innerHeight - R)),
+      })
     }
     const handleTouchMove = (e: TouchEvent) => {
-      if (touchId === null || touchMoved) return
+      if (touchId === null) return
       const t = touchById(e.changedTouches)
       if (!t) return
-      // Any real movement means this is a scroll, not a tap. We do NOT
-      // preventDefault, so the browser scrolls the page natively/smoothly.
-      if (
-        Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
-        Math.abs(t.clientY - touchStartY) > MOVE_TOL
-      ) {
-        touchMoved = true
+      if (!joyActive) {
+        // A hotspot press that turned into a drag → let it scroll natively.
+        if (
+          Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
+          Math.abs(t.clientY - touchStartY) > MOVE_TOL
+        ) {
+          touchMoved = true
+        }
+        return
+      }
+      // Steering — capture the gesture so the page can't scroll under the thumb.
+      e.preventDefault()
+      const dx = t.clientX - joyBaseX
+      const dy = t.clientY - joyBaseY
+      const dist = Math.hypot(dx, dy)
+      const clamped = Math.min(dist, JOY_RADIUS)
+      const ux = dist > 0 ? dx / dist : 0
+      const uy = dist > 0 ? dy / dist : 0
+      setKnob(ux * clamped, uy * clamped)
+      const mag = clamped / JOY_RADIUS // 0..1
+      if (mag > JOY_DEAD) {
+        joySteered = true
+        g.joy.x = ux * mag
+        g.joy.y = uy * mag
+      } else {
+        g.joy.x = 0
+        g.joy.y = 0
       }
     }
     const endTouch = () => {
       touchId = null
       touchMoved = false
       touchHotspot = null
+      if (joyActive) {
+        joyActive = false
+        joySteered = false
+        g.joy.x = 0
+        g.joy.y = 0
+        setKnob(0, 0)
+        setJoyBase(null) // fade out
+        document.body.classList.remove('kcc-dragging')
+      }
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
-      if (!t || touchMoved) {
-        // No touch, or it turned into a scroll — nothing to do.
+      // Ignore touchend/cancel for a DIFFERENT finger — otherwise a second
+      // finger lifting would tear down the joystick mid-gesture and freeze the
+      // cat while the tracked finger is still down.
+      if (!t) return
+      // Tap on a channel sign / photo → open it.
+      if (touchHotspot) {
+        if (!touchMoved && hotspotAt(t.clientX, t.clientY) === touchHotspot) {
+          activateHotspot(touchHotspot)
+        }
         endTouch()
         return
       }
-      // A clean tap (the finger didn't travel).
-      if (touchHotspot && hotspotAt(t.clientX, t.clientY) === touchHotspot) {
-        // Tap on a channel sign / photo → open it.
-        activateHotspot(touchHotspot)
-      } else if (!touchHotspot) {
-        // Tap on the park → walk Koala to that spot. Two quick taps at the same
-        // place also jump (to grab floating food).
-        aimAt(t.clientX, t.clientY)
+      // A joystick press that never steered is a clean tap → two quick taps jump.
+      if (joyActive && !joySteered) {
         const now = Date.now()
         if (
           now - lastTapAt < DOUBLE_TAP_MS &&
@@ -807,8 +877,9 @@ export default function ParkGame() {
     window.addEventListener('pointerup', handlePointerUp)
     window.addEventListener('pointercancel', handlePointerUp)
     window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    // passive: we never preventDefault on touch, so the page scrolls natively.
-    window.addEventListener('touchmove', handleTouchMove, { passive: true })
+    // non-passive: while the joystick is engaged we preventDefault to capture the
+    // gesture (no page scroll). Non-engaged touches never call preventDefault.
+    window.addEventListener('touchmove', handleTouchMove, { passive: false })
     window.addEventListener('touchend', handleTouchEnd)
     window.addEventListener('touchcancel', handleTouchEnd)
     document.addEventListener('selectstart', handleSelectStart)
@@ -2356,8 +2427,17 @@ export default function ParkGame() {
         moving = true
       }
 
-      // Keyboard input overrides tap-to-walk; otherwise head toward the tapped
-      // target and stop once we arrive.
+      // Analog touch joystick — a direct 2D vector (magnitude scales speed), the
+      // same feel as the keyboard but continuous.
+      if (g.joy.x !== 0 || g.joy.y !== 0) {
+        newX += g.joy.x * speed
+        newY += g.joy.y * speed
+        if (Math.abs(g.joy.x) > 0.01) cat.dir = g.joy.x < 0 ? 'left' : 'right'
+        moving = true
+      }
+
+      // Keyboard/joystick input overrides tap-to-walk; otherwise head toward the
+      // tapped target and stop once we arrive.
       if (moving) {
         g.target = null
       } else if (g.target) {
@@ -2816,7 +2896,7 @@ export default function ParkGame() {
         // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or tap where she should walk, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD, or touch and drag anywhere in the park to steer her with an on-screen joystick, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
@@ -2887,9 +2967,10 @@ export default function ParkGame() {
                 </button>
               </div>
             )}
-            {/* First-run control hint — dismisses on first move (see updateCat). */}
+            {/* First-run control hint — dismisses on first move (see updateCat).
+                Also hidden while the joystick is up so they never overlap. */}
             <AnimatePresence>
-              {showHint && (
+              {showHint && !joyBase && (
                 <motion.div
                   aria-hidden="true"
                   className="pointer-events-none fixed inset-x-0 bottom-32 z-30 flex justify-center px-6 sm:bottom-36"
@@ -2912,7 +2993,7 @@ export default function ParkGame() {
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[oklch(0.82_0.13_78)] shadow-[0_0_8px_oklch(0.82_0.13_78_/_0.6)]" />
                     {isTouch ? (
                       <span>
-                        {'Tap '}
+                        {'Drag '}
                         <span className="text-white/55">to move Koala</span>
                       </span>
                     ) : (
@@ -2946,6 +3027,32 @@ export default function ParkGame() {
                       </>
                     )}
                   </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Floating touch joystick — spawns at the finger; the knob is moved
+                imperatively (joyKnobRef) each touchmove, so only mount/unmount
+                re-renders. Purely visual (pointer-events-none); the touch is
+                handled on window. */}
+            <AnimatePresence>
+              {joyBase && (
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none fixed z-40 flex h-28 w-28 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-[oklch(0.82_0.13_78)]/40 backdrop-blur-[2px]"
+                  style={{ left: joyBase.x, top: joyBase.y }}
+                  initial={{
+                    opacity: 0,
+                    scale: prefersReducedMotion ? 1 : 0.85,
+                  }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: prefersReducedMotion ? 1 : 0.85 }}
+                  transition={{ duration: prefersReducedMotion ? 0.1 : 0.16 }}
+                >
+                  <div
+                    ref={joyKnobRef}
+                    className="h-11 w-11 rounded-full bg-[oklch(0.82_0.13_78)]/70 shadow-[0_0_12px_oklch(0.82_0.13_78_/_0.5)] ring-1 ring-white/30"
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
