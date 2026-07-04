@@ -551,3 +551,30 @@ describe('GameWorld names (allowlist + injection safety)', () => {
     expect(b.msgs.find((m) => m.t === 'welcome')?.self.name).toBe('Safe')
   })
 })
+
+describe('GameWorld authorship follows rename', () => {
+  it('updates the author name on items placed before the rename', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    const likes = await earnAtLeast(ws, msgs, 20)
+    expect(likes).toBeGreaterThanOrEqual(20)
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 7, y: 7 }))
+    await wait(150)
+    const placed = msgs.find(
+      (m) => m.t === 'placed' && m.item.x === 7 && m.item.y === 7,
+    )
+    expect(placed).toBeTruthy()
+
+    ws.send(JSON.stringify({ t: 'setName', name: 'Pixel' }))
+    await wait(100)
+    // A fresh peer sees the pre-existing item authored by the NEW name.
+    const b = await session()
+    const peer = await connect(b.cookie)
+    await wait(60)
+    const it = (peer.msgs.find((m) => m.t === 'welcome')?.placed ?? []).find(
+      (p: any) => p.id === placed.item.id,
+    )
+    expect(it?.ownerName).toBe('Pixel')
+  }, 30000)
+})

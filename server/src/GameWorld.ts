@@ -250,6 +250,16 @@ export class GameWorld extends DurableObject<Env> {
         if (oa?.id === a.id)
           other.serializeAttachment({ ...oa, name } satisfies Attachment)
       }
+      // Author labels follow the owner's current name: update the stored/live
+      // name on every item this session placed (clients relabel from `renamed`).
+      for (const it of this.placed.values()) {
+        if (it.ownerId === a.id) it.ownerName = name
+      }
+      this.ctx.storage.sql.exec(
+        'UPDATE placed SET ownerName = ? WHERE owner = ?',
+        name,
+        a.id,
+      )
       this.broadcast({ t: 'renamed', id: a.id, name }) // everyone incl. sender = ack
       return
     }

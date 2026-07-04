@@ -439,3 +439,51 @@ describe('createMultiplayer — names', () => {
     ;(mp as Multiplayer).close()
   })
 })
+
+describe('createMultiplayer — authorship follows rename', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_GAME_HTTP_URL', 'http://localhost:8787')
+    vi.stubEnv('VITE_GAME_WS_URL', 'ws://localhost:8787')
+    FakeWebSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('relabels a placed item when its owner is renamed', async () => {
+    const { mp, ws } = await startConnected()
+    const item = {
+      id: 'p1',
+      key: 'flowers',
+      type: 'flowers',
+      x: 1,
+      y: 1,
+      w: 1,
+      h: 1,
+      ownerId: 'self',
+      ownerName: 'Old',
+      placedAt: 0,
+      expiresAt: 0,
+    }
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [item],
+      likes: 0,
+      now: 0,
+    })
+    expect(mp.placed.get('p1')?.ownerName).toBe('Old')
+    ws.receive({ t: 'renamed', id: 'self', name: 'Pixel' })
+    expect(mp.placed.get('p1')?.ownerName).toBe('Pixel')
+  })
+})

@@ -210,13 +210,24 @@ export function createMultiplayer(
       case 'buyfail':
         opts.onBuyFail?.(msg.reason)
         break
-      case 'renamed':
+      case 'renamed': {
         if (handle.self && msg.id === handle.self.id) setSelfName(msg.name)
         else {
           const p = players.get(msg.id)
           if (p) p.name = msg.name // canvas name tag reads this each frame
         }
+        // Author labels follow the owner's name: relabel every placed item this
+        // player owns, so a rename updates their previously-bought items too.
+        let changed = false
+        for (const it of placed.values()) {
+          if (it.ownerId === msg.id) {
+            it.ownerName = msg.name
+            changed = true
+          }
+        }
+        if (changed) emitPlaced()
         break
+      }
     }
   }
 
