@@ -12,6 +12,7 @@ import {
   AIR_COLLECT_RADIUS,
   AIR_FOOD_TTL_MS,
   AIR_POINTS_MULT,
+  AIR_SPAWN_SHARE,
   COLLECT_RADIUS,
   FOOD_SPAWN_COOLDOWN_MS,
   FOOD_TTL_MS,
@@ -507,9 +508,9 @@ export class GameWorld extends DurableObject<Env> {
   // ---- collectibles (no game tick: lazy top-up on player traffic) ----
 
   /** Sweep expired food and top up the map. One shared budget — foodCap(players)
-   *  (~half the crowd, rounded up) — and one cooldown. Each spawn is a coin flip:
-   *  ground or airborne with equal chance, so the total never exceeds the cap and
-   *  either kind is equally likely at any player count (including solo). */
+   *  (~half the crowd, rounded up) — and one cooldown. Each spawn rolls
+   *  AIR_SPAWN_SHARE to be airborne (else ground), so the total never exceeds the
+   *  cap and airborne food can appear at any player count (including solo). */
   private maybeSpawn(now: number): void {
     for (const [id, f] of this.food) {
       const ttl = f.air ? AIR_FOOD_TTL_MS : FOOD_TTL_MS
@@ -524,7 +525,7 @@ export class GameWorld extends DurableObject<Env> {
       now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS
     ) {
       this.lastSpawnAt = now
-      const f = this.spawnFood(now, Math.random() < 0.5)
+      const f = this.spawnFood(now, Math.random() < AIR_SPAWN_SHARE)
       if (f) this.broadcast({ t: 'spawn', f })
     }
   }

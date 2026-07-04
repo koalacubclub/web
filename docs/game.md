@@ -230,9 +230,9 @@ interacting})`. `connection.ts` throttles to `CLIENT_SEND_HZ` (~12/s) but lets a
   shadow) and can **only** be collected mid-jump — the client suppresses the collect
   request off-jump and the **server enforces** it against its jump window. Airborne
   food is worth `AIR_POINTS_MULT`× and **shares the `foodCap(players)` budget**
-  with ground food: every spawn is a coin flip — ground or airborne with **equal
-  chance** — so the two together never exceed the cap and either kind is equally
-  likely at any player count, including solo.
+  with ground food: every spawn rolls `AIR_SPAWN_SHARE` (~⅓) to be airborne, else
+  ground — so the two together never exceed the cap, and airborne food can appear
+  at any player count, including solo.
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside
