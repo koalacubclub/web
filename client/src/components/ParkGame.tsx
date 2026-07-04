@@ -2101,19 +2101,16 @@ export default function ParkGame() {
       ctx.save()
       ctx.translate(g.hudShift, g.hudShiftY)
       const pad = PIXEL * 0.28
-      const pillH = 46
-      // Sit the score pill just above the ground line rather than at the very
-      // top (where it overlapped the site header's wordmark).
+      // Single-line score pill. The personal-best line was removed from the UI;
+      // g.best is still tracked (see updateFoods), just not displayed.
+      const pillH = 34
       const top = WORLD_OFFSET + PIXEL - pillH - PIXEL * 0.2
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
       const scoreText = `${g.score}`
       ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
       const scoreW = ctx.measureText(scoreText).width
-      ctx.font = "500 13px 'Inter', system-ui, sans-serif"
-      const bestText = `Best ${g.best}`
-      const bestW = ctx.measureText(bestText).width
-      const pillW = Math.max(scoreW + 30, bestW) + 22
+      const pillW = scoreW + 30 + 22
 
       ctx.fillStyle = 'rgba(20,16,12,0.5)'
       ctx.beginPath()
@@ -2122,13 +2119,9 @@ export default function ParkGame() {
 
       ctx.font = "600 22px 'Cormorant Garamond', Georgia, serif"
       ctx.fillStyle = COLORS.fishBowl // HUD star stays bright (above the wash)
-      ctx.fillText('★', pad + 12, top + 16)
+      ctx.fillText('★', pad + 12, top + pillH / 2)
       ctx.fillStyle = COLORS.white
-      ctx.fillText(scoreText, pad + 30, top + 16)
-
-      ctx.font = "500 13px 'Inter', system-ui, sans-serif"
-      ctx.fillStyle = 'rgba(255,255,255,0.55)'
-      ctx.fillText(bestText, pad + 12, top + 34)
+      ctx.fillText(scoreText, pad + 30, top + pillH / 2)
       ctx.textBaseline = 'alphabetic'
       ctx.restore()
     }
