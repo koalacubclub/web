@@ -155,6 +155,10 @@ export interface PlacedItem {
   expiresAt: number // epoch ms (server)
 }
 
+// Display-name bounds (server-enforced; the input caps at NAME_MAX too).
+export const NAME_MIN = 1
+export const NAME_MAX = 20
+
 // ---- Client -> Server ----
 export type ClientMessage =
   | { t: 'state'; s: PlayerState }
@@ -162,6 +166,8 @@ export type ClientMessage =
   // Buy a catalog item; x/y is the client-chosen placement tile (the server
   // validates affordability + bounds + no overlap and owns the result).
   | { t: 'buy'; key: string; x: number; y: number }
+  // Change this session's display name (server validates + persists + broadcasts).
+  | { t: 'setName'; name: string }
 
 export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
@@ -186,6 +192,7 @@ export type ServerMessage =
   | { t: 'unplaced'; id: string; reason: 'expired' } // broadcast to everyone
   | { t: 'wallet'; likes: number } // the recipient's new balance after a spend
   | { t: 'buyfail'; reason: BuyFailReason } // sent only to the buyer
+  | { t: 'renamed'; id: string; name: string } // broadcast; also acks the sender
 
 export const PROTOCOL_VERSION = 1
 
@@ -230,6 +237,21 @@ export function sanitizeCollect(raw: unknown): { id: string } | null {
   const id = (raw as Record<string, unknown>).id
   if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
   return { id }
+}
+
+// Validate an untrusted display name: strip control chars, collapse whitespace,
+// trim, cap at NAME_MAX. Returns null if nothing usable remains. Used by the
+// client to pre-validate and by the server, which never trusts the wire.
+export function sanitizeName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  let out = ''
+  for (const ch of raw) {
+    const c = ch.codePointAt(0) ?? 0
+    if (c < 0x20 || c === 0x7f) continue // drop control chars
+    out += ch
+  }
+  const cleaned = out.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX)
+  return cleaned.length >= NAME_MIN ? cleaned : null
 }
 
 // Validate an untrusted buy request: a known catalog key and an in-bounds tile

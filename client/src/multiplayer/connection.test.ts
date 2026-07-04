@@ -387,3 +387,55 @@ describe('createMultiplayer', () => {
     expect(mp.placed.size).toBe(0)
   })
 })
+
+describe('createMultiplayer — names', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_GAME_HTTP_URL', 'http://localhost:8787')
+    vi.stubEnv('VITE_GAME_WS_URL', 'ws://localhost:8787')
+    FakeWebSocket.instances = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('sendName emits a trimmed/capped setName on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({ t: 'welcome', self: player('self'), players: [], now: 0 })
+    mp.sendName('  Pixel  ')
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({ t: 'setName', name: 'Pixel' })
+  })
+
+  it('renamed for self updates self.name and fires onName; peer updates the roster', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const names: string[] = []
+    const mp = createMultiplayer({ onName: (n) => names.push(n) })
+    expect(mp).not.toBeNull()
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [player('b')],
+      now: 0,
+    })
+    expect(names).toContain('Koala self') // welcome fires onName
+
+    ws.receive({ t: 'renamed', id: 'self', name: 'Pixel' })
+    expect((mp as Multiplayer).self?.name).toBe('Pixel')
+    expect(names).toContain('Pixel')
+
+    ws.receive({ t: 'renamed', id: 'b', name: 'Mochi' })
+    expect((mp as Multiplayer).players.get('b')?.name).toBe('Mochi')
+    ;(mp as Multiplayer).close()
+  })
+})

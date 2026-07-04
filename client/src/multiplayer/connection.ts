@@ -20,7 +20,7 @@ import type {
   PlayerState,
   ServerMessage,
 } from '@koala/shared'
-import { CLIENT_SEND_HZ } from '@koala/shared'
+import { CLIENT_SEND_HZ, NAME_MAX } from '@koala/shared'
 
 export interface RemotePlayer {
   id: string
@@ -57,6 +57,8 @@ export interface Multiplayer {
   sendCollect(id: string): void
   /** Ask the server to buy + place a catalog item at a tile; server validates. */
   sendBuy(key: string, x: number, y: number): void
+  /** Change this session's display name; server validates + persists + broadcasts. */
+  sendName(name: string): void
   close(): void
 }
 
@@ -84,6 +86,8 @@ export function createMultiplayer(
     onPlaced?: (placed: PlacedItem[]) => void
     /** Fired when a buy is rejected by the server. */
     onBuyFail?: (reason: BuyFailReason) => void
+    /** Fired with this player's own name (on welcome and on rename). */
+    onName?: (name: string) => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
@@ -107,12 +111,17 @@ export function createMultiplayer(
     sendState,
     sendCollect,
     sendBuy,
+    sendName,
     close,
   }
 
   const setLikes = (v: number) => {
     handle.likes = v
     opts.onWallet?.(v)
+  }
+  const setSelfName = (name: string) => {
+    if (handle.self) handle.self.name = name
+    opts.onName?.(name)
   }
   const emitPlaced = () => opts.onPlaced?.([...placed.values()])
 
@@ -148,6 +157,7 @@ export function createMultiplayer(
     switch (msg.t) {
       case 'welcome':
         handle.self = msg.self
+        opts.onName?.(msg.self.name)
         handle.clockOffset =
           typeof msg.now === 'number' ? msg.now - Date.now() : 0
         players.clear()
@@ -199,6 +209,13 @@ export function createMultiplayer(
         break
       case 'buyfail':
         opts.onBuyFail?.(msg.reason)
+        break
+      case 'renamed':
+        if (handle.self && msg.id === handle.self.id) setSelfName(msg.name)
+        else {
+          const p = players.get(msg.id)
+          if (p) p.name = msg.name // canvas name tag reads this each frame
+        }
         break
     }
   }
@@ -290,6 +307,17 @@ export function createMultiplayer(
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     try {
       ws.send(JSON.stringify({ t: 'buy', key, x, y }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  function sendName(name: string) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const clean = name.trim().slice(0, NAME_MAX)
+    if (!clean) return
+    try {
+      ws.send(JSON.stringify({ t: 'setName', name: clean }))
     } catch {
       /* socket closing; the reconnect path will recover */
     }

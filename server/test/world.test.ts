@@ -1,6 +1,6 @@
 import { SELF } from 'cloudflare:test'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MAX_INBOUND_MSGS_PER_SEC } from '@koala/shared'
+import { MAX_INBOUND_MSGS_PER_SEC, NAME_MAX } from '@koala/shared'
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -447,4 +447,66 @@ describe('GameWorld shop', () => {
     expect(persisted).toBeTruthy()
     expect(persisted.ownerName).toBe(a.name) // author survives reconnect (SQLite)
   }, 30000)
+})
+
+// ---- server-authoritative display names ----
+
+describe('GameWorld names', () => {
+  it('broadcasts a rename to everyone (incl. the sender)', async () => {
+    const a = await session()
+    const { ws: wsA, msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(50)
+    wsA.send(JSON.stringify({ t: 'setName', name: 'Pixel' }))
+    await wait(80)
+    expect(
+      msgsA.some(
+        (m) => m.t === 'renamed' && m.id === a.id && m.name === 'Pixel',
+      ),
+    ).toBe(true)
+    expect(
+      msgsB.some(
+        (m) => m.t === 'renamed' && m.id === a.id && m.name === 'Pixel',
+      ),
+    ).toBe(true)
+  })
+
+  it('persists the name across a reconnect and to new peers', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    first.ws.send(JSON.stringify({ t: 'setName', name: 'Mochi' }))
+    await wait(80)
+    first.ws.close()
+    await wait(50)
+    // Reconnect same cookie → welcome carries the stored name.
+    const again = await connect(a.cookie)
+    await wait(50)
+    expect(again.msgs.find((m) => m.t === 'welcome')?.self.name).toBe('Mochi')
+    // A fresh peer sees A as 'Mochi' in its roster.
+    const c = await session()
+    const peer = await connect(c.cookie)
+    await wait(50)
+    const roster = peer.msgs.find((m) => m.t === 'welcome')?.players ?? []
+    expect(roster.some((p: any) => p.id === a.id && p.name === 'Mochi')).toBe(
+      true,
+    )
+  })
+
+  it('caps an oversized name and ignores an empty one', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(50)
+    ws.send(JSON.stringify({ t: 'setName', name: 'x'.repeat(NAME_MAX + 30) }))
+    await wait(80)
+    const renamed = msgs.find((m) => m.t === 'renamed' && m.id === a.id)
+    expect(renamed).toBeTruthy()
+    expect(renamed.name.length).toBe(NAME_MAX)
+
+    const before = msgs.filter((m) => m.t === 'renamed').length
+    ws.send(JSON.stringify({ t: 'setName', name: '   ' }))
+    await wait(80)
+    expect(msgs.filter((m) => m.t === 'renamed').length).toBe(before) // no broadcast
+  })
 })
