@@ -148,7 +148,6 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
     price: 70,
   },
   { key: 'bench', label: 'Park bench', type: 'bench', w: 2, h: 1, price: 90 },
-  { key: 'radio', label: 'Boombox', type: 'radio', w: 2, h: 1, price: 120 },
   { key: 'pond', label: 'Pond', type: 'pond', w: 3, h: 2, price: 150 },
   { key: 'tree', label: 'Tree', type: 'tree', w: 2, h: 2, price: 180 },
   {
@@ -167,6 +166,8 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
     h: 4,
     price: 300,
   },
+  // The priciest item — a rave boombox that plays when a koala is near.
+  { key: 'radio', label: 'Boombox', type: 'radio', w: 2, h: 1, price: 1000 },
 ]
 export const SHOP_ITEMS_BY_KEY: Record<string, ShopItem> = Object.fromEntries(
   SHOP_ITEMS.map((i) => [i.key, i]),
