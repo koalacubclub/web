@@ -65,9 +65,9 @@ export const FOODS_BY_KEY: Record<string, FoodDef> = Object.fromEntries(
 )
 
 // Shared game-balance tuning for the server-owned collectibles.
-export const MAX_FOOD = 3 // max collectibles on the map at once
+export const MAX_FOOD = 1 // max collectibles on the map at once
 export const FOOD_SPAWN_COOLDOWN_MS = 4000 // min gap between spawns
-export const FOOD_TTL_MS = 15000 // a food despawns if uncollected this long
+export const FOOD_TTL_MS = 30000 // a food despawns if uncollected this long
 export const COLLECT_RADIUS = 0.85 // tiles: how close a koala must be to collect
 
 // A live collectible on the map (server-authoritative).

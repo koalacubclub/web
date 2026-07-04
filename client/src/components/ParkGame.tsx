@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
-import { COLLECT_RADIUS, FOOD_TTL_MS } from '@koala/shared'
+import { COLLECT_RADIUS, FOOD_TTL_MS, MAX_FOOD } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
@@ -1742,7 +1742,13 @@ export default function ParkGame() {
         if (onObject) continue
         if (g.foods.some((f) => Math.hypot(f.x - x, f.y - y) < 1.2)) continue
         if (Math.hypot(g.cat.x - x, g.cat.y - y) < 1.5) continue
-        g.foods.push({ key: pick.key, x, y, born: g.frameCount, life: 900 })
+        g.foods.push({
+          key: pick.key,
+          x,
+          y,
+          born: g.frameCount,
+          life: FOOD_TTL_MS * 0.06, // frameCount units (60fps) — matches server TTL
+        })
         return
       }
     }
@@ -1789,7 +1795,7 @@ export default function ParkGame() {
       }
 
       // --- Solo fallback ---
-      if (g.frameCount >= g.nextFoodAt && g.foods.length < 3) {
+      if (g.frameCount >= g.nextFoodAt && g.foods.length < MAX_FOOD) {
         spawnFood()
         g.nextFoodAt = g.frameCount + 240 + Math.floor(Math.random() * 300)
       }
