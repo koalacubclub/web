@@ -148,9 +148,18 @@ export class GameWorld extends DurableObject<Env> {
     }
     // Rehydrate presence for sockets that survived hibernation, restoring each
     // player's last-known position from its attachment.
-    for (const ws of this.ctx.getWebSockets()) {
+    const sockets = this.ctx.getWebSockets()
+    for (const ws of sockets) {
       const a = ws.deserializeAttachment() as Attachment | null
       if (a) this.positions.set(a.id, { ...a.s })
+    }
+    // If we woke from hibernation with players still connected, our in-memory
+    // food was wiped without per-item despawns — so those clients may still be
+    // rendering stale food (which blinks forever, never getting a despawn). Push
+    // a full resync (empty now) so they drop it; fresh food refills on the next
+    // player traffic. (No sockets on a brand-new DO — accept happens in fetch.)
+    if (sockets.length > 0) {
+      this.broadcast({ t: 'foods', food: [...this.food.values()] })
     }
   }
 

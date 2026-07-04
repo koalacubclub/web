@@ -248,6 +248,10 @@ export type ServerMessage =
   | { t: 'state'; id: string; s: PlayerState }
   | { t: 'spawn'; f: Food }
   | { t: 'despawn'; id: string; reason: 'taken' | 'expired' }
+  // Full food resync (replaces the client's set). Sent when the Durable Object
+  // wakes from hibernation — its in-memory food was wiped without per-item
+  // despawns, so this reconciles clients (dropping any stale/blinking food).
+  | { t: 'foods'; food: Food[] }
   | { t: 'collected'; id: string; by: string; points: number; likes: number }
   | { t: 'placed'; item: PlacedItem; authorName: string } // broadcast to everyone
   | { t: 'unplaced'; id: string; reason: 'expired' } // broadcast to everyone

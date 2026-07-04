@@ -246,6 +246,12 @@ export function createMultiplayer(
       case 'despawn':
         food.delete(msg.id)
         break
+      case 'foods':
+        // Full resync (server woke from hibernation) — replace our set so any
+        // stale food that never got a despawn stops rendering.
+        food.clear()
+        for (const f of msg.food ?? []) food.set(f.id, f)
+        break
       case 'collected':
         // The server awards likes; only OUR total is echoed back to us.
         if (handle.self && msg.by === handle.self.id) setLikes(msg.likes)
