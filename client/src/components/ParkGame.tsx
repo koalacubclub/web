@@ -779,6 +779,10 @@ export default function ParkGame() {
 
       // Large patches (some very big, overlapping)
       drawBlobPatch(PIXEL * 3, PIXEL * 4, PIXEL * 4.5, PIXEL * 3.2, 1.2)
+      // Fills the bare sand gap below the hills (upper-centre) so grass meets the
+      // ridge and there's no visible sand/hill seam — kept low enough that its top
+      // tucks just under the ridge crest rather than poking into the sky.
+      drawBlobPatch(PIXEL * 6.8, PIXEL * 2.3, PIXEL * 3.4, PIXEL * 1.7, 4.9)
       drawBlobPatch(PIXEL * 15, PIXEL * 3.5, PIXEL * 5, PIXEL * 3.5, 5.1)
       drawBlobPatch(PIXEL * 5, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 3, 7.4)
       drawBlobPatch(PIXEL * 13, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.8, 9.2)
