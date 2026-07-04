@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
 import { COLLECT_RADIUS, FOOD_TTL_MS, MAX_FOOD } from '@koala/shared'
 import { cameraPan } from './parkCamera'
@@ -238,6 +239,27 @@ export default function ParkGame() {
     lightboxRef.current = false
     setLightbox(false)
   }, [])
+
+  // Control hint — a one-time chip telling first-time players how to move Koala.
+  // Device + reduced-motion are read once at mount (fixed for the session so the
+  // copy never flickers). `showHint` is seeded from storage so a returning player
+  // who has already moved never even renders it; `hintMovedRef` mirrors the flag
+  // for the imperative game loop (a ref, always current — avoids a stale closure).
+  const [isTouch] = useState(
+    () =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches,
+  )
+  const [prefersReducedMotion] = useState(
+    () =>
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  )
+  const [showHint, setShowHint] = useState(
+    () => parkStore.lsGet('kcc-hint-moved') !== '1',
+  )
+  const hintMovedRef = useRef(parkStore.lsGet('kcc-hint-moved') === '1')
+
   const gameRef = useRef({
     cat: {
       x: 9,
@@ -2226,6 +2248,15 @@ export default function ParkGame() {
       })
 
       if (!blocked) {
+        // First real movement dismisses the control hint (and remembers it, so
+        // returning movers never see it again). This is the one point both input
+        // modes converge on an actual position change — idle animation, blocked
+        // moves, and edge-clamped no-ops (newX === cat.x) don't reach here.
+        if (!hintMovedRef.current && (newX !== cat.x || newY !== cat.y)) {
+          hintMovedRef.current = true
+          parkStore.lsSet('kcc-hint-moved', '1')
+          setShowHint(false) // loop -> React bridge, same as setHover/setLightbox
+        }
         cat.x = newX
         cat.y = newY
       } else {
@@ -2685,6 +2716,66 @@ export default function ParkGame() {
                 </button>
               </div>
             )}
+            {/* First-run control hint — dismisses on first move (see updateCat). */}
+            <AnimatePresence>
+              {showHint && (
+                <motion.div
+                  aria-hidden="true"
+                  className="pointer-events-none fixed inset-x-0 bottom-32 z-30 flex justify-center px-6 sm:bottom-36"
+                  initial={
+                    prefersReducedMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0, y: 10 }
+                  }
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={
+                    prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }
+                  }
+                  transition={{
+                    duration: prefersReducedMotion ? 0.15 : 0.5,
+                    delay: prefersReducedMotion ? 0 : 0.7,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                >
+                  <span className="inline-flex select-none items-center gap-2.5 rounded-full bg-black/35 px-4 py-2 text-xs font-medium text-white/80 shadow-[0_8px_30px_rgba(0,0,0,0.45)] ring-1 ring-white/15 backdrop-blur-md sm:px-5 sm:py-2.5 sm:text-sm">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[oklch(0.82_0.13_78)] shadow-[0_0_8px_oklch(0.82_0.13_78_/_0.6)]" />
+                    {isTouch ? (
+                      <span>
+                        {'Press & hold, then drag '}
+                        <span className="text-white/55">to move Koala</span>
+                      </span>
+                    ) : (
+                      <>
+                        {/* Arrow cluster hides on narrow (non-touch) widths so
+                            the chip never overflows — WASD alone carries it. */}
+                        <span className="hidden items-center gap-1 sm:inline-flex">
+                          {['↑', '↓', '←', '→'].map((k) => (
+                            <kbd
+                              key={k}
+                              className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
+                            >
+                              {k}
+                            </kbd>
+                          ))}
+                        </span>
+                        <span className="hidden text-white/30 sm:inline">/</span>
+                        <span className="inline-flex items-center gap-1">
+                          {['W', 'A', 'S', 'D'].map((k) => (
+                            <kbd
+                              key={k}
+                              className="inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-white/10 px-1.5 text-[11px] font-medium text-white/85 ring-1 ring-white/15"
+                            >
+                              {k}
+                            </kbd>
+                          ))}
+                        </span>
+                        <span className="text-white/55">to move Koala</span>
+                      </>
+                    )}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </>,
           document.body,
         )}

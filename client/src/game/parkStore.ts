@@ -67,14 +67,16 @@ const VERSION_KEY = 'kcc-park-v'
 const SCHEMA_VERSION = '1'
 
 // ── localStorage-safe helpers (no-op when storage is unavailable/denied) ──────
-function lsGet(key: string): string | null {
+// Exported so other game modules (e.g. ParkGame's control-hint flag) reuse the
+// same error-safe shim instead of duplicating it.
+export function lsGet(key: string): string | null {
   try {
     return localStorage.getItem(key)
   } catch {
     return null
   }
 }
-function lsSet(key: string, value: string) {
+export function lsSet(key: string, value: string) {
   try {
     localStorage.setItem(key, value)
   } catch {
