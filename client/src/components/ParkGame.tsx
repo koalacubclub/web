@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
 import { cameraPan } from './parkCamera'
 import { IG_PROFILE } from '@/data/reels'
+import { drawShopSprite } from '@/game/sprites'
+import * as parkStore from '@/game/parkStore'
 
 /**
  * ParkGame - A Neko Atsume-inspired pixel-art park where Koala the tabby cat
@@ -139,8 +141,6 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
   FOODS.map((f) => [f.key, f]),
 )
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
-const BEST_SCORE_KEY = 'kcc-park-best'
-
 // Interactive on-grass hotspots.
 const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
 const HERO_PHOTO = '/hero.webp' // Koala photo for the polaroid + lightbox
@@ -170,6 +170,10 @@ interface GameObject {
   href?: string // 'social' → opens this URL
   channel?: 'instagram' | 'tiktok' // 'social' → which glyph + tooltip
   photo?: boolean // 'photo' → hover shows the picture, click enlarges
+  // Shop-placed decorations (absent on base objects):
+  key?: string
+  placedAt?: number
+  expiresAt?: number
 }
 
 interface Butterfly {
@@ -393,12 +397,33 @@ export default function ParkGame() {
       state: 'standing',
     }
 
-    // Restore best score. (Food is drawn procedurally — see drawFoodShape.)
-    try {
-      g.best = Number(localStorage.getItem(BEST_SCORE_KEY)) || 0
-    } catch {
-      /* localStorage unavailable — ignore */
+    // Skip the decorative placed-item pop-in / blink when reduced motion is on.
+    const reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    // Bridge to the shop/economy store. The score is now a spendable coin
+    // wallet the store owns (with the peak/best); shop-placed decorations are
+    // merged on top of the fixed base objects whenever the store changes.
+    const baseObjects = g.objects
+    parkStore.configure({ mapCols: MAP_COLS, groundRows: GROUND_ROWS })
+    parkStore.setObstacles(baseObjects)
+    const rebuildObjects = () => {
+      g.objects = baseObjects.concat(
+        parkStore.getPlaced().map((p) => ({
+          type: p.type,
+          x: p.x,
+          y: p.y,
+          w: p.w,
+          h: p.h,
+          key: p.key,
+          placedAt: p.placedAt,
+          expiresAt: p.expiresAt,
+        })),
+      )
     }
+    rebuildObjects()
+    const unsubscribeStore = parkStore.subscribe(rebuildObjects)
 
     // Preload the Koala photo used by the on-grass polaroid + its lightbox.
     const heroImg = new Image()
@@ -1545,9 +1570,15 @@ export default function ParkGame() {
       }
     }
 
-    function drawObjects() {
+    function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
       sorted.forEach((obj) => {
+        // Shop-placed decorations render via the shared sprite module (with
+        // pop-in / pre-expiry blink); base objects use their own art below.
+        if (obj.placedAt != null) {
+          drawShopSprite(ctx!, obj, g.frameCount, { now, reducedMotion })
+          return
+        }
         switch (obj.type) {
           case 'tree':
             drawTree(obj)
@@ -1648,15 +1679,9 @@ export default function ParkGame() {
         if (age > f.life) return false
         if (age > 8 && Math.hypot(cat.x - f.x, cat.y - f.y) < 0.85) {
           const def = FOODS_BY_KEY[f.key]
-          g.score += def.points
-          if (g.score > g.best) {
-            g.best = g.score
-            try {
-              localStorage.setItem(BEST_SCORE_KEY, String(g.best))
-            } catch {
-              /* ignore */
-            }
-          }
+          // Score is a spendable coin wallet owned by the store (which also
+          // tracks the peak/best and persists both).
+          parkStore.earn(def.points)
           g.popups.push({
             text: `+${def.points} ${def.label}`,
             x: (f.x + 0.5) * PIXEL,
@@ -2259,6 +2284,7 @@ export default function ParkGame() {
     const active = () => onScreen && tabVisible
 
     let lastNow = 0
+    let lastSweepAt = 0
     function gameLoop(now = 0) {
       animId = 0
       // Elapsed ms since last frame, clamped so a tab-resume / stall can't make
@@ -2270,6 +2296,16 @@ export default function ParkGame() {
       // idle) so they run at the same pace regardless of frame rate.
       const f = dt * 0.06
       g.frameCount += f
+      // Wall-clock time for placed-item pop-in / expiry (frameCount pauses with
+      // the loop). Mirror the store wallet onto the HUD fields; sweep expired
+      // decor ~1×/s.
+      const wallNow = Date.now()
+      g.score = parkStore.getCoins()
+      g.best = parkStore.getBest()
+      if (wallNow - lastSweepAt > 1000) {
+        lastSweepAt = wallNow
+        parkStore.sweepExpired(wallNow)
+      }
       // Draw in logical 960x816 coords scaled up to the high-res backing.
       ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
@@ -2280,9 +2316,10 @@ export default function ParkGame() {
       // Dynamic world, pushed down so the sky has room above it.
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      drawObjects()
+      drawObjects(wallNow)
       drawButterflies(f)
       updateCat(dt)
+      parkStore.setCatTile(g.cat.x, g.cat.y)
       updateFoods()
       // Publish our position (throttled inside sendState).
       mp?.sendState({
@@ -2394,6 +2431,7 @@ export default function ParkGame() {
 
     return () => {
       cancelAnimationFrame(animId)
+      unsubscribeStore()
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('pointerdown', handlePointerDown)

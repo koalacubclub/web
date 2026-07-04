@@ -162,6 +162,36 @@ see the `deploy` and `deploy-server` jobs). `wrangler deploy` uses
 `account_id` from `wrangler.jsonc` + the `CLOUDFLARE_API_TOKEN` repo secret;
 `SESSION_SECRET` is a Worker secret that persists across deploys.
 
+## 15. Score is a coin wallet spent in a shop, bridged by a store singleton
+
+The game score doubles as a **spendable coin wallet**: catching food earns coins
+and a shop spends them to place decorations at Koala's tile (`best` stays the
+all-time peak). The bridge between the **imperative canvas** (which must not
+re-render 60×/s) and the **React shop UI** is a framework-agnostic module
+singleton, `client/src/game/parkStore.ts` — NOT React Context / lifted
+`useState`, which would re-render ParkGame on every coin earned. React subscribes
+with `useSyncExternalStore` (a stable cached snapshot); the game reads/writes via
+plain imperative getters. This also keeps the economy + placement pure and
+unit-testable without React.
+
+Supporting choices:
+
+- **Shared shop sprites.** `client/src/game/sprites.ts` (`drawShopSprite`) draws
+  shop items with `ctx` primitives so the shop renders the **real item art** (not
+  emoji) at real relative size (`ItemPreview`), and placed decor matches the
+  park's base-object look.
+- **Wall-clock TTL.** Placed items expire 2 min after purchase using `Date.now()`
+  (`expiresAt`), NOT `frameCount` — the loop pauses off-screen/hidden, so a
+  frame-count TTL would freeze. Stored per-item so a future server can own it.
+- **Non-solid, collision-aware placement.** Bought items never block Koala, and
+  the store spirals out from her tile to a spot overlapping neither other placed
+  items nor the base objects; a full ground returns `'no-room'` and charges
+  nothing.
+- **Local-first, server-ready.** Persistence sits behind a `sync` seam
+  (localStorage today: `kcc-park-coins`/`-best`/`-placed` + a `kcc-device-id`). A
+  server can be layered in later — cache-then-network on load, best-effort
+  optimistic writes, server-wins on refresh — without touching callers.
+
 ## Testing notes
 
 - Unit: Vitest + Testing Library (jsdom). `src/test/setup.ts` stubs

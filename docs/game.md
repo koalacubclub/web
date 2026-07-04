@@ -89,6 +89,46 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
   `public/game/food/<key>.png` loader was removed; see the legacy note in
   [food-icons.md](./food-icons.md) if you ever want to reintroduce raster art.)
 
+## Shop & placed decorations
+
+A **shop** (trigger bottom-right of the hero → a **bottom sheet** that leaves the
+park visible so you can see where things land) spends coins to buy decorations
+that spawn at Koala's tile. It's bridged through a small framework-agnostic store
+so the React UI and the imperative canvas never fight:
+
+- **`client/src/game/parkStore.ts`** — the single source of truth for the wallet
+  (`coins`/`best`), the placed items, and persistence. React reads it via
+  `useSyncExternalStore` (live balance); the game loop reads/writes plain
+  imperative getters (`getCoins`, `getPlaced`, `setCatTile`) so the 60fps loop
+  never triggers a React re-render. `earn()` replaces the old inline score bump,
+  `purchase()` deducts coins + appends a placed item, `sweepExpired()` drops
+  expired ones.
+- **`client/src/game/shopItems.ts`** — the `SHOP_ITEMS` catalog
+  (`key,label,type,w,h,price`): one source of truth for BOTH the shop UI and the
+  placement footprint. Reuses existing decor (flowers / mushroom / rock / ball /
+  bench / pond / tree) plus three shop-only sprites: `snowcat`, `cardbox`, and a
+  4×4 `house` (a grey cedar-shingle Cape Cod).
+- **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
+  primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
+  art so a bought tree looks like a park tree. The shop renders the **real item
+  art at real relative size** via `client/src/components/ItemPreview.tsx` (a
+  `<canvas>`), not emoji.
+- **Collision-aware placement:** on purchase the store spirals out from Koala's
+  tile for the nearest spot whose whole `w×h` footprint fits the ground and
+  **overlaps neither other placed items nor the fixed base objects** (registered
+  once via `setObstacles`). A full ground returns `'no-room'` and charges nothing.
+  Placed decor is **non-solid** — it never traps Koala, even on her own tile.
+- **Lifetime (TTL):** placed items persist across reloads but **expire
+  `PLACED_TTL_MS` (2 min) after purchase** — a wall-clock `expiresAt` (NOT
+  `frameCount`, which pauses with the loop), swept on load and ~once/second during
+  play. Fresh items **pop in**; they **blink** in the last 8 s before expiring
+  (both wall-clock; skipped under `prefers-reduced-motion`).
+- **Persistence & the future server:** local-first behind a `sync` seam in the
+  store — today localStorage (`kcc-park-coins`/`-best`/`-placed`, plus a
+  `kcc-device-id` + schema version). A server can be layered in later
+  (cache-then-network on load, best-effort optimistic writes, server-wins on
+  refresh) **without touching the game or the shop UI**.
+
 ## Rendering & performance
 
 - **Device-resolution canvas.** The backing store is sized to ~device pixels —
