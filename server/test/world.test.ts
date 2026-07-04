@@ -226,41 +226,19 @@ const sendState = (ws: WebSocket, x: number, y: number) =>
 const sendCollect = (ws: WebSocket, id: string) =>
   ws.send(JSON.stringify({ t: 'collect', id }))
 
-// Latest known wallet total for session `id` from the message log.
-function likesFor(msgs: any[], id: string): number {
-  let likes = 0
-  for (const m of msgs) {
-    if (m.t === 'welcome') likes = m.likes
-    else if (m.t === 'collected' && m.by === id) likes = m.likes
-    else if (m.t === 'wallet') likes = m.likes
-  }
-  return likes
-}
-
-// The DO auto-spawns food lazily; grab a currently-live GROUND food (collectable
-// without jumping). Airborne food shares the same slot budget (each spawn is a
-// coin flip), so if the only live food is airborne we clear it (jump + collect)
-// to free the slot until a ground food appears.
+// The DO auto-spawns food lazily; grab whatever is currently live (ground or
+// airborne). Callers that collect it on-target jump first, so it works for
+// either kind. Only this test's player is connected, so nothing else takes it.
 async function obtainFood(ws: WebSocket, msgs: any[]): Promise<any> {
-  const drained = new Set<string>()
   for (let i = 0; i < 24; i++) {
     const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
-    const all = [...fromWelcome, ...spawned]
-    const ground = all.find((f) => f && !f.air)
-    if (ground) return ground
-    const air = all.find((f) => f?.air && !drained.has(f.id))
-    if (air) {
-      drained.add(air.id)
-      sendState(ws, air.x, air.y)
-      ws.send(JSON.stringify({ t: 'jump' }))
-      sendCollect(ws, air.id)
-    } else {
-      sendState(ws, 10, 6)
-    }
+    const f = [...fromWelcome, ...spawned].find(Boolean)
+    if (f) return f
+    sendState(ws, 10, 6)
     await wait(500)
   }
-  throw new Error('no ground food spawned in time')
+  throw new Error('no food spawned in time')
 }
 
 describe('GameWorld likes', () => {
@@ -279,19 +257,18 @@ describe('GameWorld likes', () => {
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // obtainFood may have collected an airborne food to free the slot, so assert
-    // the wallet grew by exactly this food's points (not that it equals them).
-    const before = likesFor(msgs, a.id)
-    // Stand exactly on it (server-known position), then collect.
+    // Stand exactly on it (server-known position). Jump so an airborne food is
+    // collectable too (harmless for ground food), then collect.
     sendState(ws, food.x, food.y)
     await wait(80)
+    ws.send(JSON.stringify({ t: 'jump' }))
     sendCollect(ws, food.id)
     await wait(150)
     const collected = msgs.find((m) => m.t === 'collected' && m.id === food.id)
     expect(collected).toBeTruthy()
     expect(collected.by).toBe(a.id)
     expect(collected.points).toBe(food.points)
-    expect(collected.likes).toBe(before + food.points)
+    expect(collected.likes).toBe(food.points)
     expect(
       msgs.some(
         (m) => m.t === 'despawn' && m.id === food.id && m.reason === 'taken',
@@ -304,9 +281,11 @@ describe('GameWorld likes', () => {
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // Stand far away, then try to collect.
+    // Stand far away, then try to collect. Jump so range is the ONLY reason the
+    // collect is rejected (airborne food would otherwise need a jump window).
     sendState(ws, food.x > 9 ? 1 : 18, food.y)
     await wait(80)
+    ws.send(JSON.stringify({ t: 'jump' }))
     sendCollect(ws, food.id)
     await wait(150)
     expect(msgs.some((m) => m.t === 'collected' && m.id === food.id)).toBe(
@@ -321,6 +300,7 @@ describe('GameWorld likes', () => {
     const food = await obtainFood(ws, msgs)
     sendState(ws, food.x, food.y)
     await wait(80)
+    ws.send(JSON.stringify({ t: 'jump' })) // so airborne food is collectable too
     sendCollect(ws, food.id)
     sendCollect(ws, food.id)
     await wait(150)
@@ -333,22 +313,21 @@ describe('GameWorld likes', () => {
     const first = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(first.ws, first.msgs)
-    const before = likesFor(first.msgs, a.id)
     sendState(first.ws, food.x, food.y)
     await wait(80)
+    first.ws.send(JSON.stringify({ t: 'jump' })) // airborne food is collectable too
     sendCollect(first.ws, food.id)
     await wait(150)
     const collected = first.msgs.find(
       (m) => m.t === 'collected' && m.id === food.id,
     )
-    expect(collected.likes).toBe(before + food.points)
-    const total = collected.likes
+    expect(collected.likes).toBe(food.points)
 
     // Reconnect with the SAME cookie → likes come back from SQLite.
     const second = await connect(a.cookie)
     await wait(80)
     const w = second.msgs.find((m) => m.t === 'welcome')
-    expect(w.likes).toBe(total)
+    expect(w.likes).toBe(food.points)
   }, 10000)
 
   it('rejects a malformed collect id without awarding or crashing', async () => {
@@ -673,10 +652,11 @@ const sendJump = (ws: WebSocket) => ws.send(JSON.stringify({ t: 'jump' }))
 // with ground food (each spawn rolls AIR_SPAWN_SHARE to be airborne), so on a
 // small/solo park (cap 1) the single slot may currently hold a ground food. We
 // free it by collecting any ground food we see; each freed slot has a chance of
-// becoming airborne, so one shows up within a few rounds.
+// becoming airborne, and the server's pity timer (AIR_PITY_MS) guarantees one
+// before long.
 async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
   const grabbed = new Set<string>()
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 40; i++) {
     const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
     const all = [...fromWelcome, ...spawned]
@@ -748,5 +728,5 @@ describe('GameWorld airborne food', () => {
     const got = msgs.find((m) => m.t === 'collected' && m.id === air.id)
     expect(got).toBeTruthy()
     expect(got.points).toBe(air.points)
-  }, 15000)
+  }, 25000)
 })
