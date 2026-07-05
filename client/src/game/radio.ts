@@ -15,24 +15,94 @@
 type Ctor = typeof AudioContext
 
 // Pitches (Hz), A-minor pentatonic (A C D E G). Bass low, arp lead up high.
-const A2 = 110.0
+const D2 = 73.42
 const E2 = 82.41
+const F2 = 87.31
+const G2 = 98.0
+const A2 = 110.0
 const A4 = 440.0
 const C5 = 523.25
+const D5 = 587.33
 const E5 = 659.25
+const F5 = 698.46
+const G5 = 783.99
 const A5 = 880.0
+const C6 = 1046.5
 const _ = 0 // rest
 
-// 16-step grid = one bar. At STEP≈0.107s that's ~140 BPM (a rave tempo).
-const STEP = 0.107
-// Four-on-the-floor kick; clap on beats 2 & 4; closed hats on the offbeats.
-const KICK = [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
-const CLAP = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
-const HAT = [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]
-// Offbeat bass (the classic house/rave pump), root A with an E turnaround.
-const BASS = [_, _, A2, _, _, _, A2, _, _, _, A2, _, _, _, E2, _]
-// Sixteenth-note arp lead — a rising/falling A-minor figure.
-const LEAD = [A4, C5, E5, A5, E5, C5, A4, C5, E5, A5, E5, C5, A4, C5, E5, A5]
+// A radio track = a 16-step (one-bar) pattern set + its step length (tempo). The
+// slap on a radio cycles playing-A → off → playing-B → off → …, so there are two
+// distinct rave loops the koala can flip between (see setTrack + ParkGame).
+interface Track {
+  step: number // seconds per 16th step (tempo)
+  kick: number[]
+  clap: number[]
+  hat: number[]
+  bass: number[]
+  lead: number[]
+}
+
+// Track A — the original ~140 BPM four-on-the-floor house/rave loop.
+const TRACK_A: Track = {
+  step: 0.107,
+  kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+  clap: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  hat: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+  // Offbeat bass (the classic house/rave pump), root A with an E turnaround.
+  bass: [_, _, A2, _, _, _, A2, _, _, _, A2, _, _, _, E2, _],
+  // Sixteenth-note arp lead — a rising/falling A-minor figure.
+  lead: [A4, C5, E5, A5, E5, C5, A4, C5, E5, A5, E5, C5, A4, C5, E5, A5],
+}
+
+// Track B — a slower (~115 BPM) half-time mood in a DIFFERENT key (D-minor) with
+// a broken kick, a backbeat snare, a moving sub-bass, and a sparse, singable lead
+// melody (not track A's busy 16th arp) so the two loops read as different songs.
+const TRACK_B: Track = {
+  step: 0.13,
+  kick: [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+  clap: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], // half-time backbeat
+  hat: [0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1],
+  bass: [D2, _, _, _, D2, _, _, _, F2, _, _, _, A2, _, G2, _],
+  // A TWO-bar D-minor melody (32 steps) — same note rhythm each bar but different
+  // pitches, so the tune develops instead of looping every bar. Bar 1 rises to the
+  // octave; bar 2 answers it lower and lands back on the root.
+  lead: [
+    D5,
+    _,
+    _,
+    F5,
+    _,
+    _,
+    A5,
+    _,
+    C6,
+    _,
+    A5,
+    _,
+    F5,
+    _,
+    E5,
+    _,
+    A5,
+    _,
+    _,
+    G5,
+    _,
+    _,
+    F5,
+    _,
+    E5,
+    _,
+    D5,
+    _,
+    F5,
+    _,
+    A4,
+    _,
+  ],
+}
+
+const TRACKS: Track[] = [TRACK_A, TRACK_B]
 
 const PEAK = 0.14 // master gain when playing (limiter catches the peaks)
 const FADE = 0.3 // seconds to fade in / out
@@ -57,6 +127,8 @@ class RadioAudio {
   private step = 0
   private near = false
   private muted = readMuted()
+  private track = 0 // index into TRACKS; flipped by the radio slap (setTrack)
+  private stepLen = TRACKS[0].step // current track's 16th length (for note durations)
 
   // Lazily build the context, master gain and a limiter. Returns false if Web
   // Audio is missing (so the caller silently gets no sound).
@@ -121,6 +193,15 @@ class RadioAudio {
     return this.muted
   }
 
+  // Select which loop plays (0 = A, 1 = B). Restarts on the new track's bar; the
+  // change is audible on the next scheduled steps (mid-play track switch is fine).
+  setTrack(track: number) {
+    const n = ((track % TRACKS.length) + TRACKS.length) % TRACKS.length
+    if (n === this.track) return
+    this.track = n
+    this.step = 0 // start the new pattern from the top of the bar
+  }
+
   // Play only when a koala is near AND we're not muted.
   private reconcile() {
     if (this.near && !this.muted) this.start()
@@ -159,15 +240,20 @@ class RadioAudio {
   private schedule() {
     if (!this.ctx || !this.master) return
     const LOOKAHEAD = 0.2
+    const t = TRACKS[this.track]
+    this.stepLen = t.step
     while (this.nextTime < this.ctx.currentTime + LOOKAHEAD) {
-      const i = this.step % 16
+      const i = this.step % 16 // drums + bass are one-bar loops
       const at = this.nextTime
-      if (KICK[i]) this.kick(at)
-      if (CLAP[i]) this.clap(at)
-      if (HAT[i]) this.hat(at)
-      if (BASS[i] > 0) this.bass(BASS[i], at)
-      if (LEAD[i] > 0) this.lead(LEAD[i], at)
-      this.nextTime += STEP
+      if (t.kick[i]) this.kick(at)
+      if (t.clap[i]) this.clap(at)
+      if (t.hat[i]) this.hat(at)
+      if (t.bass[i] > 0) this.bass(t.bass[i], at)
+      // The lead may be a multi-bar melody (read by its own length) so the tune
+      // varies across bars instead of repeating every bar.
+      const lead = t.lead[this.step % t.lead.length]
+      if (lead > 0) this.lead(lead, at)
+      this.nextTime += t.step
       this.step++
     }
   }
@@ -237,7 +323,7 @@ class RadioAudio {
     const ctx = this.ctx
     const master = this.master
     if (!ctx || !master) return
-    const dur = STEP * 0.9
+    const dur = this.stepLen * 0.9
     const osc = ctx.createOscillator()
     osc.type = 'sawtooth'
     osc.frequency.value = freq
@@ -261,7 +347,7 @@ class RadioAudio {
     const ctx = this.ctx
     const master = this.master
     if (!ctx || !master) return
-    const dur = STEP * 0.9
+    const dur = this.stepLen * 0.9
     const lp = ctx.createBiquadFilter()
     lp.type = 'lowpass'
     lp.Q.value = 8

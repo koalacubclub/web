@@ -239,7 +239,9 @@ interface GameObject {
   hitAt?: number
   vx?: number
   vy?: number
-  mutedByTap?: boolean // 'radio': slapped to toggle its music off/on
+  // 'radio': each slap advances this 0→1→2→3→0…: 0 = play track A, 1 = off,
+  // 2 = play track B, 3 = off. Even = playing (track = state 2 ? B : A); odd = off.
+  radioCycle?: number
 }
 
 interface Butterfly {
@@ -984,9 +986,11 @@ export default function ParkGame() {
         best.hitAt = now
       }
       if (best.type === 'radio') {
-        best.mutedByTap = !best.mutedByTap
+        // Cycle play-A → off → play-B → off → …
+        const cyc = ((best.radioCycle ?? 0) + 1) % 4
+        best.radioCycle = cyc
         g.popups.push({
-          text: best.mutedByTap ? '♪ off' : '♪ on',
+          text: cyc % 2 === 1 ? '♪ off' : cyc === 0 ? '♪ 1' : '♪ 2',
           x: bxp,
           y: byp - PIXEL * 0.4,
           life: 70,
@@ -2597,6 +2601,7 @@ export default function ParkGame() {
       const catX = g.cat.x + 0.5
       const catY = g.cat.y + 0.5
       let radioPlaying = false
+      let radioTrack = 0
       sorted.forEach((obj) => {
         // A freshly-slapped object jitters briefly (wrap its whole draw).
         const shake = obj.hitAt
@@ -2610,14 +2615,18 @@ export default function ParkGame() {
         // pop-in / pre-expiry blink); base objects use their own art below.
         if (obj.placedAt != null) {
           // A radio plays (pulses + notes + sound) while Koala is near it — but
-          // only once she's walked, and not if she slapped it off.
+          // only once she's walked, and only in an "on" slap state (even cycle).
+          const cyc = obj.radioCycle ?? 0
           const playing =
             hasWalked &&
             obj.type === 'radio' &&
-            !obj.mutedByTap &&
+            cyc % 2 === 0 &&
             Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
               RADIO_REACH
-          if (playing) radioPlaying = true
+          if (playing) {
+            radioPlaying = true
+            radioTrack = cyc === 2 ? 1 : 0 // state 2 = track B, state 0 = track A
+          }
           drawShopSprite(ctx!, obj, g.frameCount, {
             now,
             reducedMotion,
@@ -2656,7 +2665,9 @@ export default function ParkGame() {
         }
         if (shake) ctx!.restore()
       })
-      // Fade the radio jingle in/out with proximity (idempotent per frame).
+      // Fade the radio jingle in/out with proximity (idempotent per frame); when
+      // a near radio is playing, its slap state also selects which track.
+      if (radioPlaying) radio.setTrack(radioTrack)
       radio.setNear(radioPlaying)
     }
 

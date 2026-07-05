@@ -144,13 +144,17 @@ so the React UI and the imperative canvas never fight.
   the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
   Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
   plus shop-only sprites: `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
-- **Boombox (interactive):** the 2×1 `radio` sprite plays a gentle looping
-  chiptune when Koala walks within ~2.5 tiles of it — its speakers pulse and music
-  notes drift up. The tune is a quiet C-pentatonic loop synthesised with the Web
-  Audio API in `client/src/game/radio.ts` (created lazily after a user gesture,
-  per autoplay rules; a no-op where Web Audio is unavailable). The game loop
-  reports the _local_ koala's proximity each frame (`radio.setNear`), fading the
-  sound in/out; it's silenced when the loop pauses (scroll away / tab hidden).
+- **Boombox (interactive):** the 2×1 `radio` sprite plays a driving rave loop when
+  Koala walks within ~2.5 tiles of it — its speakers pulse and music notes drift
+  up. The audio is synthesised with the Web Audio API in `client/src/game/radio.ts`
+  (created lazily after a user gesture, per autoplay rules; a no-op where Web Audio
+  is unavailable). The game loop reports the _local_ koala's proximity each frame
+  (`radio.setNear`), fading the sound in/out; it's silenced when the loop pauses
+  (scroll away / tab hidden). There are **two tracks**: `TRACK_A` (a ~140 BPM
+  four-on-the-floor A-minor house loop) and `TRACK_B` (a slower ~115 BPM half-time
+  D-minor loop with a 2-bar melody). **Slapping the radio cycles** play-A → off →
+  play-B → off → … (`radioCycle` 0–3 on the object; `radio.setTrack` picks the
+  loop). The Settings **mute** toggle silences all of it globally (persisted).
 - **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
   primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
   art so a bought tree looks like a park tree. The shop renders the **real item
@@ -277,7 +281,7 @@ ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
   (distance to the object's **box**, so big objects like the pond are reachable at
   an edge): a **ball** is knocked directly away from the cat
   (`updateSlappables` integrates velocity + friction + edge bounce), the **pond**
-  splashes, a **radio** toggles its music, and everything else does a brief
+  splashes, a **radio** cycles its music (play A → off → play B → off), and everything else does a brief
   `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble. **Balls
   are server-synced** (see Multiplayer → Balls); the other object reactions are
   still client-local (peers only see the swipe pose). **Bite** = a cosmetic emote (`drawEmote`); **meow** is the same emote but
