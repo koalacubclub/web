@@ -144,12 +144,6 @@ const sync = {
   },
 }
 
-// DEV-ONLY testing aid: seed a fat wallet and place shop items locally (bypassing
-// the server economy) so decorations can be tried out without grinding coins. Never
-// true in a production build. Gated everywhere on `import.meta.env.DEV`.
-const DEV = import.meta.env.DEV && import.meta.env.MODE !== 'test'
-const DEV_TEST_COINS = 99999
-
 // ── State ─────────────────────────────────────────────────────────────────
 let coins = 0
 let best = 0
@@ -265,8 +259,8 @@ export function setServerBuyer(
   serverBuyer = fn
   if (fn) {
     loaded = true // never read localStorage in server mode
-    coins = DEV ? DEV_TEST_COINS : 0 // DEV: fat wallet for testing decorations
-    best = coins
+    coins = 0
+    best = 0
     placed = []
     selfName = ''
     online = []
@@ -293,7 +287,6 @@ export function getName(): string {
 
 /** Mirror the server's authoritative wallet. */
 export function applyServerWallet(serverCoins: number) {
-  if (DEV) return // DEV: keep the fat test wallet; don't clobber with server's 0
   if (serverCoins === coins) return // no change → no re-render
   coins = serverCoins
   if (coins > best) best = coins
@@ -325,7 +318,6 @@ export function applyServerStats(next: WorldStats) {
 
 /** Replace the placed set from the server (welcome / full resync). */
 export function applyServerPlaced(items: ServerPlacedItem[]) {
-  if (DEV) return // DEV: keep locally-placed test items (see purchase())
   placed = items.map((p) => ({
     id: p.id,
     key: p.key,
@@ -401,14 +393,13 @@ export function purchase(itemKey: string): PurchaseResult {
   if (!item || coins < item.price) return 'insufficient'
   const spot = findSpot(item.w, item.h)
   if (!spot) return 'no-room'
-  if (serverBuyer && !DEV) {
+  if (serverBuyer) {
     // Server-authoritative: send the chosen tile; the server validates coins +
     // overlap, then broadcasts the placed item and our new wallet. We optimistically
     // report 'ok' for the shop feedback; the placed item appears on the next frame.
     serverBuyer(item.key, spot.x, spot.y)
     return 'ok'
   }
-  // DEV (or solo): place locally so decorations render immediately for testing.
   const now = Date.now()
   const item2: PlacedItem = {
     id: newId(),
