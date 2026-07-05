@@ -931,17 +931,33 @@ export default function ParkGame() {
       disengage()
     }
 
-    // ── Touch: the hero stays a SCROLLABLE hero. A swipe scrolls the page
-    // (we never preventDefault here); a tap on a channel sign / photo opens it;
-    // a double-tap jumps. Movement is via the on-screen joystick (Gamer mode) —
-    // the canvas itself never steers by touch, so scroll and play never fight. ──
+    // ── Touch: the hero stays a SCROLLABLE hero, with an OPTIONAL press-and-hold
+    // walk for novices who never spot the joystick. A quick swipe scrolls the page
+    // (we don't preventDefault, so scanning stays smooth); a tap opens a hotspot,
+    // meows on Koala, or double-taps to jump. But press and HOLD still for a beat
+    // and the canvas grabs the gesture: Koala walks toward your finger and follows
+    // it as you drag (release to stop) — the same "walk toward the pointer" the
+    // mouse uses. The joystick stays the primary mover; this is a zero-UI
+    // alternative. Hold-vs-swipe is the only way to tell steering from scrolling,
+    // so the two do interfere a little — by design. ──
     const MOVE_TOL = 10 // px of drift before a tap counts as a swipe (→ scroll)
+    const HOLD_MS = 140 // press-and-hold this long (finger still) to grab steering
     const DOUBLE_TAP_MS = 300 // two quick taps within this window = jump
     const TAP_TOL = 28 // px the two taps must land within
     let touchId: number | null = null
     let touchStartX = 0
     let touchStartY = 0
     let touchMoved = false
+    let touchSteering = false // hold engaged → Koala follows the finger
+    let touchCurX = 0 // latest touch position (for the hold timer + follow)
+    let touchCurY = 0
+    let holdTimer: ReturnType<typeof setTimeout> | null = null
+    const clearHold = () => {
+      if (holdTimer !== null) {
+        clearTimeout(holdTimer)
+        holdTimer = null
+      }
+    }
     // Double-tap tracking (kept in the outer scope so it survives per-touch resets).
     let lastTapAt = 0
     let lastTapX = 0
@@ -960,23 +976,50 @@ export default function ParkGame() {
       touchId = t.identifier
       touchStartX = t.clientX
       touchStartY = t.clientY
+      touchCurX = t.clientX
+      touchCurY = t.clientY
       touchMoved = false
+      touchSteering = false
       touchHotspot = hotspotAt(t.clientX, t.clientY)
       touchCat = catHitAt(t.clientX, t.clientY)
-      // No preventDefault anywhere in the touch path → the page scrolls freely.
+      // On the open park (not a hotspot / the cat), a still press-and-hold grabs
+      // the walk. If the finger moves first (a swipe) the timer is cancelled and
+      // the page scrolls natively — we don't preventDefault until steering engages.
+      if (!touchHotspot && !touchCat) {
+        clearHold()
+        holdTimer = setTimeout(() => {
+          holdTimer = null
+          if (touchId === null || touchMoved) return
+          touchSteering = true
+          engage(touchCurX, touchCurY) // start walking toward the held point
+        }, HOLD_MS)
+      }
     }
     const handleTouchMove = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
       if (!t) return
+      touchCurX = t.clientX
+      touchCurY = t.clientY
+      // Steering engaged → Koala follows the finger, and we claim the gesture so
+      // the page stops scrolling under it (the listener is registered non-passive).
+      if (touchSteering) {
+        aimAt(t.clientX, t.clientY)
+        if (e.cancelable) e.preventDefault()
+        return
+      }
       if (
         Math.abs(t.clientX - touchStartX) > MOVE_TOL ||
         Math.abs(t.clientY - touchStartY) > MOVE_TOL
       ) {
         touchMoved = true // it's a swipe (scroll), not a tap
+        clearHold() // moved before the hold fired → a scroll, not a steer
       }
     }
     const endTouch = () => {
+      clearHold()
+      if (touchSteering) disengage() // release to stop
+      touchSteering = false
       touchId = null
       touchMoved = false
       touchHotspot = null
@@ -985,7 +1028,15 @@ export default function ParkGame() {
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
-      if (!t) return
+      if (!t) {
+        endTouch() // e.g. touchcancel with no matching point → clean up + stop
+        return
+      }
+      // Steering was engaged → release to stop; no tap / meow / jump actions.
+      if (touchSteering) {
+        endTouch()
+        return
+      }
       // Tap on a channel sign / photo → open it.
       if (touchHotspot) {
         if (!touchMoved && hotspotAt(t.clientX, t.clientY) === touchHotspot) {
@@ -3255,6 +3306,7 @@ export default function ParkGame() {
       window.removeEventListener('touchmove', handleTouchMove)
       window.removeEventListener('touchend', handleTouchEnd)
       window.removeEventListener('touchcancel', handleTouchEnd)
+      clearHold() // don't let a pending press-and-hold fire after unmount
       document.removeEventListener('selectstart', handleSelectStart)
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
