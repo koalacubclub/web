@@ -40,7 +40,7 @@ import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
-import { NIGHT, night, makeRng } from '@/game/constants'
+import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
 import {
   getPondReflection,
   drawPondStones,
@@ -3593,7 +3593,7 @@ export default function ParkGame() {
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-      const horizon = WORLD_OFFSET + PIXEL * 1.8
+      const horizon = HORIZON
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
       skyGrad.addColorStop(0, COLORS.sky)
       skyGrad.addColorStop(0.6, COLORS.skyLight)
