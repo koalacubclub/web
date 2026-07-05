@@ -22,6 +22,7 @@ import {
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
 import { jumpLiftTiles } from '@/game/jump'
+import { drawKoalaImprint } from '@/game/imprint'
 import {
   slapPhase,
   slapShake,
@@ -382,14 +383,6 @@ export default function ParkGame() {
       },
       {
         type: 'flowers',
-        x: 14,
-        y: 9,
-        w: 1,
-        h: 1,
-        interactMsg: '✿ Smells nice!',
-      },
-      {
-        type: 'flowers',
         x: 8,
         y: 10,
         w: 1,
@@ -406,8 +399,6 @@ export default function ParkGame() {
       },
       { type: 'ball', x: 8, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       { type: 'stone', x: 1, y: 9, w: 1, h: 1, interactMsg: '... A warm rock' },
-      // A second bench for balance now the map is less cluttered.
-      { type: 'bench', x: 12, y: 10, w: 2, h: 1, interactMsg: '♥ Comfy!' },
       // Interactive hotspots (hover tooltip + click) — non-solid, no interactMsg
       // so the cat's proximity popups skip them; handled by pointer hit-testing.
       {
@@ -2940,6 +2931,7 @@ export default function ParkGame() {
       ]
       trail.forEach(([px, py, a]) => drawPawStamp(px, py, a, SCALE * 1.6))
     }
+
     // Rolling grass ridges over the (otherwise straight) sky/ground seam so the
     // horizon reads as soft hills against the night sky rather than a hard line.
     function drawWavyHorizon() {
@@ -2987,6 +2979,7 @@ export default function ParkGame() {
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
+      drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS)
       drawPawTrail()
       ctx!.restore()
       // Bake the night tint into the static background once (sky/hills/ground/
