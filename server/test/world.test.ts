@@ -140,6 +140,55 @@ describe('GameWorld multiplayer', () => {
     expect(welcome.players.some((p: any) => p.id === a.id)).toBe(true)
   })
 
+  it('marks a brand-new session as not resumed', async () => {
+    const a = await session()
+    const { msgs } = await connect(a.cookie)
+    await wait(50)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(false)
+  })
+
+  it('tells a second connection of a live session to resume its position', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    // Move the first socket somewhere the server records as this session's spot.
+    sendState(first.ws, 20, 8)
+    await wait(80)
+    // A second connection with the SAME cookie, while the first is still open,
+    // is a rejoin: welcome must flag `resumed` and carry the live position so the
+    // client snaps to it instead of getting speed-clamped from a fresh spawn.
+    const second = await connect(a.cookie)
+    await wait(80)
+    const w = second.msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(true)
+    // (relies on the file-wide UNCAPPED_SPEED default so the (20,8) move sticks
+    // verbatim; under the real cap it would read a clamped value.)
+    expect(w.self.x).toBeCloseTo(20, 5)
+    expect(w.self.y).toBeCloseTo(8, 5)
+  })
+
+  it('does NOT resume after a clean disconnect (blip): fresh baseline, no yank', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    sendState(first.ws, 22, 9) // move away from spawn
+    await wait(80)
+    // Fully close the only socket and let webSocketClose -> dropped() run, which
+    // clears the session's position + speed baseline.
+    first.ws.close()
+    await wait(150)
+    // Reconnecting now is NOT a rejoin: the server forgot us, so it must not flag
+    // resumed (the client keeps its own position -> no yank to spawn) and self is
+    // back at SPAWN. This is the network-blip case the design worried about.
+    const second = await connect(a.cookie)
+    await wait(80)
+    const w = second.msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(false)
+    expect(w.self.x).toBeCloseTo(WORLD.cols / 2, 5)
+    expect(w.self.y).toBeCloseTo(WORLD.groundRows / 2, 5)
+  })
+
   it('relays movement and join/leave to other players', async () => {
     const a = await session()
     const { msgs: msgsA } = await connect(a.cookie)

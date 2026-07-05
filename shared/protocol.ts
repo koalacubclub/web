@@ -311,6 +311,14 @@ export type ServerMessage =
   | {
       t: 'welcome'
       self: Player
+      // True when this connection joined a session the server was ALREADY
+      // tracking (a second tab, or a fast reload before the old socket's close
+      // was processed). In that case `self` carries the live server-side
+      // position and the client should snap its cat to it — otherwise its fresh
+      // spawn would be speed-clamped against the still-present baseline. A brand
+      // new session or a clean reconnect (server already forgot) is false, so
+      // the client keeps its own spawn.
+      resumed: boolean
       players: Player[]
       food: Food[]
       placed: PlacedItem[]

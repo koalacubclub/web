@@ -261,6 +261,11 @@ export class GameWorld extends DurableObject<Env> {
     this.sendTo(server, {
       t: 'welcome',
       self,
+      // `self` already carries the live server position (start = positions.get
+      // ?? SPAWN), which for a rejoining session is the still-tracked spot the
+      // speed clamp is baselined at. Telling the client to adopt it avoids a
+      // clamped-into-place dead period on a fast reload / second tab.
+      resumed: rejoining,
       players,
       food: [...this.food.values()],
       placed: placedItems,
