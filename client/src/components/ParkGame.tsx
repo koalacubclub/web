@@ -608,12 +608,14 @@ export default function ParkGame() {
     // Let the React control overlay fire abilities through the same path.
     controls.registerAbility(startAbility)
 
-    // Desktop keyboard shortcuts for the extra abilities (jump = space).
+    // Desktop keyboard shortcuts for the extra abilities (jump = space). Keys
+    // 1/2/3 map to the three spells in wheel order (dash/bite/hand), so the
+    // number lines up with the button's position around the Jump.
     // (Meow isn't here — it's a cosmetic emote fired by clicking/tapping Koala.)
     const EXTRA_ABILITY_KEYS: Record<string, AbilityKind> = {
-      shift: 'dash',
-      '1': 'bite',
-      '2': 'hand', // paw-slap
+      '1': 'dash',
+      '2': 'bite',
+      '3': 'hand', // paw-slap
     }
 
     // Jostle the nearest object the koala can reach when it slaps (ball rolls,
