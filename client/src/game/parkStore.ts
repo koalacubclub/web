@@ -358,19 +358,23 @@ function overlaps(
 
 // Nearest non-overlapping tile for a w×h footprint, spiralling out from Koala's
 // tile. Returns null when the ground is full.
+// Keep placed items a row off the very bottom: the author-name label is drawn just
+// BELOW an item, so a bottom-row item would have its name clipped off the map.
+const PLACE_BOTTOM_MARGIN = 1
 function findSpot(w: number, h: number): { x: number; y: number } | null {
   const occupied: Rect[] = obstacles.concat(
     placed.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
   )
+  const maxY = groundRows - PLACE_BOTTOM_MARGIN
   const fits = (x: number, y: number) =>
     x >= 0 &&
     y >= 1 &&
     x + w <= mapCols &&
-    y + h <= groundRows &&
+    y + h <= maxY &&
     !occupied.some((r) => overlaps(x, y, w, h, r))
 
   const ax = Math.max(0, Math.min(mapCols - w, Math.round(catTile.x)))
-  const ay = Math.max(1, Math.min(groundRows - h, Math.round(catTile.y)))
+  const ay = Math.max(1, Math.min(maxY - h, Math.round(catTile.y)))
   if (fits(ax, ay)) return { x: ax, y: ay }
 
   const maxR = mapCols + groundRows

@@ -92,9 +92,11 @@ function Joystick() {
       onPointerMove={onMove}
       onPointerUp={release}
       onPointerCancel={release}
-      className="pointer-events-auto absolute h-28 w-28 transition-opacity duration-200"
+      // Horizontal inset matches the site wordmark (left-5 sm:left-8) so it hugs
+      // the screen edge like the top UI, instead of the large landscape safe-area
+      // inset. Bottom keeps the safe-area floor (home indicator).
+      className="pointer-events-auto absolute left-5 h-28 w-28 transition-opacity duration-200 sm:left-8"
       style={{
-        left: 'max(1rem, env(safe-area-inset-left))',
         bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
         touchAction: 'none',
         opacity: held ? 1 : 0.7,
@@ -107,7 +109,9 @@ function Joystick() {
         className="absolute inset-0 h-full w-full"
         fill="none"
         stroke={line}
-        strokeWidth={2.5}
+        // ~1.5px on screen (viewBox 100 rendered at 112px → 1.12×), matching the
+        // ability buttons' 1.5px ring so both controls read the same line weight.
+        strokeWidth={1.35}
         strokeLinejoin="round"
         strokeLinecap="round"
         aria-hidden="true"
@@ -165,14 +169,32 @@ function place(deg: number, r: number, size: number): React.CSSProperties {
 }
 
 function AbilityDock() {
+  // Dim when idle, brighten while a button is pressed — mirrors the joystick's
+  // held/idle opacity. Tracked on the CAPTURE phase (the buttons stopPropagation
+  // on pointerdown in the bubble phase, but capture fires first) and released via
+  // a window listener so it resets even if the finger lifts off the dock.
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    if (!active) return
+    const up = () => setActive(false)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [active])
   return (
     <div
-      className="pointer-events-none absolute"
+      // Horizontal inset matches the top-right cluster (right-4 sm:right-7) so it
+      // hugs the screen edge like the top UI. Bottom keeps the safe-area floor.
+      className="pointer-events-none absolute right-4 transition-opacity duration-200 sm:right-7"
+      onPointerDownCapture={() => setActive(true)}
       style={{
-        right: 'max(0.75rem, env(safe-area-inset-right))',
         bottom: 'max(1.25rem, env(safe-area-inset-bottom))',
         width: BOX,
         height: BOX,
+        opacity: active ? 1 : 0.7,
       }}
     >
       {MAIN_ABILITIES.map((a, i) => (

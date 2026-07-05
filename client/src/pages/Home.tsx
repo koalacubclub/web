@@ -288,7 +288,9 @@ function FixedHero() {
       {/* Wordmark, top-left — Cormorant Garamond display style, matching the
           site's headline/footer branding. Drop shadow keeps it legible over
           the game's night sky. */}
-      <div className="absolute top-4 left-5 sm:top-6 sm:left-8 z-20">
+      {/* top offset respects the iOS status bar in installed/standalone PWA mode
+          (viewport-fit=cover draws under it), falling back to a fixed inset. */}
+      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] left-5 sm:top-[max(1.5rem,env(safe-area-inset-top))] sm:left-8 z-20">
         <p
           className="text-[oklch(0.82_0.13_78)] text-xl sm:text-3xl leading-none tracking-tight drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]"
           style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}
@@ -357,9 +359,10 @@ function HeroControls() {
       }`}
       aria-hidden={!atTop}
     >
-      {/* Top-right cluster: Likes (opens shop) + Settings + the social icons. */}
+      {/* Top-right cluster: Likes (opens shop) + Settings + the social icons.
+          Top offset respects the iOS status bar in standalone PWA mode. */}
       <div
-        className={`absolute top-4 right-4 sm:top-7 sm:right-7 flex items-center gap-2 sm:gap-3 ${interactive}`}
+        className={`absolute top-[max(1rem,env(safe-area-inset-top))] right-4 sm:top-[max(1.75rem,env(safe-area-inset-top))] sm:right-7 flex items-center gap-2 sm:gap-3 ${interactive}`}
       >
         <BottomBar atTop={atTop} />
         <a
@@ -395,7 +398,7 @@ function HeroControls() {
           type="button"
           onClick={scrollToContent}
           aria-label="Scroll to see more"
-          className="group inline-flex items-center gap-2 rounded-full border border-[oklch(0.82_0.13_78)]/25 bg-black/40 px-4 py-2 text-[oklch(0.82_0.13_78)]/90 shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-300 hover:border-[oklch(0.82_0.13_78)]/45 hover:bg-black/55"
+          className="group inline-flex items-center gap-2 rounded-full border border-[oklch(0.82_0.13_78)]/25 bg-black/40 px-4 py-2 text-[oklch(0.82_0.13_78)]/90 backdrop-blur-md transition-colors duration-300 hover:border-[oklch(0.82_0.13_78)]/45 hover:bg-black/55"
         >
           <span className="text-[11px] font-light uppercase tracking-[0.2em]">
             More below
@@ -505,9 +508,12 @@ function ContentPanel() {
     // those cues clickable while still letting the content paint OVER them as it
     // scrolls up, hiding them exactly like it hides the game canvas.
     <div className="relative z-10 pointer-events-none">
-      {/* Spacer for the hero. svh (stable) so the content doesn't jump as the
-          mobile toolbar shows/hides on scroll. */}
-      <div className="h-[100svh]" />
+      {/* Spacer for the hero. lvh (stable, and MATCHES the fixed hero's own
+          h-[100lvh]) so the content — starting with the wave divider — begins at
+          the true bottom of the screen. svh is shorter than the large viewport, so
+          it left the wave peeking up from the bottom of the first screen (worst in
+          an installed/standalone PWA). Both units are stable, so no scroll jump. */}
+      <div className="h-[100lvh]" />
 
       {/* Scroll anchor for the hero's down-arrow and the skip link. It sits
           AFTER the full-viewport hero spacer, so scrolling to it lands at the
