@@ -8,8 +8,8 @@ diagram follows ([multiplayer.md](./multiplayer.md)).
 
 Do **not** commit flat PNGs (nobody can edit them), raw Mermaid-only for anything
 spatial (it auto-lays-out and gets ugly fast), or screenshots of a drawing tool.
-Mermaid is fine for *sequence* diagrams inside markdown (see multiplayer.md); use
-embedded Excalidraw for *architecture/box-and-arrow* diagrams.
+Mermaid is fine for _sequence_ diagrams inside markdown (see multiplayer.md); use
+embedded Excalidraw for _architecture/box-and-arrow_ diagrams.
 
 ## Rules
 
@@ -44,49 +44,140 @@ from tiny `rect` / `text` / `arrow` helpers, then exports with the scene embedde
 and stashes the data URL on `window.__png`.
 
 ```html
-<!doctype html><meta charset="utf-8"><div id="status">working…</div>
+<!doctype html><meta charset="utf-8" />
+<div id="status">working…</div>
 <script type="module">
-import { exportToBlob } from "./excalidraw-utils.js";
-let S = 1; const seed = () => (S = (S * 1103515245 + 12345) & 0x7fffffff);
-const els = [];
-const base = (o) => ({ angle:0, strokeColor:"#1e1e1e", backgroundColor:"transparent",
-  fillStyle:"solid", strokeWidth:2, strokeStyle:"solid", roughness:1, opacity:100,
-  groupIds:[], frameId:null, roundness:null, seed:seed(), version:1, versionNonce:seed(),
-  isDeleted:false, boundElements:[], updated:1, link:null, locked:false, ...o });
+  import { exportToBlob } from './excalidraw-utils.js'
+  let S = 1
+  const seed = () => (S = (S * 1103515245 + 12345) & 0x7fffffff)
+  const els = []
+  const base = (o) => ({
+    angle: 0,
+    strokeColor: '#1e1e1e',
+    backgroundColor: 'transparent',
+    fillStyle: 'solid',
+    strokeWidth: 2,
+    strokeStyle: 'solid',
+    roughness: 1,
+    opacity: 100,
+    groupIds: [],
+    frameId: null,
+    roundness: null,
+    seed: seed(),
+    version: 1,
+    versionNonce: seed(),
+    isDeleted: false,
+    boundElements: [],
+    updated: 1,
+    link: null,
+    locked: false,
+    ...o,
+  })
 
-function rect(x,y,w,h,o={}) { els.push(base({ id:"r"+seed(), type:"rectangle", x, y,
-  width:w, height:h, roundness:{type:3}, strokeColor:o.stroke||"#1e1e1e",
-  backgroundColor:o.bg||"transparent" })); }
+  function rect(x, y, w, h, o = {}) {
+    els.push(
+      base({
+        id: 'r' + seed(),
+        type: 'rectangle',
+        x,
+        y,
+        width: w,
+        height: h,
+        roundness: { type: 3 },
+        strokeColor: o.stroke || '#1e1e1e',
+        backgroundColor: o.bg || 'transparent',
+      }),
+    )
+  }
 
-function text(x,y,str,o={}) { const fontSize=o.size||16, fontFamily=o.font||1, lh=1.25;
-  const lines=str.split("\n"), cw=fontFamily===3?0.62:0.55;
-  const width=o.width||Math.max(...lines.map(l=>l.length))*fontSize*cw;
-  els.push(base({ id:"t"+seed(), type:"text", x, y, width, height:lines.length*fontSize*lh,
-    strokeColor:o.color||"#1e1e1e", fontSize, fontFamily, text:str, originalText:str,
-    textAlign:o.align||"left", verticalAlign:"top", containerId:null, lineHeight:lh })); }
+  function text(x, y, str, o = {}) {
+    const fontSize = o.size || 16,
+      fontFamily = o.font || 1,
+      lh = 1.25
+    const lines = str.split('\n'),
+      cw = fontFamily === 3 ? 0.62 : 0.55
+    const width =
+      o.width || Math.max(...lines.map((l) => l.length)) * fontSize * cw
+    els.push(
+      base({
+        id: 't' + seed(),
+        type: 'text',
+        x,
+        y,
+        width,
+        height: lines.length * fontSize * lh,
+        strokeColor: o.color || '#1e1e1e',
+        fontSize,
+        fontFamily,
+        text: str,
+        originalText: str,
+        textAlign: o.align || 'left',
+        verticalAlign: 'top',
+        containerId: null,
+        lineHeight: lh,
+      }),
+    )
+  }
 
-function arrow(x1,y1,x2,y2,o={}) { els.push(base({ id:"a"+seed(), type:"arrow", x:x1, y:y1,
-  width:Math.abs(x2-x1), height:Math.abs(y2-y1), roundness:{type:2},
-  strokeColor:o.stroke||"#1e1e1e", strokeStyle:o.strokeStyle||"solid",
-  points:[[0,0],[x2-x1,y2-y1]], lastCommittedPoint:null, startBinding:null, endBinding:null,
-  startArrowhead:o.startHead||null, endArrowhead:o.endHead===null?null:(o.endHead||"arrow") })); }
+  function arrow(x1, y1, x2, y2, o = {}) {
+    els.push(
+      base({
+        id: 'a' + seed(),
+        type: 'arrow',
+        x: x1,
+        y: y1,
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+        roundness: { type: 2 },
+        strokeColor: o.stroke || '#1e1e1e',
+        strokeStyle: o.strokeStyle || 'solid',
+        points: [
+          [0, 0],
+          [x2 - x1, y2 - y1],
+        ],
+        lastCommittedPoint: null,
+        startBinding: null,
+        endBinding: null,
+        startArrowhead: o.startHead || null,
+        endArrowhead: o.endHead === null ? null : o.endHead || 'arrow',
+      }),
+    )
+  }
 
-// ---- your diagram here ----
-text(40, 24, "My Diagram Title", { size: 30, font: 1 });
-rect(40, 80, 300, 120, { bg: "#e7f5ff", stroke: "#1971c2" });
-text(56, 92, "A box", { size: 17, font: 1, color: "#1971c2" });
-text(56, 120, "body line one\nbody line two", { size: 13, font: 3 });
-arrow(190, 200, 190, 260, { stroke: "#1971c2" });
-// ---------------------------
+  // ---- your diagram here ----
+  text(40, 24, 'My Diagram Title', { size: 30, font: 1 })
+  rect(40, 80, 300, 120, { bg: '#e7f5ff', stroke: '#1971c2' })
+  text(56, 92, 'A box', { size: 17, font: 1, color: '#1971c2' })
+  text(56, 120, 'body line one\nbody line two', { size: 13, font: 3 })
+  arrow(190, 200, 190, 260, { stroke: '#1971c2' })
+  // ---------------------------
 
-(async () => { try {
-  const blob = await exportToBlob({ elements: els, files: {}, mimeType: "image/png",
-    exportPadding: 24, appState: { exportBackground:true, viewBackgroundColor:"#ffffff",
-      exportEmbedScene:true, exportWithDarkMode:false, exportScale:2 } });
-  const r = new FileReader();
-  r.onload = () => { window.__png = r.result; status.textContent = "DONE"; };
-  r.readAsDataURL(blob);
-} catch (e) { window.__err = String(e.stack||e); status.textContent = "ERR:"+window.__err; } })();
+  ;(async () => {
+    try {
+      const blob = await exportToBlob({
+        elements: els,
+        files: {},
+        mimeType: 'image/png',
+        exportPadding: 24,
+        appState: {
+          exportBackground: true,
+          viewBackgroundColor: '#ffffff',
+          exportEmbedScene: true,
+          exportWithDarkMode: false,
+          exportScale: 2,
+        },
+      })
+      const r = new FileReader()
+      r.onload = () => {
+        window.__png = r.result
+        status.textContent = 'DONE'
+      }
+      r.readAsDataURL(blob)
+    } catch (e) {
+      window.__err = String(e.stack || e)
+      status.textContent = 'ERR:' + window.__err
+    }
+  })()
 </script>
 ```
 
@@ -116,7 +207,7 @@ node -e 'const fs=require("fs");const u=JSON.parse(fs.readFileSync("png.json","u
 
 ### 4. Verify the scene round-trips (don't skip this)
 
-Confirms you shipped an *editable* PNG, not a flat one. Decode the
+Confirms you shipped an _editable_ PNG, not a flat one. Decode the
 `application/vnd.excalidraw+json` `tEXt` chunk, inflate, and parse. This also
 writes the `.excalidraw` source to commit alongside.
 

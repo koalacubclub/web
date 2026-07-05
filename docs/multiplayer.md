@@ -12,18 +12,18 @@ mirrors whatever the server broadcasts.
 
 ## Components
 
-| Layer | File | Role |
-|---|---|---|
-| Client | `client/src/components/ParkGame.tsx` | 60fps canvas game loop; reads the multiplayer mirror each frame, renders, interpolates remote players, predicts locally |
-| Client | `client/src/multiplayer/connection.ts` | Owns the WebSocket + session cookie; keeps `players`/`food`/`placed`/`authors` Maps that mirror the server; throttles outbound state; auto-reconnects |
-| Client | `client/src/game/parkStore.ts` | Wallet/placed store. In **solo** mode it uses `localStorage`; in **server** mode it just mirrors the server and never writes local storage |
-| Worker | `server/src/worker.ts` | Stateless edge router: mints/verifies the session cookie, authenticates the WS upgrade, routes to the one Durable Object |
-| Worker | `server/src/session.ts` | Anonymous identity: random id + HMAC-SHA256 signed cookie |
-| Durable Object | `server/src/GameWorld.ts` | The single authoritative park: presence, collectibles, economy, placed items |
-| Shared | `shared/protocol.ts` | Wire types, tuning constants, and the `sanitize*` validators used by **both** sides |
+| Layer          | File                                   | Role                                                                                                                                                  |
+| -------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client         | `client/src/components/ParkGame.tsx`   | 60fps canvas game loop; reads the multiplayer mirror each frame, renders, interpolates remote players, predicts locally                               |
+| Client         | `client/src/multiplayer/connection.ts` | Owns the WebSocket + session cookie; keeps `players`/`food`/`placed`/`authors` Maps that mirror the server; throttles outbound state; auto-reconnects |
+| Client         | `client/src/game/parkStore.ts`         | Wallet/placed store. In **solo** mode it uses `localStorage`; in **server** mode it just mirrors the server and never writes local storage            |
+| Worker         | `server/src/worker.ts`                 | Stateless edge router: mints/verifies the session cookie, authenticates the WS upgrade, routes to the one Durable Object                              |
+| Worker         | `server/src/session.ts`                | Anonymous identity: random id + HMAC-SHA256 signed cookie                                                                                             |
+| Durable Object | `server/src/GameWorld.ts`              | The single authoritative park: presence, collectibles, economy, placed items                                                                          |
+| Shared         | `shared/protocol.ts`                   | Wire types, tuning constants, and the `sanitize*` validators used by **both** sides                                                                   |
 
 The mental model: **the Durable Object is the single source of truth.** The client
-holds only a *mirror* of what the DO broadcasts. Solo mode (`localStorage`) is a
+holds only a _mirror_ of what the DO broadcasts. Solo mode (`localStorage`) is a
 pure fallback used when no Worker is configured for the build.
 
 ## Connection handshake
@@ -84,7 +84,7 @@ trusts for the economy — not a purely cosmetic one (see
 
 ### Food (server-authoritative, in-memory, lazy)
 
-There is **no game tick**. `maybeSpawn()` runs on join and on *every* inbound message,
+There is **no game tick**. `maybeSpawn()` runs on join and on _every_ inbound message,
 so player traffic drives spawns and expiry:
 
 - Cap `= ceil(players / 2)` (`foodCap`), one shared `FOOD_SPAWN_COOLDOWN_MS` (4s) gate.
@@ -115,7 +115,7 @@ seeded as **permanent** items (`expiresAt = PLACED_PERMANENT`).
 ### Balls (distributed simulation, one persist point)
 
 `push` broadcasts a launch velocity (clamped to `MAX_BALL_SPEED`); every client runs
-the *same* integrator. Only `rest` persists — the DO rounds to a whole tile, writes
+the _same_ integrator. Only `rest` persists — the DO rounds to a whole tile, writes
 SQLite once, and broadcasts the authoritative `{moved}` so everyone snaps to the stored
 tile. Any divergence self-heals on `moved`.
 
@@ -126,18 +126,18 @@ peers animate. `jump` additionally opens that session's airborne-collect window.
 
 ## Persistence model
 
-| Kind | Where | Survives hibernation / offline? |
-|---|---|---|
-| positions | in-memory `Map` | No — repopulated from attachments / spawn |
-| food | in-memory `Map` | No — refills on next traffic |
+| Kind                                    | Where           | Survives hibernation / offline?                                                                |
+| --------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| positions                               | in-memory `Map` | No — repopulated from attachments / spawn                                                      |
+| food                                    | in-memory `Map` | No — refills on next traffic                                                                   |
 | jumpAt / lastActionAt / lastMove / rate | in-memory `Map` | No — `lastMove` reset on wake is intentional (see [Known gaps](#known-gaps--future-hardening)) |
-| placed (cache) | in-memory `Map` | Rehydrated from SQLite |
-| **likes** (wallet) | **SQLite** | Yes |
-| **names** | **SQLite** | Yes |
-| **sessions** (visit ledger) | **SQLite** | Yes |
-| **placed** (items + balls) | **SQLite** | Yes |
+| placed (cache)                          | in-memory `Map` | Rehydrated from SQLite                                                                         |
+| **likes** (wallet)                      | **SQLite**      | Yes                                                                                            |
+| **names**                               | **SQLite**      | Yes                                                                                            |
+| **sessions** (visit ledger)             | **SQLite**      | Yes                                                                                            |
+| **placed** (items + balls)              | **SQLite**      | Yes                                                                                            |
 
-Food itself is never persisted — only the *likes* it awards are. The session cookie
+Food itself is never persisted — only the _likes_ it awards are. The session cookie
 has a 1-year `Max-Age`, so a returning player is the same session id and gets their
 wallet + items back.
 
@@ -188,7 +188,7 @@ Layered, and explicitly "best-effort for a cozy game."
    `sanitizeName` allowlists characters, etc.).
 4. **Server-authoritative economy** — the client never reports points or score; it only
    asks to collect a food id, and the server owns the table, validates proximity against
-   *its own* stored position, and claims atomically.
+   _its own_ stored position, and claims atomically.
 5. **Server-enforced cooldowns** per `(session, ability)`, independent of the flood
    budget; ball rest is re-clamped/rounded before its single SQLite write.
 
@@ -218,9 +218,9 @@ deployed backend makes players' solo savings appear to vanish.
   cheater could "teleport" (within bounds) next to a food via a `state` message and then
   collect it. Being addressed in PR #81 (`feat/anticheat-speed`): a per-session
   `lastMove` map + `clampToSpeed()` cap each `state` step to `MOVE_SPEED_TILES_PER_MS ×
-  dt × slack`, plus a one-off `DASH_TILES` allowance during a live dash window. It
+dt × slack`, plus a one-off `DASH_TILES` allowance during a live dash window. It
   **clamps** (never rejects) so honest laggy players don't rubber-band. Note the
-  interaction with hibernation: `lastMove` is *not* rehydrated on wake — a missing entry
+  interaction with hibernation: `lastMove` is _not_ rehydrated on wake — a missing entry
   (first update / respawn / hibernation wake) resets the baseline, so the first
   post-wake `state` is accepted unclamped and clamping resumes from the next one. That
   mirrors why `positions` is restored from attachments: clamp what's cheatable, but
@@ -247,7 +247,7 @@ deployed backend makes players' solo savings appear to vanish.
 
 - **Multi-tab broadcast quirk.** `broadcast(msg, exceptId)` excludes by **session id**,
   not socket. Two tabs share one session, so your own `state`/`acted`/`pushed` are
-  withheld from *both* your sockets — the two tabs won't sync to each other (each renders
+  withheld from _both_ your sockets — the two tabs won't sync to each other (each renders
   its own local cat). Harmless, but surprising when debugging with two tabs.
 
 - **Balls are semi-trusted.** `push` writes the client-reported position straight to
@@ -262,7 +262,7 @@ deployed backend makes players' solo savings appear to vanish.
 
 - **Schema is additive-only.** Tables use `CREATE TABLE IF NOT EXISTS`; there's no
   migration framework. Adding a column later means a manual `ALTER`/new-table dance — the
-  wrangler `migrations` block only governs the DO *class*, not the table schema.
+  wrangler `migrations` block only governs the DO _class_, not the table schema.
 
 ## Operational notes
 
