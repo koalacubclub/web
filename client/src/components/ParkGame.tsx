@@ -623,8 +623,7 @@ export default function ParkGame() {
     // Let the React control overlay fire abilities through the same path.
     controls.registerAbility(startAbility)
 
-    // Desktop shortcuts for the extra abilities (jump = space, always). These are
-    // gamer-mode only; jump works regardless (it's a core mechanic).
+    // Desktop keyboard shortcuts for the extra abilities (jump = space).
     const EXTRA_ABILITY_KEYS: Record<string, AbilityKind> = {
       shift: 'dash',
       '1': 'bite',
@@ -726,7 +725,7 @@ export default function ParkGame() {
       }
       const extra = EXTRA_ABILITY_KEYS[key]
       if (extra) {
-        if (controls.getGamerMode() && actionAllowed()) startAbility(extra)
+        if (actionAllowed()) startAbility(extra)
         return
       }
       g.keys[key] = true
@@ -3229,7 +3228,7 @@ export default function ParkGame() {
         // paint — a ~0.30 layout shift (CLS). The effect still sets these too.
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD (or turn on Gamer controls in Settings for an on-screen joystick + ability buttons), and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
+        aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD (or the on-screen joystick on touch) and use the ability buttons, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
         className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let

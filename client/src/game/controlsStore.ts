@@ -1,10 +1,9 @@
-// controlsStore — the "gamer mode" preference plus the input bridge between the
-// React control overlay (joystick + ability buttons) and the imperative canvas
-// game loop. Kept separate from parkStore so the 60fps loop's lean snapshot isn't
-// polluted with UI-preference churn.
+// controlsStore — the input bridge between the React control overlay (joystick +
+// ability buttons) and the imperative canvas game loop. Kept separate from
+// parkStore so the 60fps loop's lean snapshot isn't polluted.
 //
-//   • gamerMode is a persisted, reactive flag (useSyncExternalStore) toggled from
-//     Settings; the overlay + game loop both read it.
+// The on-screen controls are ALWAYS shown — Gamer mode is the default now, with no
+// toggle — so this module only carries input:
 //   • the joystick writes an analog move vector imperatively (like g.keys) — no
 //     re-render per frame; the game loop reads getMove() each tick.
 //   • ability buttons call fireAbility(a); ParkGame registers the handler.
@@ -12,30 +11,6 @@
 //     cooldown sweep (polled via rAF, not reactive).
 
 import type { AbilityKind } from '@koala/shared'
-import { lsGet, lsSet } from './parkStore'
-
-const KEY = 'kcc-gamer-mode'
-
-let gamer = lsGet(KEY) === '1'
-const listeners = new Set<() => void>()
-
-export function subscribe(cb: () => void): () => void {
-  listeners.add(cb)
-  return () => {
-    listeners.delete(cb)
-  }
-}
-/** Snapshot getter for useSyncExternalStore (a stable primitive). */
-export function getGamerMode(): boolean {
-  return gamer
-}
-export function setGamerMode(on: boolean): void {
-  if (on === gamer) return
-  gamer = on
-  lsSet(KEY, on ? '1' : '0')
-  if (!on) clearMove() // drop any held stick when leaving gamer mode
-  for (const cb of listeners) cb()
-}
 
 // ── Movement (imperative: joystick → game loop) ────────────────────────────
 let moveX = 0
@@ -94,10 +69,8 @@ export function getGcdUntil(): number {
 
 // Test-only: reset module state between tests.
 export function __resetForTests(): void {
-  gamer = false
   clearMove()
   abilityFn = null
   gcdUntil = -Infinity
   for (const k of Object.keys(firedAt)) delete firedAt[k]
-  listeners.clear()
 }

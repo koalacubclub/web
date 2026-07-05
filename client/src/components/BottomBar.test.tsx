@@ -2,12 +2,10 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import BottomBar from './BottomBar'
 import * as store from '@/game/parkStore'
-import * as controls from '@/game/controlsStore'
 
 beforeEach(() => {
   localStorage.clear()
   store.__resetForTests()
-  controls.__resetForTests()
 })
 
 describe('BottomBar', () => {
@@ -50,17 +48,6 @@ describe('BottomBar', () => {
       screen.getByRole('button', { name: /unmute radio/i }),
     ).toHaveAttribute('aria-pressed', 'true')
     expect(localStorage.getItem('kcc-muted')).toBe('1')
-  })
-
-  it('toggles gamer mode from the settings popover (persisted)', () => {
-    render(<BottomBar atTop={true} />)
-    expect(controls.getGamerMode()).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
-    const toggle = screen.getByRole('switch', { name: /gamer controls/i })
-    expect(toggle).toHaveAttribute('aria-checked', 'false')
-    fireEvent.click(toggle)
-    expect(controls.getGamerMode()).toBe(true)
-    expect(toggle).toHaveAttribute('aria-checked', 'true')
   })
 
   it('lists online players and world stats in the settings menu', () => {

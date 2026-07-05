@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Settings, Volume2, VolumeX, X } from 'lucide-react'
 import * as parkStore from '@/game/parkStore'
-import * as controls from '@/game/controlsStore'
 import { radio } from '@/game/radio'
 import { MULTIPLAYER_ENABLED } from '@/multiplayer/connection'
 import { NAME_MAX } from '@koala/shared'
@@ -22,12 +21,6 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
     parkStore.subscribe,
     parkStore.getSnapshot,
     parkStore.getSnapshot,
-  )
-
-  const gamer = useSyncExternalStore(
-    controls.subscribe,
-    controls.getGamerMode,
-    controls.getGamerMode,
   )
 
   const [shopOpen, setShopOpen] = useState(false)
@@ -105,7 +98,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
           <span className="text-base tabular-nums">{snap.coins}</span>
         </button>
 
-        {/* Settings — always available (sound + gamer toggle); the rename + roster + stats
+        {/* Settings — always available (sound); the rename + roster + stats
             sections are server-backed, so only shown when connected. */}
         <div className="relative">
           <button
@@ -184,37 +177,6 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                     </form>
                   </>
                 )}
-
-                {/* Gamer controls — on-screen joystick + ability buttons (client
-                    side; works solo, persisted). */}
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={gamer}
-                  onClick={() => controls.setGamerMode(!gamer)}
-                  className="mt-3 flex w-full items-center justify-between gap-3 rounded-xl bg-white/[0.06] px-3 py-2 text-left ring-1 ring-white/10 hover:bg-white/10"
-                >
-                  <span className="min-w-0">
-                    <span className="block text-sm text-white/90">
-                      Gamer controls
-                    </span>
-                    <span className="block text-xs text-white/45">
-                      On-screen joystick + ability buttons
-                    </span>
-                  </span>
-                  <span
-                    className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                      gamer ? 'bg-emerald-500/80' : 'bg-white/15'
-                    }`}
-                    aria-hidden="true"
-                  >
-                    <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
-                        gamer ? 'left-[1.125rem]' : 'left-0.5'
-                      }`}
-                    />
-                  </span>
-                </button>
 
                 {/* Sound — mutes the park radio (persisted) */}
                 <div className="mt-3 flex items-center justify-between">
