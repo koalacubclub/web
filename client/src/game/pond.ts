@@ -178,13 +178,14 @@ export function objectReflectsInPond(
 }
 
 /**
- * Mirror the scenery above the pond at tile (x, y) into the water. Each object is
- * flipped about its OWN base (ground-contact line) — like cats flip about their
- * feet — so the reflection stays attached to the object and the whole thing
- * (incl. a tall lighttree's glow) folds down into the water instead of being
- * pushed below the shallow pond and clipped. `drawObject(o)` draws one object's
- * art at its own position (the caller owns the type→art dispatch). Reflected
- * far-to-near so nearer objects layer on top; the pond clip keeps it in-bounds.
+ * Mirror the scenery near the pond at tile (x, y) into the water. Each object is
+ * flipped about its OWN ground-contact line (the bottom of its footprint) — the
+ * same way cats flip about their feet — so the reflection sits directly under the
+ * object instead of detaching. An object standing at the pond's rim folds down
+ * into the water; the pond clip keeps it in-bounds (so an object set back on the
+ * grass reflects onto grass and is hidden, just like a cat away from the water).
+ * `drawObject` draws one object's art at its own position (the caller owns the
+ * type→art dispatch). Reflected far-to-near so nearer objects layer on top.
  */
 export function reflectObjects<T extends ReflectBox>(
   ctx: CanvasRenderingContext2D,
@@ -203,7 +204,8 @@ export function reflectObjects<T extends ReflectBox>(
 /**
  * The Y axis (logical px) to mirror a cat at tile (catX, catY) about if it
  * reflects in the pond at tile (x, y) — its feet-line — or null if it's not over
- * the water.
+ * the water. Cats mirror about their feet (not the water plane like scenery) so
+ * the reflection stays attached under the cat instead of detaching.
  */
 export function catReflectAxis(
   catX: number,
