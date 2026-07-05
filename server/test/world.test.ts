@@ -4,6 +4,7 @@ import {
   DEFAULT_BALLS,
   MAX_BALL_SPEED,
   MAX_INBOUND_MSGS_PER_SEC,
+  MOVE_SPEED_TILES_PER_MS,
   NAME_MAX,
   PLACED_PERMANENT,
   WORLD,
@@ -233,6 +234,45 @@ const sendState = (ws: WebSocket, x: number, y: number) =>
 const sendCollect = (ws: WebSocket, id: string) =>
   ws.send(JSON.stringify({ t: 'collect', id }))
 
+// Walk the koala from `from` to `to` in steps that stay under the server's
+// speed cap, so the anti-teleport clamp accepts every one (a raw teleport would
+// be clamped, leaving the cat short of the target and its collect out of range).
+// Returns the arrival position so callers can chain walks. Uses a per-step
+// budget comfortably below MOVE_SPEED_SLACK to tolerate timer jitter.
+const WALK_STEP_MS = 120
+// Map centre — the canonical start/stand tile. Walks begin here so their `from`
+// matches the server's position (a mismatched `from` would get the first step
+// clamped), and it bounds the distance to any food.
+const CENTER = {
+  x: Math.floor(WORLD.cols / 2),
+  y: Math.floor(WORLD.groundRows / 2),
+}
+async function walkTo(
+  ws: WebSocket,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): Promise<{ x: number; y: number }> {
+  const budget = MOVE_SPEED_TILES_PER_MS * WALK_STEP_MS * 1.4
+  let { x, y } = from
+  for (let guard = 0; guard < 4000; guard++) {
+    const dx = to.x - x
+    const dy = to.y - y
+    const dist = Math.hypot(dx, dy)
+    if (dist <= budget) {
+      x = to.x
+      y = to.y
+      sendState(ws, x, y)
+      await wait(WALK_STEP_MS)
+      break
+    }
+    x += (dx / dist) * budget
+    y += (dy / dist) * budget
+    sendState(ws, x, y)
+    await wait(WALK_STEP_MS)
+  }
+  return { x, y }
+}
+
 // The DO auto-spawns food lazily; grab whatever is currently live (ground or
 // airborne). Callers that collect it on-target jump first, so it works for
 // either kind. Only this test's player is connected, so nothing else takes it.
@@ -242,7 +282,7 @@ async function obtainFood(ws: WebSocket, msgs: any[]): Promise<any> {
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
     const f = [...fromWelcome, ...spawned].find(Boolean)
     if (f) return f
-    sendState(ws, 10, 6)
+    sendState(ws, CENTER.x, CENTER.y)
     await wait(500)
   }
   throw new Error('no food spawned in time')
@@ -264,9 +304,9 @@ describe('GameWorld likes', () => {
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // Stand exactly on it (server-known position). Jump so an airborne food is
-    // collectable too (harmless for ground food), then collect.
-    sendState(ws, food.x, food.y)
+    // Walk onto it (a teleport would be speed-clamped). Jump so an airborne food
+    // is collectable too (harmless for ground food), then collect.
+    await walkTo(ws, CENTER, { x: food.x, y: food.y })
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
@@ -281,16 +321,18 @@ describe('GameWorld likes', () => {
         (m) => m.t === 'despawn' && m.id === food.id && m.reason === 'taken',
       ),
     ).toBe(true)
-  }, 10000)
+  }, 25000)
 
   it('ignores a collect when the koala is out of range', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // Stand far away, then try to collect. Jump so range is the ONLY reason the
-    // collect is rejected (airborne food would otherwise need a jump window).
-    sendState(ws, food.x > 9 ? 1 : 18, food.y)
+    // Walk to the far horizontal edge (opposite the food), so the cat is
+    // genuinely out of range. Jump so range is the ONLY reason the collect is
+    // rejected (airborne food would otherwise need a jump window).
+    const farX = food.x <= WORLD.cols / 2 ? WORLD.cols - 2 : 1
+    await walkTo(ws, CENTER, { x: farX, y: food.y })
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
@@ -298,14 +340,14 @@ describe('GameWorld likes', () => {
     expect(msgs.some((m) => m.t === 'collected' && m.id === food.id)).toBe(
       false,
     )
-  }, 10000)
+  }, 25000)
 
   it('awards a food only once even if collected twice (dedupe/race)', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    sendState(ws, food.x, food.y)
+    await walkTo(ws, CENTER, { x: food.x, y: food.y })
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // so airborne food is collectable too
     sendCollect(ws, food.id)
@@ -313,14 +355,14 @@ describe('GameWorld likes', () => {
     await wait(150)
     const hits = msgs.filter((m) => m.t === 'collected' && m.id === food.id)
     expect(hits.length).toBe(1)
-  }, 10000)
+  }, 25000)
 
   it('persists likes across a reconnect with the same session', async () => {
     const a = await session()
     const first = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(first.ws, first.msgs)
-    sendState(first.ws, food.x, food.y)
+    await walkTo(first.ws, CENTER, { x: food.x, y: food.y })
     await wait(80)
     first.ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // airborne food is collectable too
     sendCollect(first.ws, food.id)
@@ -335,7 +377,7 @@ describe('GameWorld likes', () => {
     await wait(80)
     const w = second.msgs.find((m) => m.t === 'welcome')
     expect(w.likes).toBe(food.points)
-  }, 10000)
+  }, 25000)
 
   it('rejects a malformed collect id without awarding or crashing', async () => {
     const a = await session()
@@ -375,10 +417,14 @@ async function earnAtLeast(
 ): Promise<number> {
   const done = new Set<string>()
   let likes = 0
+  // Track the cat's position and start at the map centre to bound walk distance.
+  // Movement now obeys the server's speed cap, so we WALK to each food (a raw
+  // teleport would be clamped, leaving the cat out of collect range).
+  let pos = { ...CENTER }
   for (let i = 0; i < 60 && likes < target; i++) {
     let f = liveFood(msgs, done)
     for (let j = 0; j < 12 && !f; j++) {
-      sendState(ws, 10, 6)
+      sendState(ws, pos.x, pos.y) // drive spawns from where we stand (dist 0)
       await wait(500)
       f = liveFood(msgs, done)
     }
@@ -386,7 +432,7 @@ async function earnAtLeast(
     // rather than giving up early.
     if (!f) continue
     done.add(f.id)
-    sendState(ws, f.x, f.y)
+    pos = await walkTo(ws, pos, { x: f.x, y: f.y })
     // Jump so an AIRBORNE food (which now shares the foodCap budget) is
     // collectable too; harmless for ground food, which collects regardless.
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
@@ -410,7 +456,7 @@ describe('GameWorld shop', () => {
     expect(
       msgs.some((m) => m.t === 'buyfail' && m.reason === 'insufficient'),
     ).toBe(true)
-  }, 10000)
+  }, 25000)
 
   it('rejects a buy with an unknown item key', async () => {
     const a = await session()
@@ -421,7 +467,7 @@ describe('GameWorld shop', () => {
     expect(msgs.some((m) => m.t === 'buyfail' && m.reason === 'invalid')).toBe(
       true,
     )
-  }, 10000)
+  }, 25000)
 
   it('places an item, deducts likes, shares it, and persists it', async () => {
     const a = await session()
@@ -467,7 +513,7 @@ describe('GameWorld shop', () => {
     expect(persisted).toBeTruthy()
     expect(persisted.ownerId).toBe(a.id) // item persists, pointing to its owner
     expect(w.authors[a.id]).toBe(a.name) // author resolved via the directory
-  }, 30000)
+  }, 45000)
 })
 
 // ---- server-owned, syncable balls ----
@@ -535,7 +581,7 @@ describe('GameWorld balls', () => {
       ?.placed.find((p: any) => p.id === id)
     expect(ball.x).toBe(12)
     expect(ball.y).toBe(4)
-  }, 15000)
+  }, 45000)
 
   it('ignores push/rest for an unknown id or a non-ball item', async () => {
     const a = await session()
@@ -565,7 +611,7 @@ describe('GameWorld balls', () => {
     await wait(80)
     expect(msgsB.some((m) => m.t === 'pushed')).toBe(false)
     expect(msgsB.some((m) => m.t === 'moved')).toBe(false)
-  }, 15000)
+  }, 45000)
 })
 
 // ---- server-authoritative display names ----
@@ -694,7 +740,7 @@ describe('GameWorld authorship follows rename (directory)', () => {
     const w = peer.msgs.find((m) => m.t === 'welcome')
     expect(w.placed.some((p: any) => p.id === placed.item.id)).toBe(true)
     expect(w.authors[a.id]).toBe('Pixel')
-  }, 30000)
+  }, 45000)
 })
 
 // ---- world stats (session ledger) ----
@@ -763,19 +809,25 @@ const sendJump = (ws: WebSocket) => sendAction(ws, 'jump')
 // before long.
 async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
   const grabbed = new Set<string>()
+  // Track position + walk (not teleport) so the speed cap accepts our moves.
+  let pos = { ...CENTER }
   for (let i = 0; i < 40; i++) {
     const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
     const all = [...fromWelcome, ...spawned]
     const air = all.find((f) => f?.air)
-    if (air) return air
+    if (air) {
+      // Walk under it so the caller's on-target collect is in range.
+      await walkTo(ws, pos, { x: air.x, y: air.y })
+      return air
+    }
     const ground = all.find((f) => f && !f.air && !grabbed.has(f.id))
     if (ground) {
       grabbed.add(ground.id)
-      sendState(ws, ground.x, ground.y)
+      pos = await walkTo(ws, pos, { x: ground.x, y: ground.y })
       sendCollect(ws, ground.id)
     } else {
-      sendState(ws, 10, 6)
+      sendState(ws, pos.x, pos.y)
     }
     await wait(500)
   }
@@ -861,5 +913,68 @@ describe('GameWorld airborne food', () => {
     const got = msgs.find((m) => m.t === 'collected' && m.id === air.id)
     expect(got).toBeTruthy()
     expect(got.points).toBe(air.points)
-  }, 25000)
+  }, 60000)
+})
+
+describe('GameWorld movement speed (anti-teleport)', () => {
+  // The last position B relayed to A (peer A observes the server-clamped value).
+  const lastStateOf = (msgs: any[], id: string) =>
+    msgs.filter((m) => m.t === 'state' && m.id === id).at(-1)
+
+  it('clamps a teleport to walking distance from the last position', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    // First update seeds the baseline (accepted as-is).
+    sendState(wsB, 5, 5)
+    await wait(80)
+    // Then a big jump across the map — must be pulled back near (5,5).
+    sendState(wsB, 40, 10)
+    await wait(80)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeLessThan(7) // nowhere near the claimed x=40
+    expect(relayed.s.y).toBeLessThan(7) // nor the claimed y=10
+  })
+
+  it('lets honest walking-speed movement through unchanged', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    sendState(wsB, 5, 5)
+    await wait(80)
+    // A small step well within the per-update walk budget passes untouched.
+    sendState(wsB, 5.15, 5)
+    await wait(80)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(5.15, 5)
+  })
+
+  it('allows a dash burst beyond the walk budget', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    sendState(wsB, 5, 5)
+    await wait(80)
+    // A dash grants a one-off DASH_TILES allowance, so a 3-tile jump sticks.
+    sendAction(wsB, 'dash')
+    sendState(wsB, 8, 5)
+    await wait(80)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(8, 5)
+  })
 })

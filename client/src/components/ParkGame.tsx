@@ -22,6 +22,7 @@ import {
   GLOBAL_COOLDOWN_MS,
   isOnGlobalCooldown,
   JUMP_DURATION_MS,
+  MOVE_SPEED_TILES_PER_MS,
   SLAP_REACH,
   type AbilityKind,
 } from '@koala/shared'
@@ -3253,9 +3254,11 @@ export default function ParkGame() {
     function updateCat(dt: number) {
       const cat = g.cat
       // Time-based speed so the cat walks at the same real-world pace regardless
-      // of frame rate (mobile often runs below 60fps). 0.0021 tiles/ms ≈ the old
-      // 0.035 tiles/frame at 60fps.
-      const speed = 0.0021 * dt
+      // of frame rate (mobile often runs below 60fps). MOVE_SPEED_TILES_PER_MS
+      // (≈ the old 0.035 tiles/frame at 60fps) is shared with the server, which
+      // caps position changes to it — keeping them in lockstep so honest walking
+      // is never clamped.
+      const speed = MOVE_SPEED_TILES_PER_MS * dt
       let moving = false
       let newX = cat.x
       let newY = cat.y
