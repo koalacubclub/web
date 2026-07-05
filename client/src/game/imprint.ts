@@ -141,7 +141,7 @@ export function drawKoalaImprint(
 
   // 3. Project onto the ground plane and scatter foliage.
   const cx = pixel * 12.9 // shifted right, under/right of the billboards
-  const cy = pixel * 10.0
+  const cy = pixel * 10.6
   const spanX = pixel * 7.4 // word width (wide, letters set close)
   const spanY = pixel * 2.1 // squashed height (foreshortened → lies flat)
   // Near/far only scales element SIZE (a depth cue) — NOT horizontal x. Tapering
