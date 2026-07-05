@@ -69,7 +69,9 @@ describe('placement', () => {
 
   it('returns no-room (and does not charge) when the ground is full', () => {
     store.earn(1000)
-    store.configure({ mapCols: 2, groundRows: 2 }) // only tiles (0,1) and (1,1)
+    // Row 2 is reserved as the bottom margin (author-name space), so with
+    // groundRows: 3 only tiles (0,1) and (1,1) are placeable.
+    store.configure({ mapCols: 2, groundRows: 3 })
     store.setCatTile(0, 1)
     expect(store.purchase('flowers')).toBe('ok')
     expect(store.purchase('flowers')).toBe('ok')

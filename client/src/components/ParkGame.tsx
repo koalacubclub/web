@@ -486,7 +486,7 @@ export default function ParkGame() {
         w: 1,
         h: 1,
       },
-      { type: 'photo', photo: true, x: 16.6, y: 10, w: 1, h: 1 },
+      { type: 'photo', photo: true, x: 18.4, y: 8.4, w: 1, h: 1 },
       // A touch more left-half scenery (cols 0..19), placed in open gaps so it
       // doesn't overlap existing decor or the unique brand/photo hotspots.
       {
@@ -3147,11 +3147,26 @@ export default function ParkGame() {
     let displayH = 0
     let lastTx = NaN
     let lastTy = NaN
+    // Size the canvas to COVER the parent box. The full canvas is MAP_COLS wide but
+    // only VIEW_COLS show at once (the camera pans the rest), so the width is zoomed
+    // by MAP_COLS/VIEW_COLS: whichever is larger of "VIEW_COLS span the parent width"
+    // or "the canvas fills the parent height" wins, so it always fills both (no
+    // letterbox / black gap) at the intended zoom. Driven off the parent's real
+    // client box — always current after an orientation change, unlike the lvh CSS
+    // unit iOS fails to recompute on rotate — so the camera's cached measurements
+    // stay correct and the map's edges remain reachable.
+    const FULL_RATIO = MAP_COLS / MAP_ROWS // aspect of the whole (panned) canvas
     const measure = () => {
       const parent = canvas.parentElement
-      viewportW = parent?.clientWidth || window.innerWidth
+      const pw = parent?.clientWidth || window.innerWidth
+      const ph = parent?.clientHeight || window.innerHeight
+      const w = Math.max((pw * MAP_COLS) / VIEW_COLS, ph * FULL_RATIO)
+      const h = (w * MAP_ROWS) / MAP_COLS
+      canvas.style.width = `${w}px`
+      canvas.style.height = `${h}px`
+      viewportW = pw
+      viewportH = ph
       displayW = canvas.offsetWidth
-      viewportH = parent?.clientHeight || window.innerHeight
       displayH = canvas.offsetHeight
     }
     measure()
@@ -3505,9 +3520,23 @@ export default function ParkGame() {
         ? new ResizeObserver(() => {
             measure()
             sizeBacking()
+            updateCamera()
           })
         : null
-    ro?.observe(canvas)
+    // Observe the PARENT box, not the canvas: measure() now sets the canvas size,
+    // so observing the canvas would just watch our own writes. The parent is
+    // `absolute inset-0`, so its box tracks the viewport/orientation reliably.
+    if (canvas.parentElement) ro?.observe(canvas.parentElement)
+
+    // iOS settles layout + viewport units a beat AFTER firing orientationchange,
+    // so re-measure immediately and again after a short delay to catch the final
+    // size (otherwise the camera clamps to a stale width and the map edges become
+    // unreachable after a rotate).
+    const handleOrientation = () => {
+      handleResize()
+      setTimeout(handleResize, 300)
+    }
+    window.addEventListener('orientationchange', handleOrientation)
 
     ensureRunning()
 
@@ -3531,6 +3560,7 @@ export default function ParkGame() {
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('orientationchange', handleOrientation)
       ro?.disconnect()
       unsubscribePerf()
       radio.dispose()
@@ -3553,7 +3583,15 @@ export default function ParkGame() {
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         aria-label="Koala's Park — a mini game. Move Koala with the arrow keys or WASD (or the on-screen joystick on touch) and use the ability buttons, and catch the food that appears to score points. Press the space bar (or double-tap on touch) to jump and grab floating food."
-        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)]"
+        // Size classes are a FIRST-PAINT fallback only (stable lvh-based cover, no
+        // CLS); once mounted, measure() in the effect owns width/height in px,
+        // computing a true "cover" from the parent's real client box so it always
+        // fills the screen (no letterbox / black gap) and stays correct across
+        // orientation changes (iOS doesn't reliably recompute lvh on rotate).
+        // Full canvas is MAP_COLS×MAP_ROWS = 40/15 but only VIEW_COLS=20 show at a
+        // time (zoom = MAP_COLS/VIEW_COLS = 40/20), the camera pans the rest. Keep
+        // these literals in sync with constants.
+        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)] aspect-[40/15] h-auto w-[max(calc(100%*40/20),calc(100lvh*40/15))]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
           // the browser scale it smoothly — no nearest-neighbor pixelation.
@@ -3565,15 +3603,6 @@ export default function ParkGame() {
           WebkitUserSelect: 'none',
           WebkitTouchCallout: 'none',
           WebkitTapHighlightColor: 'transparent',
-          // Cover the header on any screen size: scale up so the game fills both
-          // width and height (whichever needs more), keeping the map ratio.
-          // The flex parent centers it and clips the overflow.
-          // svh (not dvh) so the size resolves at first paint and stays put: dvh
-          // can resolve late on mobile, growing the canvas from ~0 to full screen
-          // after paint — a large layout shift (this was ~0.30 CLS). svh is stable.
-          width: `max(calc(100% * ${MAP_COLS} / ${VIEW_COLS}), calc(100svh * ${MAP_COLS} / ${MAP_ROWS}))`,
-          height: 'auto',
-          aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
       />
       {/* Portalled to <body>: the fixed hero sits in a z-0 stacking context, so
