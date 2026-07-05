@@ -1724,6 +1724,11 @@ export default function ParkGame() {
       // Standing/walking cat (original code)
       const bobY = cat.idle ? Math.sin(g.frameCount * 0.05) * 2 : 0
       const walkBob = !cat.idle ? Math.sin(g.frameCount * 0.2) * 2 : 0
+      // Mid-hop: the rear legs stretch down (reaching, mid-leap) while the front
+      // feet tuck up shorter; everything else stays as the standing pose.
+      const airborne = jumpPx > 0
+      const backStretch = airborne ? s * 2.5 : 0
+      const frontTuck = airborne ? s * 1.5 : 0
 
       // Mid-hop: draw a separate shrinking shadow on the GROUND so the lift reads
       // as height (the body's own shadow below is skipped while airborne).
@@ -1855,6 +1860,18 @@ export default function ParkGame() {
       ctx.lineTo(s * 4.6, s * 1)
       ctx.fill()
 
+      // Little open mouth while airborne (with a tiny pink tongue).
+      if (airborne) {
+        ctx.fillStyle = night('#5A2A2A')
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catEar
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 2.2, s * 0.4, s * 0.4, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
       // Whiskers
       ctx.strokeStyle = NIGHT.charcoal
       ctx.lineWidth = 1
@@ -1889,21 +1906,56 @@ export default function ParkGame() {
       ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
       ctx.stroke()
 
-      // Legs. During a slap the front leg becomes the raised arm, so skip it
-      // (otherwise the koala has five legs).
+      // Legs — front pair tucks up + shifts forward mid-hop; during a slap the
+      // front (s*4) leg becomes the raised arm below, so skip it here.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
+      const frontX = airborne ? s * 1 : 0 // forward (toward the head)
+      const frontY = airborne ? -s * 1 : 0 // up
       ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 4 + legOffset, s * 2, s * 3)
-      if (slap === 0) ctx.fillRect(s * 4, s * 4 - legOffset, s * 2, s * 3)
-      ctx.fillRect(-s * 3, s * 4 - legOffset, s * 2, s * 3)
-      ctx.fillRect(-s * 1, s * 4 + legOffset, s * 2, s * 3)
+      ctx.fillRect(
+        s * 2 + frontX,
+        s * 4 + legOffset + frontY,
+        s * 2,
+        s * 3 - frontTuck,
+      )
+      if (slap === 0)
+        ctx.fillRect(
+          s * 4 + frontX,
+          s * 4 - legOffset + frontY,
+          s * 2,
+          s * 3 - frontTuck,
+        )
+      // Front paws (ride up with the tuck).
+      ctx.fillRect(
+        s * 2 + frontX,
+        s * 6.5 + legOffset - frontTuck + frontY,
+        s * 2,
+        s * 1,
+      )
+      if (slap === 0)
+        ctx.fillRect(
+          s * 4 + frontX,
+          s * 6.5 - legOffset - frontTuck + frontY,
+          s * 2,
+          s * 1,
+        )
 
-      // Paws
-      ctx.fillStyle = NIGHT.white
-      ctx.fillRect(s * 2, s * 6.5 + legOffset, s * 2, s * 1)
-      if (slap === 0) ctx.fillRect(s * 4, s * 6.5 - legOffset, s * 2, s * 1)
-      ctx.fillRect(-s * 3, s * 6.5 - legOffset, s * 2, s * 1)
-      ctx.fillRect(-s * 1, s * 6.5 + legOffset, s * 2, s * 1)
+      // Rear legs — stretched down, and rotated back a touch mid-hop so they
+      // trail the torso (drawn about the hip pivot since fillRect can't rotate).
+      const backRot = airborne ? 0.5 : 0
+      const backLen = s * 3 + backStretch
+      const backShift = airborne ? -s * 1.2 : 0 // nudge rear legs toward the tail
+      for (const [pivotX, pivotY] of [
+        [-s * 2 + backShift, s * 4 - legOffset],
+        [backShift, s * 4 + legOffset],
+      ] as const) {
+        ctx.save()
+        ctx.translate(pivotX, pivotY)
+        ctx.rotate(backRot)
+        ctx.fillRect(-s * 1, 0, s * 2, backLen)
+        ctx.fillRect(-s * 1, backLen - s * 0.5, s * 2, s * 1) // paw
+        ctx.restore()
+      }
 
       // Slap: a white front arm (rect + paw) pivoting at the shoulder — it raises
       // up, then chops down (top → bottom). `slap` is the 0..1 progress. Drawn in
