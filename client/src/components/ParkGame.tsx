@@ -1933,8 +1933,11 @@ export default function ParkGame() {
       // Object reflections: nearby scenery above the pond, mirrored into the water
       // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
       // wash below submerges them.
+      // Date.now() (wall-clock) — drawShopSprite compares it against placedAt for
+      // the pop-in; performance.now() would make the scale collapse to 0 (items
+      // vanish from the reflection).
       reflectObjects(ctx, obj.x, obj.y, g.objects, visibleX(), (o) =>
-        drawObjectArt(o, performance.now(), false),
+        drawObjectArt(o, Date.now(), false),
       )
       // Cat reflections: mirror each koala across its feet-line. Skip the local
       // koala while she's airborne; interacting:false so the "hearts" popping over
