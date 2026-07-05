@@ -3371,9 +3371,12 @@ export default function ParkGame() {
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
       />
-      {/* Hotspot tooltip + photo lightbox are portalled to <body>: the fixed hero
-          sits in a z-0 stacking context, so rendering them here would trap them
-          below the scrolling content. */}
+      {/* Portalled to <body>: the fixed hero sits in a z-0 stacking context, so
+          rendering here would trap these at the game's layer. The hover tooltip
+          (z-40) and lightbox (z-50) must ride ABOVE the content, so they need to
+          escape. The first-run control hint deliberately does NOT — it uses z-[5]
+          (above the game, below the content) so the content hides it on scroll,
+          just like the game canvas; portalling only lets it pick that z freely. */}
       {typeof document !== 'undefined' &&
         createPortal(
           <>
@@ -3424,7 +3427,7 @@ export default function ParkGame() {
               {showHint && !isTouch && (
                 <motion.div
                   aria-hidden="true"
-                  className="pointer-events-none fixed inset-x-0 bottom-32 z-30 flex justify-center px-6 sm:bottom-36"
+                  className="pointer-events-none fixed inset-x-0 bottom-32 z-[5] flex justify-center px-6 sm:bottom-36"
                   initial={
                     prefersReducedMotion
                       ? { opacity: 0 }

@@ -301,11 +301,14 @@ function FixedHero() {
 }
 
 // ─── HERO CONTROLS ──────────────────────────────────────────────────────────
-// The interactive hero UI (social links + scroll-down button) lives in its own
-// fixed overlay ABOVE the scrolling content (z-40) so nothing — the game canvas
-// or the content panel — can ever intercept its clicks. The wrapper is
-// pointer-events-none; only the actual controls opt back in, and they turn off
-// (and fade out) once the hero is scrolled out of view.
+// The interactive hero UI (social links + scroll cue + on-screen game controls)
+// lives in a fixed overlay that sits ABOVE the game but BELOW the scrolling
+// content (z-[5], vs the game's z-0 and the content panel's z-10). So — exactly
+// like the game canvas — the content slides up and hides these cues as you
+// scroll, instead of them floating over the feed. The content's hero spacer is
+// transparent AND pointer-events-none, so while the hero is in view the controls
+// still show through and stay tappable. The wrapper itself is pointer-events-none
+// (only the actual controls opt back in), and they also fade out on scroll.
 function HeroControls() {
   const [atTop, setAtTop] = useState(true)
   // The "more below" cue stays put until the player actually engages with the
@@ -349,7 +352,7 @@ function HeroControls() {
 
   return (
     <div
-      className={`fixed inset-0 z-40 pointer-events-none transition-opacity duration-500 ${
+      className={`fixed inset-0 z-[5] pointer-events-none transition-opacity duration-500 ${
         atTop ? 'opacity-100' : 'opacity-0'
       }`}
       aria-hidden={!atTop}
@@ -495,11 +498,16 @@ function SocialPill({
 // ─── CONTENT PANEL ──────────────────────────────────────────────────────────
 function ContentPanel() {
   return (
-    <div className="relative z-10">
-      {/* Spacer for hero — pointer-events-none so taps/clicks reach the game
-          canvas (and hero social icons) sitting behind it. svh (stable) so the
-          content doesn't jump as the mobile toolbar shows/hides on scroll. */}
-      <div className="h-[100svh] pointer-events-none" />
+    // The whole panel is pointer-events-none so that over the hero — where only
+    // the transparent spacer is on screen — taps/clicks fall through to the game
+    // and the hero cues (scroll cue, ability buttons) painted beneath it at
+    // z-[5]. The real content block below opts pointer events back on. This keeps
+    // those cues clickable while still letting the content paint OVER them as it
+    // scrolls up, hiding them exactly like it hides the game canvas.
+    <div className="relative z-10 pointer-events-none">
+      {/* Spacer for the hero. svh (stable) so the content doesn't jump as the
+          mobile toolbar shows/hides on scroll. */}
+      <div className="h-[100svh]" />
 
       {/* Scroll anchor for the hero's down-arrow and the skip link. It sits
           AFTER the full-viewport hero spacer, so scrolling to it lands at the
@@ -512,8 +520,9 @@ function ContentPanel() {
 
       {/* Main content area — with subtle color-shifting background.
           content-visibility pauses its paint + bg-shift animation while it's
-          scrolled out of view. */}
-      <div className="relative animate-[bg-shift_20s_ease-in-out_infinite] [contain-intrinsic-size:auto_1200px] [content-visibility:auto]">
+          scrolled out of view. pointer-events-auto re-enables interaction here
+          (the panel wrapper turns it off for the hero region above). */}
+      <div className="relative pointer-events-auto animate-[bg-shift_20s_ease-in-out_infinite] [contain-intrinsic-size:auto_1200px] [content-visibility:auto]">
         {/* Scattered paw prints as decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <PawPrint className="absolute top-[8%] right-[12%] w-5 h-5 text-white/[0.03] rotate-12" />
