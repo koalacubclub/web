@@ -216,6 +216,20 @@ mushrooms, etc.), give the placement rhythm — do NOT line things up:
   sand, dirt) never change, so they're rendered a single time into an **offscreen
   canvas** and blitted with one `drawImage` per frame instead of recomputing all
   the bézier/gradient work every frame.
+- **Off-screen objects are culled.** The camera pans the wide (58-column) canvas
+  via a CSS transform, so only a ~20-column slice is ever visible. The object pass
+  computes that slice once per frame (`visibleRange` in `game/culling.ts`, from the
+  camera's `hudShift`) and skips any object whose footprint — plus a pad for canopy/
+  rim overhang — falls entirely outside it (`isVisibleX`), so most of the map's
+  objects are never drawn. Both helpers are pure and unit-tested (`culling.test.ts`).
+- **Reflective ponds are cheap.** Each pond shows a still, reflective surface. The
+  mirrored **static** background above it never changes, so it's **baked once per
+  pond** into a cached sprite (`getPondReflection` in `game/pond.ts`, keyed by tile)
+  and blitted — no per-frame `bgCanvas` resampling. On top, nearby scenery and cats
+  are mirrored live, but only when they pass cheap gates (over the water, within a
+  few tiles above it, on screen — `objectReflectsInPond` / `catReflectAxis`, also
+  unit-tested); the expensive sprite draw runs only for the rare object/cat actually
+  above a visible pond. Off-screen ponds cost nothing (culled with everything else).
 - **The loop pauses when it can't be seen.** `requestAnimationFrame` stops when the
   tab is hidden (`visibilitychange`) or the hero is scrolled out of view. The hero
   is `position: fixed` (always intersecting the viewport), so this uses a scroll

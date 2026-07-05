@@ -40,7 +40,15 @@ import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
-import { NIGHT, night } from '@/game/constants'
+import { NIGHT, night, makeRng } from '@/game/constants'
+import {
+  getPondReflection,
+  drawPondStones,
+  pondGeom,
+  reflectObjects,
+  reflectCat,
+} from '@/game/pond'
+import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
 
@@ -202,18 +210,6 @@ const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 // Interactive on-grass hotspots.
 const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
 const HERO_PHOTO = '/hero.webp' // Koala photo for the polaroid + lightbox
-
-// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
-// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
-function makeRng(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 interface GameObject {
   type: string
@@ -1864,44 +1860,117 @@ export default function ParkGame() {
       }
     }
 
+    // Visible slice of the map in logical-x (thin wrapper over the pure
+    // visibleRange so both the object cull and the reflection pass share it). The
+    // camera pans the canvas via a CSS transform, so only this slice is on screen.
+    const visibleX = () => visibleRange(g.hudShift, viewportW, displayW)
+
+    // Draw one object's art at its own position (no slap-shake wrapper). Shared by
+    // the main object pass and the pond reflection pass.
+    function drawObjectArt(o: GameObject, now: number, playing: boolean) {
+      if (o.placedAt != null) {
+        drawShopSprite(ctx!, o, g.frameCount, {
+          now,
+          reducedMotion,
+          night: true,
+          playing,
+        })
+        return
+      }
+      switch (o.type) {
+        case 'tree':
+          drawTree(o)
+          break
+        case 'bench':
+          drawBench(o)
+          break
+        case 'flowers':
+          drawFlowers(o)
+          break
+        case 'pond':
+          drawPond(o)
+          break
+        case 'ball':
+          drawBall(o)
+          break
+        case 'stone':
+          drawStone(o)
+          break
+        case 'social':
+          drawSocialSign(o)
+          break
+        case 'photo':
+          drawPhoto(o)
+          break
+      }
+    }
+
     function drawPond(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      const wobble = Math.sin(g.frameCount * 0.03) * 2
-      ctx.fillStyle = night('#4C90E4') // slightly cobalt-leaning pond
+      const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
+      // Still water body.
+      ctx.fillStyle = night('#3C79C6')
       ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 1.5,
-        y + PIXEL + wobble * 0.1,
-        PIXEL * 1.4,
-        PIXEL * 0.8,
-        0,
-        0,
-        Math.PI * 2,
-      )
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = night('#84B2F0') // cobalt highlight
+      // Reflections, clipped to the water so nothing spills past the rim. They're
+      // drawn OPAQUE (a translucent multi-shape cat would show its own overlaps),
+      // then a single translucent water wash at the end fades the whole layer
+      // uniformly so it reads as a reflection.
+      ctx.save()
       ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 1.2,
-        y + PIXEL * 0.8,
-        PIXEL * 0.4,
-        PIXEL * 0.2,
-        -0.3,
-        0,
-        Math.PI * 2,
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      ctx.clip()
+      // Baked environment reflection: the mirrored static background (sky/hills/
+      // grass) above the pond never changes, so it's baked once per pond (see
+      // getPondReflection) and just blitted here.
+      const refl = getPondReflection(bgCanvas, obj.x, obj.y)
+      if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
+      // Object reflections: nearby scenery above the pond, mirrored into the water
+      // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
+      // wash below submerges them.
+      reflectObjects(ctx, obj.x, obj.y, g.objects, visibleX(), (o) =>
+        drawObjectArt(o, performance.now(), false),
       )
-      ctx.fill()
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2
-        const sx = x + PIXEL * 1.5 + Math.cos(angle) * PIXEL * 1.3
-        const sy = y + PIXEL + Math.sin(angle) * PIXEL * 0.7
-        ctx.fillStyle = i % 2 === 0 ? NIGHT.stone : NIGHT.stoneDark
-        ctx.beginPath()
-        ctx.arc(sx, sy, SCALE * 2, 0, Math.PI * 2)
-        ctx.fill()
+      // Cat reflections: mirror each koala across its feet-line. Skip the local
+      // koala while she's airborne; interacting:false so the "hearts" popping over
+      // her head aren't reflected.
+      const airborne =
+        g.jumpAt !== -Infinity && jumpLiftTiles(g.jumpAt, performance.now()) > 0
+      if (!airborne) {
+        reflectCat(ctx, obj.x, obj.y, g.cat.x, g.cat.y, () =>
+          drawCat({ ...g.cat, interacting: false }, undefined, 0, 0),
+        )
       }
+      if (mp) {
+        for (const p of mp.players.values()) {
+          reflectCat(ctx, obj.x, obj.y, p.rx, p.ry, () =>
+            drawCat(
+              {
+                x: p.rx,
+                y: p.ry,
+                dir: p.dir,
+                idle: false,
+                interacting: false,
+                idleFrames: 0,
+                state: p.pose,
+              },
+              undefined,
+              0,
+              0,
+            ),
+          )
+        }
+      }
+      // Water wash — one translucent layer over everything so the reflections read
+      // as submerged (and uniformly faded, avoiding per-shape transparency seams).
+      ctx.globalAlpha = 0.5
+      ctx.fillStyle = night('#3C79C6')
+      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
+      ctx.globalAlpha = 1
+      ctx.restore()
+      // Rim stones: seeded per pond, clustered and size-varied (see pondStones).
+      drawPondStones(ctx, obj.x, obj.y)
     }
 
     function drawBall(obj: GameObject) {
@@ -2602,7 +2671,14 @@ export default function ParkGame() {
       const catY = g.cat.y + 0.5
       let radioPlaying = false
       let radioTrack = 0
+      // Off-screen cull: skip any object whose footprint — plus a pad for canopy/
+      // rim overhang — falls entirely outside the visible slice (see visibleX).
+      const vis = visibleX()
+      const cullPad = PIXEL * 2
       sorted.forEach((obj) => {
+        const oLeft = obj.x * PIXEL
+        const oRight = (obj.x + obj.w) * PIXEL
+        if (!isVisibleX(oLeft, oRight, vis, cullPad)) return
         // A freshly-slapped object jitters briefly (wrap its whole draw).
         const shake = obj.hitAt
           ? slapShake(obj.hitAt, performance.now(), PIXEL)
@@ -2611,13 +2687,12 @@ export default function ParkGame() {
           ctx!.save()
           ctx!.translate(shake, 0)
         }
-        // Shop-placed decorations render via the shared sprite module (with
-        // pop-in / pre-expiry blink); base objects use their own art below.
+        // Shop-placed radios play (pulses + notes + sound) while Koala is near —
+        // but only once she's walked, and only in an "on" slap state (even cycle).
+        let playing = false
         if (obj.placedAt != null) {
-          // A radio plays (pulses + notes + sound) while Koala is near it — but
-          // only once she's walked, and only in an "on" slap state (even cycle).
           const cyc = obj.radioCycle ?? 0
-          const playing =
+          playing =
             hasWalked &&
             obj.type === 'radio' &&
             cyc % 2 === 0 &&
@@ -2627,42 +2702,8 @@ export default function ParkGame() {
             radioPlaying = true
             radioTrack = cyc === 2 ? 1 : 0 // state 2 = track B, state 0 = track A
           }
-          drawShopSprite(ctx!, obj, g.frameCount, {
-            now,
-            reducedMotion,
-            night: true,
-            playing,
-          })
-        } else {
-          switch (obj.type) {
-            case 'tree':
-              drawTree(obj)
-              break
-            case 'bench':
-              drawBench(obj)
-              break
-            case 'flowers':
-              drawFlowers(obj)
-              break
-            case 'pond':
-              drawPond(obj)
-              break
-            case 'ball':
-              drawBall(obj)
-              break
-            case 'stone':
-              drawStone(obj)
-              break
-            case 'social':
-              // Billboards render with the objects (before the cat) so the cat
-              // walks in front of them. They stay bright (no wash to escape now).
-              drawSocialSign(obj)
-              break
-            case 'photo':
-              drawPhoto(obj)
-              break
-          }
         }
+        drawObjectArt(obj, now, playing)
         if (shake) ctx!.restore()
       })
       // Fade the radio jingle in/out with proximity (idempotent per frame); when
