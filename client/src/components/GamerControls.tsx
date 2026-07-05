@@ -138,18 +138,15 @@ const ABILITY_META: Record<
 
 // Ability WHEEL: a big Jump anchored in the bottom-right corner, the three MAIN
 // abilities (dash/bite/hand — the ones you actually aim/use) in a tight arc
-// hugging it, and Meow as a small emote tucked right beside Jump (like a Wild-Rift
-// summoner spell) since it's a fire-and-forget sprite you don't position.
+// hugging it. (Meow is not here — it's a cosmetic emote fired by tapping Koala.)
 const JUMP_SIZE = 72
 const MAIN_BTN = 48
-const MEOW_BTN = 32
 const ARC_R = 72 // radius of the main arc from the jump centre
 const MAIN_ARC = [
   { a: 'dash' as const, deg: 80 },
   { a: 'bite' as const, deg: 120 },
   { a: 'hand' as const, deg: 160 },
 ]
-const MEOW_POS = { deg: 200, r: 60 } // tucked low-left, right by jump
 // Box big enough to hold the arc (jump centre sits at its bottom-right).
 const BOX = JUMP_SIZE / 2 + ARC_R + MAIN_BTN / 2 + 4
 
@@ -183,11 +180,6 @@ function AbilityDock() {
           style={place(deg, ARC_R, MAIN_BTN)}
         />
       ))}
-      <AbilityBtn
-        a="meow"
-        size={MEOW_BTN}
-        style={place(MEOW_POS.deg, MEOW_POS.r, MEOW_BTN)}
-      />
       <AbilityBtn
         a="jump"
         size={JUMP_SIZE}

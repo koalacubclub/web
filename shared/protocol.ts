@@ -121,22 +121,24 @@ export const SLAP_DURATION_MS = 380 // length of the swipe animation
 export const SLAP_REACH = 1.1 // tiles: how close an object must be to get hit
 
 // Per-ability cooldowns (server-enforced + mirrored client-side for the sweep).
+// Meow is 0 — it's a purely cosmetic emote (fired by tapping the Koala, not a
+// skill), so it has no cooldown; the socket's flood limiter still bounds spam.
 export const ABILITY_COOLDOWNS_MS: Record<AbilityKind, number> = {
   jump: JUMP_COOLDOWN_MS,
   dash: DASH_COOLDOWN_MS,
   bite: 600,
   hand: 600,
-  meow: 1500,
+  meow: 0,
 }
 
 // Global cooldown (WoW-style): firing any GCD ability briefly blocks every other
 // GCD ability, so you can't fire two at once — but movement is unaffected (you
-// can run and cast). Jump is intentionally OFF the GCD (a core traversal you can
-// always do, like jumping in WoW). This is a client-side input gate; the server
-// keeps its own per-ability enforcement.
+// can run and cast). Jump is OFF the GCD (a core traversal you can always do), and
+// so is meow (a purely cosmetic emote, not a skill). This is a client-side input
+// gate; the server keeps its own per-ability enforcement.
 export const GLOBAL_COOLDOWN_MS = 700
 export function isOnGlobalCooldown(a: AbilityKind): boolean {
-  return a !== 'jump'
+  return a !== 'jump' && a !== 'meow'
 }
 
 // Airborne food shares the ground food's foodCap budget: each spawn rolls this
