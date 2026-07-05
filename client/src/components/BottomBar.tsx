@@ -46,13 +46,12 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
     }
   }, [atTop])
 
-  // Settings popover: seed the input, focus it, close on Escape.
+  // Settings popover: seed the input (but don't auto-focus it — opening Settings
+  // shouldn't grab focus/pop the keyboard), close on Escape.
   useEffect(() => {
     if (!settingsOpen) return
     if (MULTIPLAYER_ENABLED) {
       setNameDraft(snap.name)
-      nameInputRef.current?.focus()
-      nameInputRef.current?.select()
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeSettings()
