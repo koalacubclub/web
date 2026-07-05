@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { SLAP_DURATION_MS } from '@koala/shared'
-import { slapPhase, slapSwing } from './slap'
+import { slapPhase, slapSwing, updateSlappables } from './slap'
 
 // The swipe is an out-and-back arc that peaks mid-swing and is 0 (idle) outside
 // its window. Guards the load-time sentinel regression — slapAt inits to
@@ -28,5 +28,37 @@ describe('slap animation', () => {
       slapSwing(start, start + (SLAP_DURATION_MS * 3) / 4),
     )
     expect(slapSwing(start, start + SLAP_DURATION_MS + 1)).toBe(0)
+  })
+})
+
+// A knocked ball rolls under friction and eventually settles — at which point its
+// velocity is cleared to undefined. The game loop watches for that edge to fire a
+// single `rest` (persist) for a ball we launched, so this is the client contract
+// that drives ball-position sync.
+describe('updateSlappables (ball roll → settle)', () => {
+  it('carries an injected velocity, then clears it once the ball comes to rest', () => {
+    const ball = { x: 8, y: 6, w: 1, h: 1, vx: 0.006, vy: -0.003 }
+    const startX = ball.x
+    // Advance the sim in 16ms steps until it settles (or a generous cap).
+    let settled = false
+    for (let i = 0; i < 2000 && !settled; i++) {
+      updateSlappables([ball], 16, 40, 13)
+      settled = ball.vx == null && ball.vy == null
+    }
+    expect(settled).toBe(true) // friction brought it to rest
+    expect(ball.x).not.toBe(startX) // it actually moved before stopping
+    // Stays put once settled (no residual velocity to integrate).
+    const rested = { x: ball.x, y: ball.y }
+    updateSlappables([ball], 16, 40, 13)
+    expect(ball.x).toBe(rested.x)
+    expect(ball.y).toBe(rested.y)
+  })
+
+  it('bounces off the map edges instead of escaping', () => {
+    // Fling it hard toward the left wall; it must stay in-bounds.
+    const ball = { x: 1, y: 6, w: 1, h: 1, vx: -0.02, vy: 0 }
+    for (let i = 0; i < 400; i++) updateSlappables([ball], 16, 40, 13)
+    expect(ball.x).toBeGreaterThanOrEqual(0)
+    expect(ball.x).toBeLessThanOrEqual(40 - ball.w)
   })
 })

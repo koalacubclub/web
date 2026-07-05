@@ -16,6 +16,7 @@ import {
   AIR_POINTS_MULT,
   AIR_SPAWN_SHARE,
   COLLECT_RADIUS,
+  DEFAULT_BALLS,
   FOOD_SPAWN_COOLDOWN_MS,
   FOOD_TTL_MS,
   FOODS,
@@ -23,13 +24,17 @@ import {
   foodCap,
   JUMP_DURATION_MS,
   MAX_INBOUND_MSGS_PER_SEC,
+  PLACED_PERMANENT,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
   sanitizeAction,
   sanitizeBuy,
   sanitizeCollect,
+  sanitizeMove,
   sanitizeName,
+  sanitizePush,
   sanitizeState,
+  SHOP_ITEMS_BY_KEY,
   WORLD,
 } from '@koala/shared'
 import type { Env } from './types'
@@ -135,7 +140,13 @@ export class GameWorld extends DurableObject<Env> {
     )
     // Drop anything already expired, then load the rest into memory. The author
     // name is NOT stored per item — it's resolved from the `names` table by owner.
-    sql.exec('DELETE FROM placed WHERE expiresAt <= ?', Date.now())
+    // Permanent items (expiresAt === PLACED_PERMANENT, i.e. 0 — the seeded balls)
+    // are exempt from the reap.
+    sql.exec(
+      'DELETE FROM placed WHERE expiresAt <> ? AND expiresAt <= ?',
+      PLACED_PERMANENT,
+      Date.now(),
+    )
     for (const r of sql.exec('SELECT * FROM placed').toArray()) {
       const item: PlacedItem = {
         id: String(r.id),
@@ -151,6 +162,10 @@ export class GameWorld extends DurableObject<Env> {
       }
       this.placed.set(item.id, item)
     }
+    // Seed the permanent default balls (idempotent by their stable ids — a wake
+    // after they've been moved keeps the stored position). Runs after rehydrate so
+    // it sees whatever SQLite already holds.
+    this.seedDefaults(Date.now())
     // Rehydrate presence for sockets that survived hibernation, restoring each
     // player's last-known position from its attachment.
     const sockets = this.ctx.getWebSockets()
@@ -318,6 +333,46 @@ export class GameWorld extends DurableObject<Env> {
       if (act.a === 'jump') this.jumpAt.set(a.id, now)
       // Broadcast so everyone else can animate it (the actor plays it locally).
       this.broadcast({ t: 'acted', id: a.id, a: act.a }, a.id)
+      return
+    }
+
+    if (msg.t === 'push') {
+      // A ball was launched. Motion is transient (client-simulated), so we only
+      // update the in-memory position and relay the launch velocity to peers —
+      // NO SQL here. The resting position is persisted later, on `rest`.
+      const r = sanitizePush(msg)
+      if (!r) return
+      const item = this.placed.get(r.id)
+      if (!item || item.type !== 'ball') return
+      item.x = r.x
+      item.y = r.y
+      this.broadcast(
+        { t: 'pushed', id: r.id, x: r.x, y: r.y, vx: r.vx, vy: r.vy },
+        a.id, // exclude the sender — it already simulates the roll locally
+      )
+      return
+    }
+
+    if (msg.t === 'rest') {
+      // A ball settled — the single persist point. Round to a whole tile (the x/y
+      // columns are INTEGER) and re-clamp so rounding can't push out of bounds,
+      // write SQLite once, then broadcast the authoritative tile to EVERYONE (incl.
+      // the sender, so its fractional local position snaps to the stored value).
+      const r = sanitizeMove(msg)
+      if (!r) return
+      const item = this.placed.get(r.id)
+      if (!item || item.type !== 'ball') return
+      const rx = Math.max(0, Math.min(WORLD.cols - 1, Math.round(r.x)))
+      const ry = Math.max(1, Math.min(WORLD.groundRows - 2, Math.round(r.y)))
+      item.x = rx
+      item.y = ry
+      this.ctx.storage.sql.exec(
+        'UPDATE placed SET x = ?, y = ? WHERE id = ?',
+        rx,
+        ry,
+        r.id,
+      )
+      this.broadcast({ t: 'moved', id: r.id, x: rx, y: ry })
       return
     }
 
@@ -627,6 +682,7 @@ export class GameWorld extends DurableObject<Env> {
   private authorsFor(items: PlacedItem[]): Record<string, string> {
     const authors: Record<string, string> = {}
     for (const it of items) {
+      if (!it.ownerId) continue // system-seeded items (balls) have no author
       if (!(it.ownerId in authors)) {
         authors[it.ownerId] = this.getName(it.ownerId) ?? 'Koala'
       }
@@ -638,6 +694,9 @@ export class GameWorld extends DurableObject<Env> {
 
   private overlapsPlaced(x: number, y: number, w: number, h: number): boolean {
     for (const p of this.placed.values()) {
+      // Balls are non-solid (the cat walks through them and they roll around), so
+      // they never block a purchase — and a decoration can share a ball's tile.
+      if (p.type === 'ball') continue
       if (x < p.x + p.w && x + w > p.x && y < p.y + p.h && y + h > p.y) {
         return true
       }
@@ -645,10 +704,51 @@ export class GameWorld extends DurableObject<Env> {
     return false
   }
 
-  /** Remove expired placed items (lazy, driven by player traffic). */
+  /** Seed the permanent default balls exactly once. INSERT OR IGNORE keyed on the
+   *  stable DEFAULT_BALLS ids makes this idempotent across every DO wake: the
+   *  first construction inserts them, later wakes no-op, and a ball a player has
+   *  rolled to a new tile (persisted via `rest`) is kept — existence is checked by
+   *  id only, never position. Owner is '' (system); authorsFor skips empty owners
+   *  so no phantom author tag is drawn near them. */
+  private seedDefaults(now: number): void {
+    const ball = SHOP_ITEMS_BY_KEY.ball
+    for (const d of DEFAULT_BALLS) {
+      this.ctx.storage.sql.exec(
+        `INSERT OR IGNORE INTO placed (id, owner, itemKey, type, x, y, w, h, placedAt, expiresAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        d.id,
+        '',
+        ball.key,
+        ball.type,
+        d.x,
+        d.y,
+        ball.w,
+        ball.h,
+        now,
+        PLACED_PERMANENT,
+      )
+      if (!this.placed.has(d.id)) {
+        this.placed.set(d.id, {
+          id: d.id,
+          key: ball.key,
+          type: ball.type,
+          x: d.x,
+          y: d.y,
+          w: ball.w,
+          h: ball.h,
+          ownerId: '',
+          placedAt: now,
+          expiresAt: PLACED_PERMANENT,
+        })
+      }
+    }
+  }
+
+  /** Remove expired placed items (lazy, driven by player traffic). Permanent
+   *  items (the seeded balls, expiresAt === PLACED_PERMANENT) are never swept. */
   private sweepPlaced(now: number): void {
     for (const [id, p] of this.placed) {
-      if (p.expiresAt <= now) {
+      if (p.expiresAt !== PLACED_PERMANENT && p.expiresAt <= now) {
         this.placed.delete(id)
         this.ctx.storage.sql.exec('DELETE FROM placed WHERE id = ?', id)
         this.broadcast({ t: 'unplaced', id, reason: 'expired' })

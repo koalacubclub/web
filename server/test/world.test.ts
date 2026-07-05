@@ -1,6 +1,13 @@
 import { SELF } from 'cloudflare:test'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MAX_INBOUND_MSGS_PER_SEC, NAME_MAX } from '@koala/shared'
+import {
+  DEFAULT_BALLS,
+  MAX_BALL_SPEED,
+  MAX_INBOUND_MSGS_PER_SEC,
+  NAME_MAX,
+  PLACED_PERMANENT,
+  WORLD,
+} from '@koala/shared'
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -151,7 +158,7 @@ describe('GameWorld multiplayer', () => {
     await wait(50)
     const relayed = msgsA.find((m) => m.t === 'state' && m.id === b.id)
     expect(relayed).toBeTruthy()
-    expect(relayed.s.x).toBeLessThanOrEqual(19)
+    expect(relayed.s.x).toBeLessThanOrEqual(WORLD.cols - 1)
     expect(relayed.s.y).toBeGreaterThanOrEqual(1)
   })
 
@@ -461,6 +468,104 @@ describe('GameWorld shop', () => {
     expect(persisted.ownerId).toBe(a.id) // item persists, pointing to its owner
     expect(w.authors[a.id]).toBe(a.name) // author resolved via the directory
   }, 30000)
+})
+
+// ---- server-owned, syncable balls ----
+
+describe('GameWorld balls', () => {
+  it('seeds the permanent default balls so every newcomer sees them', async () => {
+    const a = await session()
+    const { msgs } = await connect(a.cookie)
+    await wait(60)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w).toBeTruthy()
+    for (const d of DEFAULT_BALLS) {
+      const ball = w.placed.find((p: any) => p.id === d.id)
+      expect(ball).toBeTruthy()
+      expect(ball.type).toBe('ball')
+      expect(ball.x).toBe(d.x)
+      expect(ball.y).toBe(d.y)
+      expect(ball.expiresAt).toBe(PLACED_PERMANENT) // never expires
+      expect(ball.ownerId).toBe('') // system-owned, no author
+    }
+    // The empty system owner must not leak into the authors directory (no tag).
+    expect('' in (w.authors ?? {})).toBe(false)
+  })
+
+  it('relays a ball push to peers (not the sender) and clamps the speed', async () => {
+    const a = await session()
+    const { ws: wsA, msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(60)
+    const id = DEFAULT_BALLS[0].id
+    // vx/vy far beyond the cap must be clamped to ±MAX_BALL_SPEED.
+    wsA.send(
+      JSON.stringify({ t: 'push', id, x: 8.4, y: 6.1, vx: 999, vy: -999 }),
+    )
+    await wait(80)
+    const pushed = msgsB.find((m) => m.t === 'pushed' && m.id === id)
+    expect(pushed).toBeTruthy()
+    expect(pushed.vx).toBe(MAX_BALL_SPEED)
+    expect(pushed.vy).toBe(-MAX_BALL_SPEED)
+    // The sender simulates its own roll — it must NOT get a push echo.
+    expect(msgsA.some((m) => m.t === 'pushed')).toBe(false)
+  })
+
+  it('persists a rested ball to a rounded tile and tells everyone', async () => {
+    const a = await session()
+    const { ws: wsA, msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(60)
+    const id = DEFAULT_BALLS[0].id
+    wsA.send(JSON.stringify({ t: 'rest', id, x: 11.6, y: 4.4 }))
+    await wait(80)
+    const movedA = msgsA.find((m) => m.t === 'moved' && m.id === id)
+    const movedB = msgsB.find((m) => m.t === 'moved' && m.id === id)
+    expect(movedA).toBeTruthy() // sender IS told, to snap its fractional position
+    expect(movedB).toBeTruthy()
+    expect(movedA.x).toBe(12) // 11.6 → 12
+    expect(movedA.y).toBe(4) // 4.4 → 4
+    // The moved tile survives a reconnect (persisted to SQLite).
+    const c = await connect(a.cookie)
+    await wait(80)
+    const ball = c.msgs
+      .find((m) => m.t === 'welcome')
+      ?.placed.find((p: any) => p.id === id)
+    expect(ball.x).toBe(12)
+    expect(ball.y).toBe(4)
+  }, 15000)
+
+  it('ignores push/rest for an unknown id or a non-ball item', async () => {
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(60)
+    // Buy a non-ball item, then try to push/rest it.
+    await earnAtLeast(ws, msgs, 20) // flowers cost 20
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 5, y: 5 }))
+    await wait(150)
+    const flowers = msgs.find(
+      (m) => m.t === 'placed' && m.item.key === 'flowers',
+    )
+    expect(flowers).toBeTruthy()
+    ws.send(
+      JSON.stringify({
+        t: 'push',
+        id: flowers.item.id,
+        x: 5,
+        y: 5,
+        vx: 0.01,
+        vy: 0,
+      }),
+    )
+    ws.send(JSON.stringify({ t: 'rest', id: 'no-such-ball', x: 1, y: 1 }))
+    await wait(80)
+    expect(msgsB.some((m) => m.t === 'pushed')).toBe(false)
+    expect(msgsB.some((m) => m.t === 'moved')).toBe(false)
+  }, 15000)
 })
 
 // ---- server-authoritative display names ----

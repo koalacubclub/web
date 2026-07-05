@@ -10,7 +10,7 @@
 // the server can validate positions without pulling in any browser/canvas code.
 // These MUST stay in sync with MAP_COLS / GROUND_ROWS in ParkGame.tsx.
 export const WORLD = {
-  cols: 20, // MAP_COLS
+  cols: 58, // MAP_COLS
   groundRows: 13, // GROUND_ROWS
 } as const
 
@@ -225,6 +225,31 @@ export const SHOP_ITEMS_BY_KEY: Record<string, ShopItem> = Object.fromEntries(
 // How long a purchased item lives before it expires (wall-clock, server clock).
 export const PLACED_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// `expiresAt` sentinel for items that never expire (the seeded default balls).
+// Chosen as 0 because every expiry check is `expiresAt <= now`; guarding it with
+// an explicit `expiresAt !== PLACED_PERMANENT` is trivial and it stores cleanly
+// in the existing INTEGER column (no schema change, reads as `<> 0` in SQL).
+export const PLACED_PERMANENT = 0
+
+// The default balls that ship with every park — seeded server-side as permanent
+// PlacedItems (so a pushed ball's position syncs + persists). Stable ids double
+// as the seeding idempotency key: re-seeding INSERT-OR-IGNOREs by these ids, so a
+// ball a player has since rolled elsewhere is never reset to its default tile.
+// (w/h/type come from the `ball` catalog entry — no separate catalog record.)
+// Coords are FINAL map tiles (post the client's LEFT_PAD rebalance): the two
+// original balls sit either side of the social hub, plus one out in the new-left
+// region. They're seeded/rendered at these tiles directly (never LEFT_PAD-shifted).
+export const DEFAULT_BALLS = [
+  { id: 'ball-1', x: 26, y: 6 },
+  { id: 'ball-2', x: 46, y: 6 },
+  { id: 'ball-3', x: 6, y: 6 },
+] as const
+
+// Cap (tiles/ms) on a ball's injected launch velocity. ~3× the client's 0.006
+// slap speed — enough headroom for feel, but bounds a hostile client so it can't
+// fling a ball across the map in one frame or feed the integrator a huge/NaN vx.
+export const MAX_BALL_SPEED = 0.02
+
 // A placed decoration owned by the server and shared with everyone. It points to
 // its owner by id only; the display name is resolved from the `authors` map (so a
 // rename updates every item that player owns, with the name stored once).
@@ -271,6 +296,13 @@ export type ClientMessage =
   // Trigger an ability. Server rate-limits per kind, applies any side effect
   // (jump opens this session's airborne-collect window), and broadcasts `acted`.
   | { t: 'action'; a: AbilityKind }
+  // Launch a ball roll: `id` is the ball's PlacedItem id, x/y its current tile,
+  // vx/vy the launch velocity (tiles/ms). The slapper simulates the roll locally;
+  // the server relays this once as `pushed` so peers run the same integrator.
+  | { t: 'push'; id: string; x: number; y: number; vx: number; vy: number }
+  // A ball has come to rest at x/y — the single persist trigger (server rounds to
+  // a tile, writes SQLite once, and broadcasts the authoritative `moved`).
+  | { t: 'rest'; id: string; x: number; y: number }
 
 export type BuyFailReason = 'insufficient' | 'occupied' | 'invalid'
 
@@ -307,6 +339,12 @@ export type ServerMessage =
   | { t: 'stats'; active24h: number; totalSessions: number }
   // A player used an ability — broadcast to everyone else so they animate it.
   | { t: 'acted'; id: string; a: AbilityKind }
+  // A ball was launched by a peer (relayed from `push`, sender excluded). Seeds
+  // the ball's velocity so every other client rolls it via the shared integrator.
+  | { t: 'pushed'; id: string; x: number; y: number; vx: number; vy: number }
+  // A ball's authoritative resting tile (from `rest`), broadcast to EVERYONE incl.
+  // the slapper, so its fractional local position reconciles to the stored tile.
+  | { t: 'moved'; id: string; x: number; y: number }
 
 export const PROTOCOL_VERSION = 1
 
@@ -360,6 +398,49 @@ export function sanitizeAction(raw: unknown): { a: AbilityKind } | null {
   return typeof a === 'string' && (ABILITIES as readonly string[]).includes(a)
     ? { a: a as AbilityKind }
     : null
+}
+
+// A bounded ball id + a finite tile position, clamped to the same playable bounds
+// as sanitizeState (a ball is 1×1). Unlike sanitizeBuy, x/y may be FRACTIONAL — a
+// ball rolls to a sub-tile spot before it settles. Shared by push + rest.
+function sanitizeBallPos(
+  raw: unknown,
+): { id: string; x: number; y: number } | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const { id, x, y } = o
+  if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
+  if (typeof x !== 'number' || !Number.isFinite(x)) return null
+  if (typeof y !== 'number' || !Number.isFinite(y)) return null
+  return {
+    id,
+    x: Math.max(0, Math.min(WORLD.cols - 1, x)),
+    y: Math.max(1, Math.min(WORLD.groundRows - 1.5, y)),
+  }
+}
+
+// Validate an untrusted ball-launch (`push`): a bounded position plus a finite
+// velocity, each component clamped to ±MAX_BALL_SPEED so a hostile client can't
+// fling a ball across the map or feed the integrator a huge/NaN value.
+export function sanitizePush(
+  raw: unknown,
+): { id: string; x: number; y: number; vx: number; vy: number } | null {
+  const pos = sanitizeBallPos(raw)
+  if (!pos) return null
+  const o = raw as Record<string, unknown>
+  const { vx, vy } = o
+  if (typeof vx !== 'number' || !Number.isFinite(vx)) return null
+  if (typeof vy !== 'number' || !Number.isFinite(vy)) return null
+  const clamp = (v: number) =>
+    Math.max(-MAX_BALL_SPEED, Math.min(MAX_BALL_SPEED, v))
+  return { ...pos, vx: clamp(vx), vy: clamp(vy) }
+}
+
+// Validate an untrusted ball-settle (`rest`): just the bounded position.
+export function sanitizeMove(
+  raw: unknown,
+): { id: string; x: number; y: number } | null {
+  return sanitizeBallPos(raw)
 }
 
 // Validate an untrusted display name: strip control chars, collapse whitespace,

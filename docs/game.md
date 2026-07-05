@@ -11,7 +11,7 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   `requestAnimationFrame` loop. All mutable state lives in a `useRef`
   (`gameRef.current`) — the game never triggers React re-renders (perf).
 - **Coordinate system:** tiles of `PIXEL = 16 * SCALE` (48px). The map is
-  `MAP_COLS=20` × `MAP_ROWS = GROUND_ROWS(13) + SKY_ROWS(4)`. The playable park is
+  `MAP_COLS=58` × `MAP_ROWS = GROUND_ROWS(13) + SKY_ROWS(2)`. The playable park is
   the ground rows; the world is drawn shifted down by `WORLD_OFFSET` so there's sky
   above it. Positions are tile coords; cat/food centers are `tile + 0.5`.
 - **Render order:** ground/objects/cat are drawn, then a purple `multiply` night
@@ -165,7 +165,9 @@ so the React UI and the imperative canvas never fight.
   `PLACED_TTL_MS` (7 days) after purchase** — a wall-clock `expiresAt` (NOT
   `frameCount`, which pauses with the loop), swept on load and ~once/second during
   play. Fresh items **pop in**; they **blink** in the last 8 s before expiring
-  (both wall-clock; skipped under `prefers-reduced-motion`).
+  (both wall-clock; skipped under `prefers-reduced-motion`). **Permanent** items
+  (the seeded default balls) carry `expiresAt = PLACED_PERMANENT` (`0`), which both
+  the sweep and the DO's wake-time reap explicitly skip — they never expire.
 - **Persistence:** **multiplayer** — coins + placed items live in the Durable
   Object's SQLite (per-session wallet; shared placed table), fed into `parkStore`
   over the WebSocket. **Solo** — localStorage (`kcc-park-coins`/`-best`/`-placed`
@@ -248,13 +250,12 @@ ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
   wind-up → fast strike → hold; the front leg is hidden mid-swing so she isn't
   five-legged). Locally it targets the nearest object within `SLAP_REACH`
   (distance to the object's **box**, so big objects like the pond are reachable at
-  an edge): the base **ball** is knocked directly away from the cat
+  an edge): a **ball** is knocked directly away from the cat
   (`updateSlappables` integrates velocity + friction + edge bounce), the **pond**
   splashes, a **radio** toggles its music, and everything else does a brief
-  `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble and
-  shop-placed decor never moves. **Object reactions are client-local** — peers
-  only see the swipe pose (see the PR follow-ups: syncing reactions + a shared
-  ball). **Bite** = a cosmetic emote (`drawEmote`); **meow** is the same emote but
+  `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble. **Balls
+  are server-synced** (see Multiplayer → Balls); the other object reactions are
+  still client-local (peers only see the swipe pose). **Bite** = a cosmetic emote (`drawEmote`); **meow** is the same emote but
   fired by **tapping Koala**, not a dock button (cosmetic, `ABILITY_COOLDOWNS_MS.
 meow = 0`, off the GCD). **Global cooldown** (`GLOBAL_COOLDOWN_MS`,
   `isOnGlobalCooldown`): firing any GCD ability briefly blocks the other GCD
@@ -283,6 +284,27 @@ meow = 0`, off the GCD). **Global cooldown** (`GLOBAL_COOLDOWN_MS`,
   position can't block a pickup); the shop `sendBuy(key,x,y)`s. Coins/placed are
   fed into `parkStore` via `onWallet`/`onPlaced` so the HUD + shop read one store.
   See the Shop section above and [decisions.md](./decisions.md) #14/#15.
+- **Balls (server-synced, no game tick):** every ball is a server-owned
+  `PlacedItem` (unified — no more client-only base balls, no `placedAt == null`
+  special case). The two defaults are **seeded server-side** as permanent items
+  with stable ids (`DEFAULT_BALLS`), `INSERT OR IGNORE`d in the DO constructor so
+  seeding is idempotent across wakes and a rolled ball is never reset. **Motion is
+  seed-and-simulate:** the koala that slaps a ball owns the roll and runs
+  `updateSlappables` locally, sending **one** `push{id,x,y,vx,vy}` (the launch
+  vector). The server relays it as `pushed` to peers (sender excluded), who run the
+  **same integrator** — so every client renders the roll at 60 fps with no position
+  stream (respects `MAX_INBOUND_MSGS_PER_SEC`). When the ball settles the owner
+  sends **one** `rest{id,x,y}`; the server rounds to a tile (the `x/y` columns are
+  INTEGER — no migration), writes SQLite **once**, and broadcasts the authoritative
+  `moved` to everyone (incl. the slapper, whose fractional position snaps to the
+  stored tile). Velocity is transient — never persisted, never routed through
+  `parkStore` (which would re-render the shop UI); it's applied straight onto the
+  in-flight `GameObject`. `ParkGame` shields an in-flight ball from the store's
+  wholesale objects rebuild via `ballRolling`/`ballOwned` (see `rebuildObjects`).
+  No server tick is added: `push`/`rest` are pure relays like `state`/`acted`, so
+  the DO still hibernates. **Solo** (no backend) seeds the two balls locally and
+  rolls them purely client-side, exactly as before. Balls are **non-solid** and
+  never block a purchase (`overlapsPlaced` skips them).
 
 The camera transform (`parkCamera.ts`, CSS transform on the `<canvas>`) is
 camera-agnostic for remotes — they're drawn in world space and pan with everyone
