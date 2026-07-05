@@ -174,6 +174,31 @@ so the React UI and the imperative canvas never fight.
   - `kcc-device-id` + schema version) behind the same `sync` seam. Callers (game
     loop + shop UI) don't change between modes.
 
+## Scenery layout — keep it organic
+
+The park should read as a natural, hand-placed scene, not a grid. Whenever you
+**expand the map** (more cols/rows) or **add base objects** (trees, benches,
+mushrooms, etc.), give the placement rhythm — do NOT line things up:
+
+- **Vary the Y** of a row of objects. Trees especially must not all sit at the
+  same `y` along the horizon — stagger them (integer or fractional tiles, e.g.
+  `y: 1.2 / 1.7 / 2.3`) so the treeline undulates instead of forming a straight
+  band.
+- **Space unevenly along X.** Avoid a constant gap between neighbours (a "picket
+  fence" look). Mix short and long gaps (e.g. cols `16, 20, 27, 37` → gaps
+  `4, 7, 10`).
+- The procedural per-object jitter (`makeRng` seeded by tile) varies each
+  sprite's size/shape, but it does NOT move the tile — the varied `x/y` above is
+  what breaks the alignment.
+- New grass patches (`drawBlobPatch`) follow the same rule: overlap + scatter at
+  irregular sizes/positions; keep the topmost ones tucked under the hill ridge and
+  don't blanket the bottom edge solid (leave sand showing).
+- **Keep the moon in clear sky** (`drawMoon`, `moonX`): it must not overlap trees
+  or other objects, and only the hill ridge may just clip its lower edge — never
+  let a tree/canopy or a raised object collide with the disc. If you move the moon
+  or add tall objects near it, re-check they don't touch. It also has to stay
+  inside the load-time centered view band (~cols 19–39) so it's visible on open.
+
 ## Rendering & performance
 
 - **Device-resolution canvas.** The backing store is sized to ~device pixels —

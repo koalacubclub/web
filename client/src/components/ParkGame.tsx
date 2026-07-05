@@ -396,12 +396,12 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 16,
-        y: 1,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ A bird chirps!',
       },
-      { type: 'tree', x: 10, y: 1, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
+      { type: 'tree', x: 10, y: 1.6, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
       {
         type: 'bench',
         x: 6,
@@ -430,24 +430,24 @@ export default function ParkGame() {
       // New right-half scenery (cols 20..39) added when the map was doubled.
       {
         type: 'tree',
-        x: 21,
-        y: 1,
+        x: 20,
+        y: 2.3,
         w: 2,
         h: 2,
         interactMsg: '♪ Wind in the branches...',
       },
       {
         type: 'tree',
-        x: 28,
-        y: 1,
+        x: 27,
+        y: 1.3,
         w: 2,
         h: 2,
         interactMsg: '♪ An apple orchard!',
       },
       {
         type: 'tree',
-        x: 35,
-        y: 1,
+        x: 37,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ Deep in the grove',
@@ -552,7 +552,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 0,
-        y: 1,
+        y: 1.7,
         w: 2,
         h: 2,
         interactMsg: "♪ Leaves stir at the park's far edge",
@@ -560,7 +560,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 7,
-        y: 1,
+        y: 1.2,
         w: 2,
         h: 2,
         interactMsg: '♪ A tall old friend',
