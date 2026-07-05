@@ -157,22 +157,33 @@ const ABILITY_META: Record<
   meow: { label: 'Meow', Icon: MessageCircle },
 }
 
-// Ability WHEEL: Jump anchored in the bottom-right corner; the four others fan out
-// in a quarter-arc hugging it (top → left), so the cluster stays compact.
-const JUMP_SIZE = 60
-const ARC_BTN = 42
-// Radius from the jump centre. Must be large enough that adjacent arc buttons
-// (30° apart) don't overlap: chord = 2·R·sin15° ≥ ARC_BTN ⇒ R ≥ ~81. Use 88 for
-// a comfortable gap.
-const ARC_R = 88
-const ARC = [
-  { a: 'dash' as const, deg: 90 }, // straight above jump
+// Ability WHEEL: a big Jump anchored in the bottom-right corner, the three MAIN
+// abilities (dash/bite/hand — the ones you actually aim/use) in a tight arc
+// hugging it, and Meow as a small emote tucked right beside Jump (like a Wild-Rift
+// summoner spell) since it's a fire-and-forget sprite you don't position.
+const JUMP_SIZE = 72
+const MAIN_BTN = 48
+const MEOW_BTN = 32
+const ARC_R = 72 // radius of the main arc from the jump centre
+const MAIN_ARC = [
+  { a: 'dash' as const, deg: 80 },
   { a: 'bite' as const, deg: 120 },
-  { a: 'hand' as const, deg: 150 },
-  { a: 'meow' as const, deg: 180 }, // straight left of jump
+  { a: 'hand' as const, deg: 160 },
 ]
+const MEOW_POS = { deg: 200, r: 60 } // tucked low-left, right by jump
 // Box big enough to hold the arc (jump centre sits at its bottom-right).
-const BOX = JUMP_SIZE / 2 + ARC_R + ARC_BTN / 2
+const BOX = JUMP_SIZE / 2 + ARC_R + MAIN_BTN / 2 + 4
+
+// Polar → absolute right/bottom offsets, measured from the jump centre (which
+// sits at the box's bottom-right).
+function place(deg: number, r: number, size: number): React.CSSProperties {
+  const rad = (deg * Math.PI) / 180
+  return {
+    position: 'absolute',
+    right: JUMP_SIZE / 2 - r * Math.cos(rad) - size / 2,
+    bottom: JUMP_SIZE / 2 + r * Math.sin(rad) - size / 2,
+  }
+}
 
 function AbilityDock() {
   return (
@@ -185,24 +196,19 @@ function AbilityDock() {
         height: BOX,
       }}
     >
-      {ARC.map(({ a, deg }) => {
-        const rad = (deg * Math.PI) / 180
-        // Centre offset from the jump centre (which is at the box's bottom-right).
-        const centreRight = JUMP_SIZE / 2 - ARC_R * Math.cos(rad)
-        const centreBottom = JUMP_SIZE / 2 + ARC_R * Math.sin(rad)
-        return (
-          <AbilityBtn
-            key={a}
-            a={a}
-            size={ARC_BTN}
-            style={{
-              position: 'absolute',
-              right: centreRight - ARC_BTN / 2,
-              bottom: centreBottom - ARC_BTN / 2,
-            }}
-          />
-        )
-      })}
+      {MAIN_ARC.map(({ a, deg }) => (
+        <AbilityBtn
+          key={a}
+          a={a}
+          size={MAIN_BTN}
+          style={place(deg, ARC_R, MAIN_BTN)}
+        />
+      ))}
+      <AbilityBtn
+        a="meow"
+        size={MEOW_BTN}
+        style={place(MEOW_POS.deg, MEOW_POS.r, MEOW_BTN)}
+      />
       <AbilityBtn
         a="jump"
         size={JUMP_SIZE}
