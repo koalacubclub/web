@@ -383,9 +383,10 @@ export function clampToSpeed(
   next: { x: number; y: number },
   dtMs: number,
   dashActive: boolean,
+  speed: number = MOVE_SPEED_TILES_PER_MS,
 ): { x: number; y: number } {
   const dt = Math.max(1, dtMs)
-  let budget = MOVE_SPEED_TILES_PER_MS * dt * MOVE_SPEED_SLACK
+  let budget = speed * dt * MOVE_SPEED_SLACK
   if (dashActive) budget += DASH_TILES
   const dx = next.x - prev.x
   const dy = next.y - prev.y

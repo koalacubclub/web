@@ -1,5 +1,5 @@
-import { SELF } from 'cloudflare:test'
-import { afterEach, describe, expect, it } from 'vitest'
+import { env, runInDurableObject, SELF } from 'cloudflare:test'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_BALLS,
   MAX_BALL_SPEED,
@@ -9,8 +9,35 @@ import {
   PLACED_PERMANENT,
   WORLD,
 } from '@koala/shared'
+import type { GameWorld } from '../src/GameWorld'
 
 const ORIGIN = 'http://localhost:5173'
+
+// The one shared world every connection routes to (worker.ts ROOM).
+const ROOM = 'world-main'
+
+// The real movement-speed cap. Movement-heavy tests that only need to POSITION
+// the cat (to collect food, buy, etc.) run with an effectively-uncapped speed so
+// a single state update reaches any tile — otherwise the server would clamp the
+// jump and the setup would have to crawl at walking pace. The anti-teleport
+// tests below re-pin this to the REAL cap so they exercise the true production
+// clamp. Set in-place on the (single, shared) DO instance via runInDurableObject
+// — the test runner shares workerd's isolate with the DO, so this reaches it.
+const REAL_SPEED = MOVE_SPEED_TILES_PER_MS
+const UNCAPPED_SPEED = 1000
+
+async function setMoveSpeed(v: number): Promise<void> {
+  const stub = env.GAME_WORLD.get(
+    env.GAME_WORLD.idFromName(ROOM),
+  ) as DurableObjectStub<GameWorld>
+  await runInDurableObject(stub, (instance) => {
+    ;(instance as unknown as { moveSpeed: number }).moveSpeed = v
+  })
+}
+
+// Default every test to the uncapped speed; the anti-teleport describe overrides
+// back to REAL_SPEED in a nested beforeEach (which runs after this one).
+beforeEach(() => setMoveSpeed(UNCAPPED_SPEED))
 
 // Track sockets so we always tidy up between tests.
 const open: WebSocket[] = []
@@ -234,43 +261,33 @@ const sendState = (ws: WebSocket, x: number, y: number) =>
 const sendCollect = (ws: WebSocket, id: string) =>
   ws.send(JSON.stringify({ t: 'collect', id }))
 
-// Walk the koala from `from` to `to` in steps that stay under the server's
-// speed cap, so the anti-teleport clamp accepts every one (a raw teleport would
-// be clamped, leaving the cat short of the target and its collect out of range).
-// Returns the arrival position so callers can chain walks. Uses a per-step
-// budget comfortably below MOVE_SPEED_SLACK to tolerate timer jitter.
-const WALK_STEP_MS = 120
-// Map centre — the canonical start/stand tile. Walks begin here so their `from`
-// matches the server's position (a mismatched `from` would get the first step
-// clamped), and it bounds the distance to any food.
-const CENTER = {
-  x: Math.floor(WORLD.cols / 2),
-  y: Math.floor(WORLD.groundRows / 2),
-}
-async function walkTo(
+// Walk from `from` to `to` at the REAL cap, one in-budget step at a time, so the
+// server accepts each move (used only by the production-cap end-to-end test; the
+// uncapped suites just teleport). Each step is safely under the server budget:
+// server budget = REAL_SPEED * dt * SLACK with dt >= the ~120ms wait floor, and
+// we step REAL_SPEED * 120 * 1.4 < that. Bounded loop guards against overshoot.
+async function walkRealSpeed(
   ws: WebSocket,
   from: { x: number; y: number },
   to: { x: number; y: number },
-): Promise<{ x: number; y: number }> {
-  const budget = MOVE_SPEED_TILES_PER_MS * WALK_STEP_MS * 1.4
+): Promise<void> {
+  const stepMs = 120
+  const budget = REAL_SPEED * stepMs * 1.4
   let { x, y } = from
   for (let guard = 0; guard < 4000; guard++) {
     const dx = to.x - x
     const dy = to.y - y
     const dist = Math.hypot(dx, dy)
     if (dist <= budget) {
-      x = to.x
-      y = to.y
-      sendState(ws, x, y)
-      await wait(WALK_STEP_MS)
-      break
+      sendState(ws, to.x, to.y)
+      await wait(stepMs)
+      return
     }
     x += (dx / dist) * budget
     y += (dy / dist) * budget
     sendState(ws, x, y)
-    await wait(WALK_STEP_MS)
+    await wait(stepMs)
   }
-  return { x, y }
 }
 
 // The DO auto-spawns food lazily; grab whatever is currently live (ground or
@@ -282,7 +299,7 @@ async function obtainFood(ws: WebSocket, msgs: any[]): Promise<any> {
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
     const f = [...fromWelcome, ...spawned].find(Boolean)
     if (f) return f
-    sendState(ws, CENTER.x, CENTER.y)
+    sendState(ws, 10, 6)
     await wait(500)
   }
   throw new Error('no food spawned in time')
@@ -304,9 +321,9 @@ describe('GameWorld likes', () => {
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // Walk onto it (a teleport would be speed-clamped). Jump so an airborne food
-    // is collectable too (harmless for ground food), then collect.
-    await walkTo(ws, CENTER, { x: food.x, y: food.y })
+    // Stand exactly on it (server-known position). Jump so an airborne food is
+    // collectable too (harmless for ground food), then collect.
+    sendState(ws, food.x, food.y)
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
@@ -321,18 +338,16 @@ describe('GameWorld likes', () => {
         (m) => m.t === 'despawn' && m.id === food.id && m.reason === 'taken',
       ),
     ).toBe(true)
-  }, 25000)
+  }, 10000)
 
   it('ignores a collect when the koala is out of range', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    // Walk to the far horizontal edge (opposite the food), so the cat is
-    // genuinely out of range. Jump so range is the ONLY reason the collect is
-    // rejected (airborne food would otherwise need a jump window).
-    const farX = food.x <= WORLD.cols / 2 ? WORLD.cols - 2 : 1
-    await walkTo(ws, CENTER, { x: farX, y: food.y })
+    // Stand far away, then try to collect. Jump so range is the ONLY reason the
+    // collect is rejected (airborne food would otherwise need a jump window).
+    sendState(ws, food.x > 9 ? 1 : 18, food.y)
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
     sendCollect(ws, food.id)
@@ -340,14 +355,14 @@ describe('GameWorld likes', () => {
     expect(msgs.some((m) => m.t === 'collected' && m.id === food.id)).toBe(
       false,
     )
-  }, 25000)
+  }, 10000)
 
   it('awards a food only once even if collected twice (dedupe/race)', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(ws, msgs)
-    await walkTo(ws, CENTER, { x: food.x, y: food.y })
+    sendState(ws, food.x, food.y)
     await wait(80)
     ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // so airborne food is collectable too
     sendCollect(ws, food.id)
@@ -355,14 +370,14 @@ describe('GameWorld likes', () => {
     await wait(150)
     const hits = msgs.filter((m) => m.t === 'collected' && m.id === food.id)
     expect(hits.length).toBe(1)
-  }, 25000)
+  }, 10000)
 
   it('persists likes across a reconnect with the same session', async () => {
     const a = await session()
     const first = await connect(a.cookie)
     await wait(50)
     const food = await obtainFood(first.ws, first.msgs)
-    await walkTo(first.ws, CENTER, { x: food.x, y: food.y })
+    sendState(first.ws, food.x, food.y)
     await wait(80)
     first.ws.send(JSON.stringify({ t: 'action', a: 'jump' })) // airborne food is collectable too
     sendCollect(first.ws, food.id)
@@ -377,7 +392,7 @@ describe('GameWorld likes', () => {
     await wait(80)
     const w = second.msgs.find((m) => m.t === 'welcome')
     expect(w.likes).toBe(food.points)
-  }, 25000)
+  }, 10000)
 
   it('rejects a malformed collect id without awarding or crashing', async () => {
     const a = await session()
@@ -417,14 +432,10 @@ async function earnAtLeast(
 ): Promise<number> {
   const done = new Set<string>()
   let likes = 0
-  // Track the cat's position and start at the map centre to bound walk distance.
-  // Movement now obeys the server's speed cap, so we WALK to each food (a raw
-  // teleport would be clamped, leaving the cat out of collect range).
-  let pos = { ...CENTER }
   for (let i = 0; i < 60 && likes < target; i++) {
     let f = liveFood(msgs, done)
     for (let j = 0; j < 12 && !f; j++) {
-      sendState(ws, pos.x, pos.y) // drive spawns from where we stand (dist 0)
+      sendState(ws, 10, 6)
       await wait(500)
       f = liveFood(msgs, done)
     }
@@ -432,7 +443,7 @@ async function earnAtLeast(
     // rather than giving up early.
     if (!f) continue
     done.add(f.id)
-    pos = await walkTo(ws, pos, { x: f.x, y: f.y })
+    sendState(ws, f.x, f.y)
     // Jump so an AIRBORNE food (which now shares the foodCap budget) is
     // collectable too; harmless for ground food, which collects regardless.
     ws.send(JSON.stringify({ t: 'action', a: 'jump' }))
@@ -456,7 +467,7 @@ describe('GameWorld shop', () => {
     expect(
       msgs.some((m) => m.t === 'buyfail' && m.reason === 'insufficient'),
     ).toBe(true)
-  }, 25000)
+  }, 10000)
 
   it('rejects a buy with an unknown item key', async () => {
     const a = await session()
@@ -467,7 +478,7 @@ describe('GameWorld shop', () => {
     expect(msgs.some((m) => m.t === 'buyfail' && m.reason === 'invalid')).toBe(
       true,
     )
-  }, 25000)
+  }, 10000)
 
   it('places an item, deducts likes, shares it, and persists it', async () => {
     const a = await session()
@@ -513,7 +524,7 @@ describe('GameWorld shop', () => {
     expect(persisted).toBeTruthy()
     expect(persisted.ownerId).toBe(a.id) // item persists, pointing to its owner
     expect(w.authors[a.id]).toBe(a.name) // author resolved via the directory
-  }, 45000)
+  }, 30000)
 })
 
 // ---- server-owned, syncable balls ----
@@ -581,7 +592,7 @@ describe('GameWorld balls', () => {
       ?.placed.find((p: any) => p.id === id)
     expect(ball.x).toBe(12)
     expect(ball.y).toBe(4)
-  }, 45000)
+  }, 15000)
 
   it('ignores push/rest for an unknown id or a non-ball item', async () => {
     const a = await session()
@@ -611,7 +622,7 @@ describe('GameWorld balls', () => {
     await wait(80)
     expect(msgsB.some((m) => m.t === 'pushed')).toBe(false)
     expect(msgsB.some((m) => m.t === 'moved')).toBe(false)
-  }, 45000)
+  }, 15000)
 })
 
 // ---- server-authoritative display names ----
@@ -740,7 +751,7 @@ describe('GameWorld authorship follows rename (directory)', () => {
     const w = peer.msgs.find((m) => m.t === 'welcome')
     expect(w.placed.some((p: any) => p.id === placed.item.id)).toBe(true)
     expect(w.authors[a.id]).toBe('Pixel')
-  }, 45000)
+  }, 30000)
 })
 
 // ---- world stats (session ledger) ----
@@ -809,25 +820,19 @@ const sendJump = (ws: WebSocket) => sendAction(ws, 'jump')
 // before long.
 async function obtainAirFood(ws: WebSocket, msgs: any[]): Promise<any> {
   const grabbed = new Set<string>()
-  // Track position + walk (not teleport) so the speed cap accepts our moves.
-  let pos = { ...CENTER }
   for (let i = 0; i < 40; i++) {
     const fromWelcome = msgs.find((m) => m.t === 'welcome')?.food ?? []
     const spawned = msgs.filter((m) => m.t === 'spawn').map((m) => m.f)
     const all = [...fromWelcome, ...spawned]
     const air = all.find((f) => f?.air)
-    if (air) {
-      // Walk under it so the caller's on-target collect is in range.
-      await walkTo(ws, pos, { x: air.x, y: air.y })
-      return air
-    }
+    if (air) return air
     const ground = all.find((f) => f && !f.air && !grabbed.has(f.id))
     if (ground) {
       grabbed.add(ground.id)
-      pos = await walkTo(ws, pos, { x: ground.x, y: ground.y })
+      sendState(ws, ground.x, ground.y)
       sendCollect(ws, ground.id)
     } else {
-      sendState(ws, pos.x, pos.y)
+      sendState(ws, 10, 6)
     }
     await wait(500)
   }
@@ -913,11 +918,15 @@ describe('GameWorld airborne food', () => {
     const got = msgs.find((m) => m.t === 'collected' && m.id === air.id)
     expect(got).toBeTruthy()
     expect(got.points).toBe(air.points)
-  }, 60000)
+  }, 25000)
 })
 
 describe('GameWorld movement speed (anti-teleport)', () => {
-  // The last position B relayed to A (peer A observes the server-clamped value).
+  // Unlike every other suite, these assert the REAL cap, so pin it back here
+  // (this nested beforeEach runs after the file-level uncapped default).
+  beforeEach(() => setMoveSpeed(REAL_SPEED))
+
+  // The last position B relayed to A — A observes the server-clamped value.
   const lastStateOf = (msgs: any[], id: string) =>
     msgs.filter((m) => m.t === 'state' && m.id === id).at(-1)
 
@@ -937,8 +946,12 @@ describe('GameWorld movement speed (anti-teleport)', () => {
 
     const relayed = lastStateOf(msgsA, b.id)
     expect(relayed).toBeTruthy()
-    expect(relayed.s.x).toBeLessThan(7) // nowhere near the claimed x=40
-    expect(relayed.s.y).toBeLessThan(7) // nor the claimed y=10
+    // The real per-update budget is a fraction of a tile, so the clamped point
+    // sits just past (5,5). Assert it barely moved (within ~1 tile) rather than
+    // a loose x<7 — this catches a silently-inflated slack, not just a teleport.
+    expect(relayed.s.x).toBeGreaterThan(5) // did move toward the target
+    expect(relayed.s.x).toBeLessThan(6) // but nowhere near the claimed x=40
+    expect(relayed.s.y).toBeLessThan(6) // nor the claimed y=10
   })
 
   it('lets honest walking-speed movement through unchanged', async () => {
@@ -949,15 +962,38 @@ describe('GameWorld movement speed (anti-teleport)', () => {
     await wait(50)
 
     sendState(wsB, 5, 5)
-    await wait(80)
+    // 120ms gives the honest step ~3x budget headroom over the min dt it needs,
+    // so scheduler jitter can't compress dt enough to clamp it.
+    await wait(120)
     // A small step well within the per-update walk budget passes untouched.
     sendState(wsB, 5.15, 5)
-    await wait(80)
+    await wait(120)
 
     const relayed = lastStateOf(msgsA, b.id)
     expect(relayed).toBeTruthy()
     expect(relayed.s.x).toBeCloseTo(5.15, 5)
   })
+
+  it('lets a real-speed walk accumulate across many steps to reach its target', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    // Walk 7 tiles at the REAL cap, one in-budget step at a time. Every step must
+    // be accepted so the position accumulates and actually reaches (12,5) — this
+    // guards the walk->clamp pipeline at production speed: an over-tight cap (or a
+    // budget measured from a stale origin instead of the last accepted position)
+    // would stall honest traversal and the cat would never arrive. Collection
+    // itself is speed-independent (it only checks proximity to the arrival tile,
+    // covered by the 'likes' suite), so reaching the tile is the property at risk.
+    await walkRealSpeed(wsB, { x: 5, y: 5 }, { x: 12, y: 5 })
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(12, 1) // arrived, not clamped short
+  }, 20000)
 
   it('allows a dash burst beyond the walk budget', async () => {
     const a = await session()

@@ -25,6 +25,7 @@ import {
   foodCap,
   JUMP_DURATION_MS,
   MAX_INBOUND_MSGS_PER_SEC,
+  MOVE_SPEED_TILES_PER_MS,
   PLACED_PERMANENT,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
@@ -94,6 +95,12 @@ export class GameWorld extends DurableObject<Env> {
   // update, respawn, or a hibernation wake) resets the baseline — that update is
   // accepted as-is and clamping starts from the next one.
   private lastMove = new Map<string, { x: number; y: number; t: number }>()
+
+  // The movement-speed cap (tiles/ms) used by the state clamp. Defaults to the
+  // real shared constant in production; tests raise it in-place (via
+  // runInDurableObject) so movement-heavy setup isn't paced by the real speed,
+  // while the anti-teleport tests keep this default to exercise the true cap.
+  private moveSpeed = MOVE_SPEED_TILES_PER_MS
 
   // Server-owned placed decorations (bought with likes). Shared across players,
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
@@ -319,7 +326,13 @@ export class GameWorld extends DurableObject<Env> {
         // per lunge. Ignore the plain window here to avoid clamping honest dashes.
         const dashActive =
           (this.lastActionAt.get(`${a.id}::dash`) ?? 0) > prev.t
-        const { x, y } = clampToSpeed(prev, s, now - prev.t, dashActive)
+        const { x, y } = clampToSpeed(
+          prev,
+          s,
+          now - prev.t,
+          dashActive,
+          this.moveSpeed,
+        )
         s.x = x
         s.y = y
       }
