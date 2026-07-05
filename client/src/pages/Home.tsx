@@ -16,6 +16,7 @@ import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
 import GamerControls from '@/components/GamerControls'
+import * as controls from '@/game/controlsStore'
 import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
@@ -300,15 +301,20 @@ function FixedHero() {
 }
 
 // ─── HERO CONTROLS ──────────────────────────────────────────────────────────
-// The interactive hero UI (social links + scroll-down button) lives in its own
-// fixed overlay ABOVE the scrolling content (z-40) so nothing — the game canvas
-// or the content panel — can ever intercept its clicks. The wrapper is
-// pointer-events-none; only the actual controls opt back in, and they turn off
-// (and fade out) once the hero is scrolled out of view.
+// The interactive hero UI (social links + scroll cue + on-screen game controls)
+// lives in a fixed overlay that sits ABOVE the game but BELOW the scrolling
+// content (z-[5], vs the game's z-0 and the content panel's z-10). So — exactly
+// like the game canvas — the content slides up and hides these cues as you
+// scroll, instead of them floating over the feed. The content's hero spacer is
+// transparent AND pointer-events-none, so while the hero is in view the controls
+// still show through and stay tappable. The wrapper itself is pointer-events-none
+// (only the actual controls opt back in), and they also fade out on scroll.
 function HeroControls() {
   const [atTop, setAtTop] = useState(true)
-  // The scroll cue is a gentle hint: show it briefly on load, then fade it out
-  // (or as soon as the user scrolls at all).
+  // The "more below" cue stays put until the player actually engages with the
+  // game, so newcomers reading the scene still learn the page scrolls. Once they
+  // start playing (move Koala / fire an ability) it fades ~2s later so it stops
+  // competing for attention — or immediately if they scroll first.
   const [scrollCue, setScrollCue] = useState(true)
 
   useEffect(() => {
@@ -318,9 +324,21 @@ function HeroControls() {
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
-    const fade = window.setTimeout(() => setScrollCue(false), 6000)
+
+    // Poll the game's engagement signal (source-agnostic: keyboard, joystick,
+    // buttons). First interaction arms a short fade so the cue lingers just long
+    // enough to be noticed, then bows out while the player focuses on the game.
+    let fade = 0
+    const poll = window.setInterval(() => {
+      if (controls.getInteractedAt() !== -Infinity) {
+        window.clearInterval(poll)
+        fade = window.setTimeout(() => setScrollCue(false), 2000)
+      }
+    }, 200)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
+      window.clearInterval(poll)
       clearTimeout(fade)
     }
   }, [])
@@ -334,7 +352,7 @@ function HeroControls() {
 
   return (
     <div
-      className={`fixed inset-0 z-40 pointer-events-none transition-opacity duration-500 ${
+      className={`fixed inset-0 z-[5] pointer-events-none transition-opacity duration-500 ${
         atTop ? 'opacity-100' : 'opacity-0'
       }`}
       aria-hidden={!atTop}
@@ -364,27 +382,35 @@ function HeroControls() {
         </a>
       </div>
 
-      {/* Scroll-to-content cue — a quiet, low-opacity chevron that auto-fades
-          (the page is obviously scrollable now). Still tappable while shown. */}
-      <button
-        type="button"
-        onClick={scrollToContent}
-        aria-label="Scroll to content"
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center text-white/40 transition-opacity duration-700 hover:text-white/70 ${
+      {/* Scroll-to-content cue — a labeled glass pill so it reads clearly as
+          "there's a whole page below" rather than as decoration. The full-screen
+          game hides the fold, so this makes the extra content discoverable.
+          Gentle bounce; fades once the player engages (see effect above). */}
+      <div
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-700 ${
           scrollCue ? interactive : 'pointer-events-none opacity-0'
         }`}
       >
-        <motion.span
-          animate={{ y: [0, 5, 0] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-          className="flex"
+        <button
+          type="button"
+          onClick={scrollToContent}
+          aria-label="Scroll to see more"
+          className="group inline-flex items-center gap-2 rounded-full border border-[oklch(0.82_0.13_78)]/25 bg-black/40 px-4 py-2 text-[oklch(0.82_0.13_78)]/90 shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-300 hover:border-[oklch(0.82_0.13_78)]/45 hover:bg-black/55"
         >
-          <ChevronDown
-            className="h-6 w-6 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]"
-            strokeWidth={2}
-          />
-        </motion.span>
-      </button>
+          <span className="text-[11px] font-light uppercase tracking-[0.2em]">
+            More below
+          </span>
+          {/* Only the chevron bobs — the button itself stays a stable click
+              target (a perpetually animating one is never "stable" for e2e). */}
+          <motion.span
+            animate={{ y: [0, 3, 0] }}
+            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            className="flex"
+          >
+            <ChevronDown className="h-4 w-4" strokeWidth={2} />
+          </motion.span>
+        </button>
+      </div>
 
       {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Lives in
           this pointer-events-none layer so only its control zones capture touch. */}
@@ -472,11 +498,16 @@ function SocialPill({
 // ─── CONTENT PANEL ──────────────────────────────────────────────────────────
 function ContentPanel() {
   return (
-    <div className="relative z-10">
-      {/* Spacer for hero — pointer-events-none so taps/clicks reach the game
-          canvas (and hero social icons) sitting behind it. svh (stable) so the
-          content doesn't jump as the mobile toolbar shows/hides on scroll. */}
-      <div className="h-[100svh] pointer-events-none" />
+    // The whole panel is pointer-events-none so that over the hero — where only
+    // the transparent spacer is on screen — taps/clicks fall through to the game
+    // and the hero cues (scroll cue, ability buttons) painted beneath it at
+    // z-[5]. The real content block below opts pointer events back on. This keeps
+    // those cues clickable while still letting the content paint OVER them as it
+    // scrolls up, hiding them exactly like it hides the game canvas.
+    <div className="relative z-10 pointer-events-none">
+      {/* Spacer for the hero. svh (stable) so the content doesn't jump as the
+          mobile toolbar shows/hides on scroll. */}
+      <div className="h-[100svh]" />
 
       {/* Scroll anchor for the hero's down-arrow and the skip link. It sits
           AFTER the full-viewport hero spacer, so scrolling to it lands at the
@@ -489,8 +520,9 @@ function ContentPanel() {
 
       {/* Main content area — with subtle color-shifting background.
           content-visibility pauses its paint + bg-shift animation while it's
-          scrolled out of view. */}
-      <div className="relative animate-[bg-shift_20s_ease-in-out_infinite] [contain-intrinsic-size:auto_1200px] [content-visibility:auto]">
+          scrolled out of view. pointer-events-auto re-enables interaction here
+          (the panel wrapper turns it off for the hero region above). */}
+      <div className="relative pointer-events-auto animate-[bg-shift_20s_ease-in-out_infinite] [contain-intrinsic-size:auto_1200px] [content-visibility:auto]">
         {/* Scattered paw prints as decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <PawPrint className="absolute top-[8%] right-[12%] w-5 h-5 text-white/[0.03] rotate-12" />
@@ -628,7 +660,7 @@ function ContentPanel() {
               {/* Closing */}
               <Reveal delay={0.2}>
                 <p className="text-white/10 text-[9px] uppercase tracking-[0.4em] mt-4">
-                  Made with love by Koala's human
+                  Made with love by Koala's humans
                 </p>
               </Reveal>
             </div>

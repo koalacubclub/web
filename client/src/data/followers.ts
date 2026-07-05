@@ -15,6 +15,9 @@ export const MEMBERS_PER_PAGE = 20
 // (e.g. no profile picture) falls back to a monogram in the UI, so the list
 // never shows broken images.
 export const FOLLOWERS: string[] = [
+  'stelmacha49',
+  'odniddis',
+  'nadini9104',
   'vaniuvanev',
   'mcsb65',
   'irubennnnnn',

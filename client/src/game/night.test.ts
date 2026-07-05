@@ -1,22 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import { night } from './constants'
 
-// night() bakes the old night wash (a `multiply` of rgba(120,80,180,0.5) over an
-// opaque pixel) into a colour: per channel out = round((c·s/255 + c) / 2), i.e.
-// round((s + 255) / 2) for a full (255) channel.
+// night() = a purple multiply (preserves hue → dusky sage/mauve surfaces) + a violet
+// lift in the deep shadows + a whiteness recovery that returns near-white to its
+// original colour. Darks read violet, whites read bright, coloured surfaces stay dusky.
+const rgb = (s: string) => s.match(/\d+/g)!.map(Number)
+
 describe('night', () => {
-  it('darkens white to the multiply-equivalent lavender', () => {
-    // R: (120+255)/2=187.5→188, G: (80+255)/2=167.5→168, B: (180+255)/2=217.5→218
-    expect(night('#FFFFFF')).toBe('rgb(188, 168, 218)')
+  it('recovers pure white to itself (whiteness gate fully open)', () => {
+    expect(night('#FFFFFF')).toBe('rgb(255, 255, 255)')
   })
 
-  it('keeps black black', () => {
-    expect(night('#000000')).toBe('rgb(0, 0, 0)')
+  it('lifts black to a saturated dark violet (shadow ambient, still dark)', () => {
+    expect(night('#000000')).toBe('rgb(18, 0, 48)')
   })
 
-  it('darkens each channel toward its wash factor', () => {
-    // grass #A8D5A2 = (168,213,162): R round(168·375/510)=124, G round(213·335/510)=140, B round(162·435/510)=138
-    expect(night('#A8D5A2')).toBe('rgb(124, 140, 138)')
+  it('darkens a bright surface into a cool dusky tone (not daylight)', () => {
+    // grass #A8D5A2 → all channels pulled down, cool-leaning (blue ≥ red).
+    const [r, g, b] = rgb(night('#A8D5A2'))
+    expect(r).toBeLessThan(168)
+    expect(g).toBeLessThan(213)
+    expect(b).toBeGreaterThanOrEqual(r)
+  })
+
+  it('casts a violet lean on a neutral grey shadow (blue highest, green lowest)', () => {
+    const [r, g, b] = rgb(night('#808080'))
+    expect(b).toBeGreaterThan(r)
+    expect(r).toBeGreaterThan(g)
   })
 
   it('treats 3-digit hex like its 6-digit form', () => {

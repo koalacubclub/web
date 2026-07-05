@@ -93,6 +93,7 @@ export function drawKoalaImprint(
   pixel: number,
   scale: number,
   colors: ImprintPalette,
+  tint: (c: string) => string = (c) => c,
 ): void {
   if (typeof document === 'undefined') return
   // 1. Rasterise the word offscreen so we can sample where its letters are.
@@ -152,19 +153,22 @@ export function drawKoalaImprint(
   // Park-palette greens, but weighted DARK (tree greens + a deep green) so the
   // word reads against the light grass patch it sits on. A little grassLight is
   // kept for highlight sparkle. All baked with the same night tint as the park.
+  // Night-grade every colour with the same `tint` the objects use (so the imprint
+  // reads consistently with the park, and its white blossoms still stay bright).
   const leafGreens = [
-    '#2E7D32', // deep green
-    '#2E7D32',
+    '#2E7D48', // deep green, nudged a touch bluer
+    '#2E7D48',
     colors.treeLeaves,
     colors.treeLeaves,
     colors.grassDark,
     colors.treeLeavesLight,
     colors.grassLight, // occasional highlight
-  ]
-  const leafVein = 'rgba(60,110,70,0.45)'
+    '#C2EC63', // a few bright yellow-green leaves for variety
+  ].map(tint)
+  const leafVein = 'rgba(55,70,64,0.45)'
   // White blossoms only (a soft yellow eye for a little definition).
-  const petals = [colors.white]
-  const centers = [colors.flower2]
+  const petals = [colors.white].map(tint)
+  const centers = [colors.flower2].map(tint)
   ctx.save()
   ctx.translate(cx, cy)
   ctx.rotate(-0.06) // slight slant

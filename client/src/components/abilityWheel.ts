@@ -7,8 +7,8 @@
 // equal gaps and equal radius no matter how many there are. (Add or remove one and
 // the spacing rebalances itself; it used to be centred off-diagonal to
 // counterweight a tiny meow button that tucked into the lower-left, now gone.)
-export const ARC_FROM = 95 //  deg of the first button (near vertical, above Jump)
-export const ARC_TO = 175 //   deg of the last (near horizontal, left of Jump)
+export const ARC_FROM = 90 //  deg of the first button (straight above Jump)
+export const ARC_TO = 180 //   deg of the last (straight left of Jump)
 
 /**
  * Even angle for the i-th of n buttons across [ARC_FROM, ARC_TO]; a lone button

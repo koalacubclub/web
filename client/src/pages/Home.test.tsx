@@ -60,7 +60,7 @@ describe('Home', () => {
     expect(memberLinks[0]).toHaveAttribute('target', '_blank')
     expect(memberLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
 
-    // Pagination is present as clickable dots (30 members across pages of 20)
+    // Pagination is present as clickable dots (33 members across pages of 20)
     expect(
       screen.getByRole('button', { name: /go to page 1/i }),
     ).toBeInTheDocument()

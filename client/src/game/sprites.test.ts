@@ -58,9 +58,14 @@ describe('drawShopSprite night tinting', () => {
   })
 
   it('tints tree foliage for placed decor', () => {
+    // The canopy uses a fixed leaf tone (matched to the base-map trees), tinted at
+    // night and left bright for the preview.
+    const CANOPY = '#3D9C4E'
     const dark = paint('tree', 2, 2, true)
-    expect(dark).toContain(night(COLORS.treeLeaves))
-    expect(dark).not.toContain(COLORS.treeLeaves)
+    expect(dark).toContain(night(CANOPY))
+    expect(dark).not.toContain(CANOPY)
+    const bright = paint('tree', 2, 2)
+    expect(bright).toContain(CANOPY)
   })
 
   it('draws drifting music notes only when the radio is playing', () => {
