@@ -4,11 +4,12 @@ import { arcDeg } from './abilityWheel'
 // The ability wheel fans the main abilities evenly across [ARC_FROM, ARC_TO],
 // symmetric about 135° (the corner diagonal the Jump sits on). This guards the
 // "proportional gaps around Jump" layout so removing/adding a spell can't quietly
-// re-tilt it (as the meow removal once did). ARC_FROM/ARC_TO are 95°/175°.
+// re-tilt it (as the meow removal once did). ARC_FROM/ARC_TO are 90°/180° — the
+// spells fan across a full quarter-turn (straight-up to straight-left of Jump).
 describe('arcDeg (ability wheel geometry)', () => {
   it('pins the endpoints to the configured range', () => {
-    expect(arcDeg(0, 3)).toBe(95)
-    expect(arcDeg(2, 3)).toBe(175)
+    expect(arcDeg(0, 3)).toBe(90)
+    expect(arcDeg(2, 3)).toBe(180)
   })
 
   it('centres a lone button on the diagonal', () => {
@@ -32,8 +33,8 @@ describe('arcDeg (ability wheel geometry)', () => {
       const angles = Array.from({ length: n }, (_, i) => arcDeg(i, n))
       const gaps = angles.slice(1).map((a, i) => +(a - angles[i]).toFixed(6))
       expect(new Set(gaps).size).toBe(1)
-      expect(angles[0]).toBe(95)
-      expect(angles[n - 1]).toBe(175)
+      expect(angles[0]).toBe(90)
+      expect(angles[n - 1]).toBe(180)
     }
   })
 })
