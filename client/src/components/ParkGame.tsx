@@ -396,12 +396,12 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 16,
-        y: 1,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ A bird chirps!',
       },
-      { type: 'tree', x: 10, y: 1, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
+      { type: 'tree', x: 10, y: 1.6, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
       {
         type: 'bench',
         x: 6,
@@ -430,24 +430,24 @@ export default function ParkGame() {
       // New right-half scenery (cols 20..39) added when the map was doubled.
       {
         type: 'tree',
-        x: 21,
-        y: 1,
+        x: 20,
+        y: 2.3,
         w: 2,
         h: 2,
         interactMsg: '♪ Wind in the branches...',
       },
       {
         type: 'tree',
-        x: 28,
-        y: 1,
+        x: 27,
+        y: 1.3,
         w: 2,
         h: 2,
         interactMsg: '♪ An apple orchard!',
       },
       {
         type: 'tree',
-        x: 35,
-        y: 1,
+        x: 37,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ Deep in the grove',
@@ -552,7 +552,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 0,
-        y: 1,
+        y: 1.7,
         w: 2,
         h: 2,
         interactMsg: "♪ Leaves stir at the park's far edge",
@@ -560,7 +560,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 7,
-        y: 1,
+        y: 1.2,
         w: 2,
         h: 2,
         interactMsg: '♪ A tall old friend',
@@ -1679,8 +1679,9 @@ export default function ParkGame() {
       // Keep the moon in the upper-center sky so it's visible the moment the
       // page opens: after the LEFT_PAD shift the cat spawns near the hub (center
       // col 29) and the camera centers the view on it, so the moon must sit in
-      // that load-time centered band. PIXEL*29 sits in clear sky by the hub/spawn.
-      const moonX = PIXEL * 29
+      // that load-time centered band (~cols 19–39). PIXEL*32.5 sits in clear sky
+      // to the right of the hub/spawn, still inside the load view.
+      const moonX = PIXEL * 32.5
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
       // Soft halo.
@@ -3529,7 +3530,7 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge(night('#3D9C4E'), 0.75, 0.4, 2.1, 5) // furthest ridge — tree-canopy green
+      ridge(night('#2E7D48'), 0.75, 0.4, 2.1, 5) // furthest ridge — deep blue-green (matches imprint)
       ridge(NIGHT.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
     }
 
