@@ -419,17 +419,18 @@ export default function ParkGame() {
         w: 1,
         h: 1,
       },
-      { type: 'photo', photo: true, x: 17, y: 8, w: 1, h: 1 },
+      { type: 'photo', photo: true, x: 16.6, y: 10, w: 1, h: 1 },
     ]
+    // Bright (un-graded) wings so the butterflies pop as vivid accents at night.
     g.butterflies = [
-      { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: NIGHT.butterfly },
+      { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
       {
         x: 300,
         y: 120,
         vx: -0.3,
         vy: 0.5,
         timer: Math.PI,
-        color: NIGHT.flower1,
+        color: COLORS.flower1,
       },
       {
         x: 500,
@@ -437,7 +438,7 @@ export default function ParkGame() {
         vx: 0.4,
         vy: -0.2,
         timer: Math.PI / 2,
-        color: NIGHT.fishBowl,
+        color: COLORS.fishBowl,
       },
     ]
   }, [])
@@ -1103,15 +1104,15 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Sand base
-      ctx.fillStyle = '#E8D5A8'
+      // Sand base (night-graded, like every other below-wash colour)
+      ctx.fillStyle = night('#E8D5A8')
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
       // Sand texture dots
       for (let i = 0; i < 40; i++) {
         const sx = ((i * 73 + 17) % MAP_COLS) * PIXEL + ((i * 31) % PIXEL)
         const sy = PIXEL * 1.5 + ((i * 47 + 11) % (CANVAS_HEIGHT - PIXEL * 2))
-        ctx.fillStyle = i % 2 === 0 ? '#DCC89A' : '#F0E2B8'
+        ctx.fillStyle = i % 2 === 0 ? night('#DCC89A') : night('#F0E2B8')
         ctx.fillRect(sx, sy, SCALE, SCALE)
       }
 
@@ -1125,7 +1126,7 @@ export default function ParkGame() {
       ) {
         if (!ctx) return
         const points = 10
-        ctx.fillStyle = COLORS.grass
+        ctx.fillStyle = NIGHT.grass
         ctx.beginPath()
         for (let i = 0; i <= points; i++) {
           const angle = (i / points) * Math.PI * 2
@@ -1161,7 +1162,7 @@ export default function ParkGame() {
           const dist = 0.4 + ((j * 0.07) % 0.4)
           const gx = cx + Math.cos(angle) * radiusX * dist
           const gy = cy + Math.sin(angle) * radiusY * dist
-          ctx.fillStyle = j % 3 === 0 ? COLORS.grassDark : COLORS.grassLight
+          ctx.fillStyle = j % 3 === 0 ? NIGHT.grassDark : NIGHT.grassLight
           ctx.fillRect(gx, gy, SCALE * 2, SCALE * 3)
         }
       }
@@ -1336,8 +1337,8 @@ export default function ParkGame() {
       ctx.fillStyle = NIGHT.treeTrunk
       ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
 
-      // Main (darker) canopy blob.
-      ctx.fillStyle = NIGHT.treeLeaves
+      // Main (darker) canopy blob — a darker, green base leaf tone.
+      ctx.fillStyle = night('#3D9C4E')
       ctx.beginPath()
       ctx.arc(
         x + PIXEL + jx,
@@ -1390,12 +1391,13 @@ export default function ParkGame() {
       const y = obj.y * PIXEL
       // Per-patch randomness (seeded by tile position) so each flower cluster has
       // its own count / colours / sizes / scatter instead of all looking alike.
+      // Bright (un-graded) petals so the blooms pop as vivid accents at night.
       const palette = [
-        NIGHT.flower1,
-        NIGHT.flower2,
-        NIGHT.flower3,
-        NIGHT.heart,
-        NIGHT.butterfly,
+        COLORS.flower1,
+        COLORS.flower2,
+        COLORS.flower3,
+        COLORS.heart,
+        COLORS.butterfly,
       ]
       const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
       const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
@@ -1412,7 +1414,7 @@ export default function ParkGame() {
         ctx.beginPath()
         ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
         ctx.fill()
-        ctx.fillStyle = NIGHT.fishBowl
+        ctx.fillStyle = COLORS.fishBowl
         ctx.beginPath()
         ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
         ctx.fill()
@@ -1425,7 +1427,7 @@ export default function ParkGame() {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       const wobble = Math.sin(g.frameCount * 0.03) * 2
-      ctx.fillStyle = NIGHT.water
+      ctx.fillStyle = night('#4C90E4') // slightly cobalt-leaning pond
       ctx.beginPath()
       ctx.ellipse(
         x + PIXEL * 1.5,
@@ -1437,7 +1439,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = NIGHT.waterLight
+      ctx.fillStyle = night('#84B2F0') // cobalt highlight
       ctx.beginPath()
       ctx.ellipse(
         x + PIXEL * 1.2,
@@ -3016,7 +3018,7 @@ export default function ParkGame() {
       ctx.save()
       ctx.translate(px, py)
       ctx.rotate(angle)
-      ctx.fillStyle = 'rgba(110,165,110,0.4)'
+      ctx.fillStyle = 'rgba(90,113,111,0.4)' // night-graded pressed grass
       ctx.beginPath()
       ctx.ellipse(0, s * 0.55, s * 0.9, s * 0.7, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -3071,8 +3073,8 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge(COLORS.grassDark, 0.75, 0.4, 2.1, 5) // darker back ridge (taller)
-      ridge(COLORS.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
+      ridge(night('#3D9C4E'), 0.75, 0.4, 2.1, 5) // furthest ridge — tree-canopy green
+      ridge(NIGHT.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
     }
 
     function renderStaticBackground() {
@@ -3092,15 +3094,10 @@ export default function ParkGame() {
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
-      drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS)
+      // Same night grade as every object: the imprint tints its own colours via
+      // night() (bright colours/whites still pop), so no global wash is needed.
+      drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS, night)
       drawPawTrail()
-      ctx!.restore()
-      // Bake the night tint into the static background once (sky/hills/ground/
-      // grass/paws), replacing the old per-frame full-canvas multiply overlay.
-      ctx!.save()
-      ctx!.globalCompositeOperation = 'multiply'
-      ctx!.fillStyle = 'rgba(120, 80, 180, 0.5)'
-      ctx!.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
     }
