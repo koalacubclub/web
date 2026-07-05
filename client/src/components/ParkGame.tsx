@@ -486,7 +486,7 @@ export default function ParkGame() {
         w: 1,
         h: 1,
       },
-      { type: 'photo', photo: true, x: 16.6, y: 10, w: 1, h: 1 },
+      { type: 'photo', photo: true, x: 18.4, y: 8.4, w: 1, h: 1 },
       // A touch more left-half scenery (cols 0..19), placed in open gaps so it
       // doesn't overlap existing decor or the unique brand/photo hotspots.
       {
