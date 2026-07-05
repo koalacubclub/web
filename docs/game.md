@@ -13,7 +13,9 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
 - **Coordinate system:** tiles of `PIXEL = 16 * SCALE` (48px). The map is
   `MAP_COLS=58` × `MAP_ROWS = GROUND_ROWS(13) + SKY_ROWS(2)`. The playable park is
   the ground rows; the world is drawn shifted down by `WORLD_OFFSET` so there's sky
-  above it. Positions are tile coords; cat/food centers are `tile + 0.5`.
+  above it. Positions are tile coords; cat/food centers are `tile + 0.5`. For the
+  full tile→logical→device→screen pipeline, why the abstractions exist, and the
+  `?dev` developer overlays that visualize it, see [rendering.md](./rendering.md).
 - **Render order:** ground/objects/cat are drawn, then a purple `multiply` night
   wash over everything, then stars/moon/**food**/popups/HUD on top (true colors,
   above the wash).

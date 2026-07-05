@@ -41,6 +41,7 @@ import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
+import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
 import {
   getPondReflection,
@@ -3545,6 +3546,135 @@ export default function ParkGame() {
       }
     }
 
+    // ---- developer overlays (query-param gated; see devPrefs.ts) ----
+
+    // A one-tile grid over the playable park, in world space so it lines up with
+    // (and pans with) every game tile. Coordinates here ARE game tiles — the cat's
+    // g.cat.x/y live in this same 0..MAP_COLS space — so the highlighted cell is
+    // literally the tile the cat occupies. Caller has already translated by
+    // WORLD_OFFSET, so (0,0) is the top-left of the ground.
+    function drawTileGrid() {
+      if (!ctx) return
+      ctx.save()
+      // Grid lines.
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)'
+      ctx.beginPath()
+      for (let c = 0; c <= MAP_COLS; c++) {
+        const x = c * PIXEL
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, GROUND_HEIGHT)
+      }
+      for (let r = 0; r <= GROUND_ROWS; r++) {
+        const y = r * PIXEL
+        ctx.moveTo(0, y)
+        ctx.lineTo(CANVAS_WIDTH, y)
+      }
+      ctx.stroke()
+      // Highlight the cat's current tile.
+      const tx = Math.floor(g.cat.x)
+      const ty = Math.floor(g.cat.y)
+      ctx.fillStyle = 'rgba(120,200,255,0.28)'
+      ctx.fillRect(tx * PIXEL, ty * PIXEL, PIXEL, PIXEL)
+      // Sparse axis labels (every 5 cols / 2 rows) so it stays readable.
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.font = `${Math.round(PIXEL * 0.28)}px ui-monospace, monospace`
+      ctx.textBaseline = 'top'
+      for (let c = 0; c < MAP_COLS; c += 5)
+        ctx.fillText(String(c), c * PIXEL + 2, 2)
+      for (let r = 0; r < GROUND_ROWS; r += 2)
+        ctx.fillText(String(r), 2, r * PIXEL + 2)
+      ctx.restore()
+    }
+
+    // A "loupe" that subdivides just the cat's current tile into its 16×16 base
+    // pixels (PIXEL = 16 authoring units × SCALE). Scoped to one tile on purpose:
+    // a map-wide version would be ~928 lines and moiré into mush at this zoom. Each
+    // sub-cell is SCALE logical px — the atom the pixel-art is drawn in.
+    function drawPixelGrid() {
+      if (!ctx) return
+      const tx = Math.floor(g.cat.x)
+      const ty = Math.floor(g.cat.y)
+      const ox = tx * PIXEL
+      const oy = ty * PIXEL
+      const UNIT = PIXEL / 16 // === SCALE; logical px per base pixel
+      ctx.save()
+      // The 16×16 lattice inside the cell.
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255,180,120,0.25)'
+      ctx.beginPath()
+      for (let i = 1; i < 16; i++) {
+        const x = ox + i * UNIT
+        const y = oy + i * UNIT
+        ctx.moveTo(x, oy)
+        ctx.lineTo(x, oy + PIXEL)
+        ctx.moveTo(ox, y)
+        ctx.lineTo(ox + PIXEL, y)
+      }
+      ctx.stroke()
+      // The cell border + a label, so it reads as "one tile = 16×16 px".
+      ctx.lineWidth = 1.5
+      ctx.strokeStyle = 'rgba(255,180,120,0.65)'
+      ctx.strokeRect(ox, oy, PIXEL, PIXEL)
+      ctx.fillStyle = 'rgba(255,205,150,0.95)'
+      ctx.font = `${Math.round(PIXEL * 0.22)}px ui-monospace, monospace`
+      ctx.textBaseline = 'bottom'
+      ctx.fillText('16×16 px', ox + 1, oy - 2)
+      ctx.restore()
+    }
+
+    // A compact FPS + info readout, pinned to the viewport's top-left. hudShift/
+    // hudShiftY counter the camera's CSS pan (both in logical px) so it stays put
+    // while the world scrolls behind it. Shows the frame rate plus the concepts
+    // this overlay exists to expose: the cat's tile, the zoom (visible/total
+    // columns), the tile size in px, and the retina backing scale.
+    function drawDevHud(fps: number, showFps: boolean, showCoords: boolean) {
+      if (!ctx || !canvas) return
+      const lines: string[] = []
+      if (showFps) {
+        lines.push(`FPS ${Math.round(fps)}${reducedFps ? ' (cap 30)' : ''}`)
+      }
+      if (showCoords) {
+        // The same point, in all four unit systems, so the conversion pipeline is
+        // visible rather than implied. logical = tile × PIXEL (y also shifted down
+        // by the sky rows, WORLD_OFFSET); device = logical × RS; screen is mapped
+        // through the canvas's on-page box, which already bakes in the CSS zoom +
+        // camera pan. Walk around and watch each stage update.
+        const lx = g.cat.x * PIXEL
+        const ly = WORLD_OFFSET + g.cat.y * PIXEL
+        const rect = canvas.getBoundingClientRect()
+        const sx = rect.left + (lx / CANVAS_WIDTH) * rect.width
+        const sy = rect.top + (ly / CANVAS_HEIGHT) * rect.height
+        lines.push(
+          `tile    ${g.cat.x.toFixed(2)}, ${g.cat.y.toFixed(2)}`,
+          `logical ${Math.round(lx)}, ${Math.round(ly)}  (× ${PIXEL})`,
+          `device  ${Math.round(lx * RS)}, ${Math.round(ly * RS)}  (× RS ${RS.toFixed(2)})`,
+          `screen  ${Math.round(sx)}, ${Math.round(sy)}  (+ zoom/pan)`,
+        )
+      } else if (showFps) {
+        // FPS-only keeps a compact context line (coords supersedes it when on).
+        lines.push(
+          `tile ${g.cat.x.toFixed(2)}, ${g.cat.y.toFixed(2)}`,
+          `zoom ${VIEW_COLS}/${MAP_COLS} cols · px ${PIXEL} · RS ${RS.toFixed(2)}`,
+        )
+      }
+      if (!lines.length) return
+      ctx.save()
+      const pad = Math.round(PIXEL * 0.35)
+      const x = g.hudShift + pad
+      const y = g.hudShiftY + pad
+      const lh = Math.round(PIXEL * 0.42)
+      ctx.font = `${Math.round(PIXEL * 0.3)}px ui-monospace, monospace`
+      ctx.textBaseline = 'top'
+      const boxW =
+        Math.max(...lines.map((t) => ctx!.measureText(t).width)) + pad * 2
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.fillRect(x - pad, y - pad, boxW, lh * lines.length + pad)
+      ctx.fillStyle = 'rgba(170,240,170,0.95)'
+      lines.forEach((t, i) => ctx!.fillText(t, x, y + i * lh))
+      ctx.restore()
+    }
+
     // Bake the fully static sky + ground into the offscreen canvas once.
     // A single pressed-grass paw print (pad + 4 toe beans), baked into the bg.
     function drawPawStamp(px: number, py: number, angle: number, s: number) {
@@ -3657,6 +3787,14 @@ export default function ParkGame() {
     const unsubscribePerf = perfPrefs.subscribe(() => {
       reducedFps = perfPrefs.isReducedFps()
     })
+    // Developer overlays (query-param gated: tile grid + FPS HUD). Same ref-kept-
+    // in-sync pattern so the loop reads them without a React re-render. `fpsEma` is
+    // a smoothed frames-per-second estimate for the HUD readout.
+    let devFlags = devPrefs.getFlags()
+    const unsubscribeDev = devPrefs.subscribe(() => {
+      devFlags = devPrefs.getFlags()
+    })
+    let fpsEma = 60
     // Timestamp (rAF clock) of the last frame we actually drew — used to throttle
     // to ~30fps when reducedFps is on.
     let lastDrawTs = 0
@@ -3675,6 +3813,9 @@ export default function ParkGame() {
       // the cat teleport. First frame assumes ~60fps.
       const dt = lastNow ? Math.min(now - lastNow, 100) : 1000 / 60
       lastNow = now
+      // Smooth the instantaneous FPS for a steady dev readout (only kept current
+      // when the HUD is on).
+      if (devFlags.fps && dt > 0) fpsEma += (1000 / dt - fpsEma) * 0.1
       // Elapsed time in 60fps-frame units. Scales every animation (the
       // frameCount clock below + per-frame integrations like butterflies/popups/
       // idle) so they run at the same pace regardless of frame rate.
@@ -3806,6 +3947,23 @@ export default function ParkGame() {
       ctx!.restore()
 
       updateCamera()
+      // Developer overlays (query-param gated), drawn last so they sit on top.
+      // The tile grid lives in world space (pans with the map); the FPS/info HUD
+      // is pinned to the viewport via hudShift (refreshed by updateCamera above).
+      if (devFlags.tiles) {
+        ctx!.save()
+        ctx!.translate(0, WORLD_OFFSET)
+        drawTileGrid()
+        ctx!.restore()
+      }
+      if (devFlags.pixels) {
+        ctx!.save()
+        ctx!.translate(0, WORLD_OFFSET)
+        drawPixelGrid()
+        ctx!.restore()
+      }
+      if (devFlags.fps || devFlags.coords)
+        drawDevHud(fpsEma, devFlags.fps, devFlags.coords)
       // (The score/likes HUD + the presence roster now live in the DOM
       // BottomBar / Settings menu, not on the canvas.)
 
@@ -3913,6 +4071,7 @@ export default function ParkGame() {
       window.removeEventListener('orientationchange', handleOrientation)
       ro?.disconnect()
       unsubscribePerf()
+      unsubscribeDev()
       radio.dispose()
       document.body.classList.remove('kcc-dragging')
       mp?.close()
