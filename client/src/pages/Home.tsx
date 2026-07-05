@@ -388,19 +388,25 @@ function HeroControls() {
           scrollCue ? interactive : 'pointer-events-none opacity-0'
         }`}
       >
-        <motion.button
+        <button
           type="button"
           onClick={scrollToContent}
           aria-label="Scroll to see more"
           className="group inline-flex items-center gap-2 rounded-full border border-[oklch(0.82_0.13_78)]/25 bg-black/40 px-4 py-2 text-[oklch(0.82_0.13_78)]/90 shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-300 hover:border-[oklch(0.82_0.13_78)]/45 hover:bg-black/55"
-          animate={{ y: [0, 5, 0] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
         >
           <span className="text-[11px] font-light uppercase tracking-[0.2em]">
             More below
           </span>
-          <ChevronDown className="h-4 w-4" strokeWidth={2} />
-        </motion.button>
+          {/* Only the chevron bobs — the button itself stays a stable click
+              target (a perpetually animating one is never "stable" for e2e). */}
+          <motion.span
+            animate={{ y: [0, 3, 0] }}
+            transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
+            className="flex"
+          >
+            <ChevronDown className="h-4 w-4" strokeWidth={2} />
+          </motion.span>
+        </button>
       </div>
 
       {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Lives in
