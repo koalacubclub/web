@@ -92,8 +92,8 @@ export interface Food {
 // An ability is a fire-and-forget action a player triggers (space / on-screen
 // button). The server rate-limits per kind, may apply a side effect (jump opens
 // the airborne-food window), and rebroadcasts it so peers can animate it. Only
-// jump (air food) + dash (reposition) are functional; bite/hand/meow are cosmetic
-// emotes until enemies (rats) exist.
+// jump (air food) + dash (reposition) are functional; `hand` is a paw-slap that
+// jostles a nearby object; bite/meow are cosmetic emotes until enemies exist.
 export type AbilityKind = 'jump' | 'dash' | 'bite' | 'hand' | 'meow'
 export const ABILITIES: readonly AbilityKind[] = [
   'jump',
@@ -114,6 +114,11 @@ export const DASH_TILES = 3 // distance the lunge covers
 export const DASH_COOLDOWN_MS = 1200
 // Emotes (bite/hand/meow): cosmetic animation length.
 export const EMOTE_DURATION_MS = 500
+
+// Slap: the `hand` ability is a paw-swipe that jostles a nearby object. The swipe
+// pose is broadcast (via the generic `acted` path); object reactions are local.
+export const SLAP_DURATION_MS = 380 // length of the swipe animation
+export const SLAP_REACH = 1.1 // tiles: how close an object must be to get hit
 
 // Per-ability cooldowns (server-enforced + mirrored client-side for the sweep).
 export const ABILITY_COOLDOWNS_MS: Record<AbilityKind, number> = {
