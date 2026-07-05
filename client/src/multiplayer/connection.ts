@@ -83,6 +83,11 @@ export interface Multiplayer {
   /** Tell the server this player used an ability (jump opens the airborne-collect
    *  window; all are broadcast to others). The caller animates its own locally. */
   sendAction(a: AbilityKind): void
+  /** Launch a ball roll: id + current tile + velocity. The server relays it to
+   *  peers (as `pushed`) so they run the same integrator. Fire once per slap. */
+  sendPush(id: string, x: number, y: number, vx: number, vy: number): void
+  /** Report a ball's resting tile so the server persists it (once per roll). */
+  sendRest(id: string, x: number, y: number): void
   close(): void
 }
 
@@ -116,6 +121,18 @@ export function createMultiplayer(
     onPresence?: (players: OnlinePlayer[]) => void
     /** Fired with the durable world stats (on welcome and on stats updates). */
     onStats?: (stats: WorldStats) => void
+    /** A peer launched a ball (id + tile + launch velocity) — start rolling it. */
+    onBallPush?: (
+      id: string,
+      x: number,
+      y: number,
+      vx: number,
+      vy: number,
+    ) => void
+    /** A ball's authoritative resting tile — stop simulating it locally. */
+    onBallMoved?: (id: string, x: number, y: number) => void
+    /** A full resync (welcome, incl. reconnect) — drop any local ball sim. */
+    onResync?: () => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
@@ -144,6 +161,8 @@ export function createMultiplayer(
     sendBuy,
     sendName,
     sendAction,
+    sendPush,
+    sendRest,
     close,
   }
 
@@ -221,6 +240,7 @@ export function createMultiplayer(
         setLikes(msg.likes ?? 0)
         handle.stats = msg.stats
         if (msg.stats) opts.onStats?.(msg.stats)
+        opts.onResync?.() // drop stale local ball sim before rebuilding from placed
         emitPlaced()
         emitPresence()
         break
@@ -305,6 +325,31 @@ export function createMultiplayer(
           p.actAt = at
           if (msg.a === 'jump') p.jumpAt = at // drives the existing hop arc
         }
+        break
+      }
+      case 'pushed': {
+        // A peer launched a ball. Track its position in our placed cache (so a
+        // later emit is accurate) and hand the launch to the game loop, which runs
+        // the same integrator. No emitPlaced: velocity isn't part of the store.
+        const it = placed.get(msg.id)
+        if (it) {
+          it.x = msg.x
+          it.y = msg.y
+        }
+        opts.onBallPush?.(msg.id, msg.x, msg.y, msg.vx, msg.vy)
+        break
+      }
+      case 'moved': {
+        // Authoritative resting tile. Update the cache, stop the local sim for
+        // this ball, then emit so the store (and the rebuilt objects) settle on
+        // the server's tile.
+        const it = placed.get(msg.id)
+        if (it) {
+          it.x = msg.x
+          it.y = msg.y
+        }
+        opts.onBallMoved?.(msg.id, msg.x, msg.y)
+        emitPlaced()
         break
       }
     }
@@ -421,6 +466,27 @@ export function createMultiplayer(
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     try {
       ws.send(JSON.stringify({ t: 'action', a }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  // One message per ball slap (not streamed) — the launch velocity is all peers
+  // need to replay the roll, so this stays well under the inbound rate limit.
+  function sendPush(id: string, x: number, y: number, vx: number, vy: number) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'push', id, x, y, vx, vy }))
+    } catch {
+      /* socket closing; the reconnect path will recover */
+    }
+  }
+
+  // One message per roll, when the ball comes to rest — the single persist point.
+  function sendRest(id: string, x: number, y: number) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify({ t: 'rest', id, x, y }))
     } catch {
       /* socket closing; the reconnect path will recover */
     }

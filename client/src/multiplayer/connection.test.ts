@@ -382,6 +382,116 @@ describe('createMultiplayer', () => {
     expect(sent).toContainEqual({ t: 'buy', key: 'flowers', x: 3, y: 4 })
   })
 
+  // ---- balls: push / rest on the wire, pushed / moved from the server ----
+
+  it('sendPush and sendRest emit ball messages on the wire', async () => {
+    const { mp, ws } = await startConnected()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('b1', { type: 'ball' })],
+      likes: 0,
+      now: 0,
+    })
+    mp.sendPush('b1', 8, 6, 0.006, -0.003)
+    mp.sendRest('b1', 10.4, 5.6)
+    const sent = ws.sent.map((s) => JSON.parse(s))
+    expect(sent).toContainEqual({
+      t: 'push',
+      id: 'b1',
+      x: 8,
+      y: 6,
+      vx: 0.006,
+      vy: -0.003,
+    })
+    expect(sent).toContainEqual({ t: 'rest', id: 'b1', x: 10.4, y: 5.6 })
+  })
+
+  it('routes pushed to onBallPush and updates the placed cache (no emit)', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const pushes: unknown[] = []
+    let placedEmits = 0
+    const mp = createMultiplayer({
+      onBallPush: (id, x, y, vx, vy) => pushes.push({ id, x, y, vx, vy }),
+      onPlaced: () => placedEmits++,
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('b1', { type: 'ball', x: 8, y: 6 })],
+      likes: 0,
+      now: 0,
+    })
+    const emitsAfterWelcome = placedEmits
+    ws.receive({ t: 'pushed', id: 'b1', x: 9, y: 7, vx: 0.006, vy: -0.003 })
+    expect(pushes).toEqual([{ id: 'b1', x: 9, y: 7, vx: 0.006, vy: -0.003 }])
+    // Position cached for a later resync…
+    expect(mp.placed.get('b1')).toMatchObject({ x: 9, y: 7 })
+    // …but velocity does NOT flow through the store (no re-render on a push).
+    expect(placedEmits).toBe(emitsAfterWelcome)
+    mp.close()
+  })
+
+  it('fires onResync on welcome (so stale local ball sim is dropped)', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const order: string[] = []
+    const mp = createMultiplayer({
+      onResync: () => order.push('resync'),
+      onPlaced: () => order.push('placed'),
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('b1', { type: 'ball' })],
+      likes: 0,
+      now: 0,
+    })
+    // Resync must run BEFORE the placed emit that rebuilds the objects.
+    expect(order).toEqual(['resync', 'placed'])
+    mp.close()
+  })
+
+  it('routes moved to onBallMoved, updates the cache, and emits placed', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const moves: unknown[] = []
+    let placedEmits = 0
+    const mp = createMultiplayer({
+      onBallMoved: (id, x, y) => moves.push({ id, x, y }),
+      onPlaced: () => placedEmits++,
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('b1', { type: 'ball', x: 8, y: 6 })],
+      likes: 0,
+      now: 0,
+    })
+    const emitsAfterWelcome = placedEmits
+    ws.receive({ t: 'moved', id: 'b1', x: 12, y: 4 })
+    expect(moves).toEqual([{ id: 'b1', x: 12, y: 4 }])
+    expect(mp.placed.get('b1')).toMatchObject({ x: 12, y: 4 })
+    // The resting tile IS the store's truth, so it re-emits (rebuild settles).
+    expect(placedEmits).toBe(emitsAfterWelcome + 1)
+    mp.close()
+  })
+
   it('reports a rejected buy via onBuyFail', async () => {
     const { createMultiplayer } = await import('./connection')
     let reason: string | undefined

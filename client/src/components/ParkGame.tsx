@@ -1,7 +1,11 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { createMultiplayer, type Multiplayer } from '@/multiplayer/connection'
+import {
+  createMultiplayer,
+  MULTIPLAYER_ENABLED,
+  type Multiplayer,
+} from '@/multiplayer/connection'
 import {
   ABILITY_COOLDOWNS_MS,
   AIR_COLLECT_RADIUS,
@@ -11,6 +15,7 @@ import {
   COLLECT_RADIUS,
   DASH_DURATION_MS,
   DASH_TILES,
+  DEFAULT_BALLS,
   EMOTE_DURATION_MS,
   FOOD_TTL_MS,
   foodCap,
@@ -223,6 +228,7 @@ interface GameObject {
   channel?: 'instagram' | 'tiktok' // 'social' → which glyph + tooltip
   photo?: boolean // 'photo' → hover shows the picture, click enlarges
   // Shop-placed decorations (absent on base objects):
+  id?: string // server PlacedItem id — addresses push/rest/moved (balls)
   key?: string
   placedAt?: number
   expiresAt?: number
@@ -367,6 +373,12 @@ export default function ParkGame() {
     // Latest emote (bite/hand/meow) + when it started, for the local overlay.
     emote: null as AbilityKind | null,
     emoteAt: -Infinity,
+    // Server-owned balls we're simulating locally right now (ids). `ballRolling`
+    // is every locally-integrated ball (ours + peers' relayed rolls) — used to
+    // shield an in-flight ball from a wholesale objects rebuild. `ballOwned` is
+    // the subset WE slapped, so only we persist the resting spot (send `rest`).
+    ballRolling: new Set<string>(),
+    ballOwned: new Set<string>(),
   })
 
   const initObjects = useCallback(() => {
@@ -413,7 +425,6 @@ export default function ParkGame() {
         h: 2,
         interactMsg: '~ Splish splash!',
       },
-      { type: 'ball', x: 8, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       { type: 'stone', x: 1, y: 9, w: 1, h: 1, interactMsg: '... A warm rock' },
       // New right-half scenery (cols 20..39) added when the map was doubled.
       {
@@ -472,7 +483,6 @@ export default function ParkGame() {
         h: 1,
         interactMsg: '✿ A hidden patch!',
       },
-      { type: 'ball', x: 28, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       {
         type: 'stone',
         x: 37,
@@ -594,7 +604,7 @@ export default function ParkGame() {
         h: 1,
         interactMsg: '✿ A shy little patch',
       },
-      { type: 'ball', x: 6, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
+      // (the new-left ball is now a server-owned default ball — see DEFAULT_BALLS)
       {
         type: 'stone',
         x: 1,
@@ -604,6 +614,23 @@ export default function ParkGame() {
         interactMsg: '... A warm resting rock',
       },
     )
+    // Solo play (no backend): seed the default balls locally so there's still
+    // something to bat around — they roll purely client-side, exactly as before.
+    // In multiplayer the server owns them (seeded as permanent PlacedItems) and
+    // they arrive via the placed set, so we must NOT double them up here. Their
+    // coords are already final (post-LEFT_PAD), so push them AFTER the shift.
+    if (!MULTIPLAYER_ENABLED) {
+      for (const b of DEFAULT_BALLS) {
+        g.objects.push({
+          type: 'ball',
+          x: b.x,
+          y: b.y,
+          w: 1,
+          h: 1,
+          interactMsg: '★ Boing boing!',
+        })
+      }
+    }
     // Bright (un-graded) wings so the butterflies pop as vivid accents at night.
     g.butterflies = [
       { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
@@ -726,6 +753,38 @@ export default function ParkGame() {
       onName: (name) => parkStore.applyServerName(name),
       onPresence: (roster) => parkStore.applyServerPresence(roster),
       onStats: (stats) => parkStore.applyServerStats(stats),
+      // A peer launched a ball: seed its velocity onto our local object and mark
+      // it rolling, so our own updateSlappables carries it at 60fps (no position
+      // stream needed — everyone runs the same integrator from the launch vector).
+      onBallPush: (id, x, y, vx, vy) => {
+        const o = g.objects.find((ob) => ob.id === id)
+        if (o) {
+          o.x = x
+          o.y = y
+          o.vx = vx
+          o.vy = vy
+        }
+        g.ballRolling.add(id)
+      },
+      // Authoritative resting tile: stop simulating this ball locally, then let the
+      // store emit (fired right after) settle it on the server's tile. Guard against
+      // a STALE echo: if the ball is rolling again (we re-slapped it inside the
+      // rest→moved round-trip), this `moved` is for the PREVIOUS roll — ignore it, or
+      // it would clear the shield and snap the live ball backward mid-flight. The
+      // newer roll's own `moved` (arriving once it's settled) clears it.
+      onBallMoved: (id) => {
+        const o = g.objects.find((ob) => ob.id === id)
+        if (o && (o.vx != null || o.vy != null)) return // superseded by a newer roll
+        g.ballRolling.delete(id)
+        g.ballOwned.delete(id)
+      },
+      // Full resync (welcome, incl. reconnect): the server just sent the authoritative
+      // placed set, so drop any local ball simulation and yield to it — otherwise an
+      // orphaned roll (owner left before its `rest`) would stay shielded forever.
+      onResync: () => {
+        g.ballRolling.clear()
+        g.ballOwned.clear()
+      },
     })
     if (mp) {
       parkStore.setServerBuyer(mp.sendBuy)
@@ -754,18 +813,38 @@ export default function ParkGame() {
     parkStore.configure({ mapCols: MAP_COLS, groundRows: GROUND_ROWS })
     parkStore.setObstacles(baseObjects)
     const rebuildObjects = () => {
+      // Index the outgoing placed objects by id so an in-flight ball's live
+      // physics + on-screen position survive this wholesale rebuild (the store
+      // re-emits on any placed change — a purchase, a peer's ball, our own
+      // `moved` echo — and without this a rolling ball would snap back each time).
+      const prev = new Map<string, GameObject>()
+      for (const o of g.objects) if (o.id) prev.set(o.id, o)
       g.objects = baseObjects.concat(
-        parkStore.getPlaced().map((p) => ({
-          type: p.type,
-          x: p.x,
-          y: p.y,
-          w: p.w,
-          h: p.h,
-          key: p.key,
-          placedAt: p.placedAt,
-          expiresAt: p.expiresAt,
-          ownerId: p.ownerId,
-        })),
+        parkStore.getPlaced().map((p) => {
+          const obj: GameObject = {
+            type: p.type,
+            x: p.x,
+            y: p.y,
+            w: p.w,
+            h: p.h,
+            id: p.id,
+            key: p.key,
+            placedAt: p.placedAt,
+            expiresAt: p.expiresAt,
+            ownerId: p.ownerId,
+          }
+          if (p.id && g.ballRolling.has(p.id)) {
+            const old = prev.get(p.id)
+            if (old) {
+              obj.x = old.x
+              obj.y = old.y
+              obj.vx = old.vx
+              obj.vy = old.vy
+              obj.hitAt = old.hitAt
+            }
+          }
+          return obj
+        }),
       )
     }
     rebuildObjects()
@@ -928,15 +1007,22 @@ export default function ParkGame() {
           born: g.frameCount,
           life: 28,
         })
-      } else if (best.type === 'ball' && best.placedAt == null) {
-        // Only the (base map) ball is knocked around — directly away from the
-        // cat. Shop-placed decor is store-owned, so it just wobbles (below).
+      } else if (best.type === 'ball') {
+        // Every ball is knocked directly away from the cat. We simulate the roll
+        // locally for instant feel; in multiplayer we also tell the server the
+        // launch (id + tile + velocity) so peers roll the same ball via the same
+        // integrator, and persist the resting tile once it settles (see below).
         const dx = bx - cx
         const dy = by - cy
         const d = Math.hypot(dx, dy) || 1
         const speed = 0.006 // tiles/ms
         best.vx = (dx / d) * speed
         best.vy = (dy / d) * speed
+        if (best.id) {
+          g.ballRolling.add(best.id)
+          g.ballOwned.add(best.id)
+          mp?.sendPush(best.id, best.x, best.y, best.vx, best.vy)
+        }
         g.effects.push({
           kind: 'stars',
           x: bxp,
@@ -3539,6 +3625,23 @@ export default function ParkGame() {
       ctx!.translate(0, WORLD_OFFSET)
       // integrate knocked objects (ball) before drawing them
       updateSlappables(g.objects, dt, MAP_COLS, GROUND_ROWS)
+      // Persist the resting tile of any ball WE launched once it stops rolling
+      // (updateSlappables clears vx/vy when a ball settles). One `rest` per roll —
+      // the server rounds, stores it, and broadcasts the authoritative tile. We stop
+      // tracking it as OWNED (so we send `rest` exactly once) but KEEP it in
+      // ballRolling: that shields the settled ball from a store rebuild until the
+      // authoritative `moved` echo arrives and clears it (see onBallMoved). Peer-
+      // simulated balls (ballRolling but never ballOwned) are likewise cleared by
+      // `moved` — or by a resync.
+      if (g.ballOwned.size > 0) {
+        for (const id of g.ballOwned) {
+          const o = g.objects.find((ob) => ob.id === id)
+          if (!o || (o.vx == null && o.vy == null)) {
+            g.ballOwned.delete(id)
+            if (o) mp?.sendRest(id, o.x, o.y)
+          }
+        }
+      }
       drawObjects(wallNow)
       drawButterflies(f)
       updateCat(dt)
