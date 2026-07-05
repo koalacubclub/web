@@ -28,6 +28,7 @@ import {
 import { cameraPan } from './parkCamera'
 import { jumpLiftTiles } from '@/game/jump'
 import { drawKoalaImprint } from '@/game/imprint'
+import { drawMoonAt, drawStarAt } from '@/game/sky'
 import {
   slapPhase,
   slapShake,
@@ -38,6 +39,13 @@ import {
 } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
+import {
+  drawRoom,
+  updateRoomCat,
+  ROOM_ENTRY,
+  ROOM_CENTER,
+  HOUSE_REACH,
+} from '@/game/room'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import { NIGHT, night } from '@/game/constants'
@@ -380,6 +388,14 @@ export default function ParkGame() {
     // the subset WE slapped, so only we persist the resting spot (send `rest`).
     ballRolling: new Set<string>(),
     ballOwned: new Set<string>(),
+    // "Meow house" interior state. While inRoom, the game loop draws ONLY the
+    // warm room (the whole park is skipped). nearHouse is recomputed each frame
+    // so a meow next to a house knows to step inside; parkReturn remembers where
+    // to drop the koala back when it leaves.
+    inRoom: false,
+    nearHouse: false,
+    houseHintShown: false,
+    parkReturn: null as { x: number; y: number; dir: 'left' | 'right' } | null,
   })
 
   const initObjects = useCallback(() => {
@@ -614,6 +630,10 @@ export default function ParkGame() {
         h: 1,
         interactMsg: '... A warm resting rock',
       },
+      // A cosy little house near the social hub. Walk up and meow to step inside
+      // (see fireMeowEmote / drawRoomScene). Solid so the koala stops at the
+      // door; coords are already in the padded space (added after the shift).
+      { type: 'house', x: 40, y: 5, w: 4, h: 4, solid: true },
     )
     // Solo play (no backend): seed the default balls locally so there's still
     // something to bat around — they roll purely client-side, exactly as before.
@@ -1116,6 +1136,10 @@ export default function ParkGame() {
     let pressedCat = false // mouse pressed on Koala (→ meow on release)
     let touchCat = false // touch started on Koala (→ meow on a clean tap)
     const hotspotAt = (clientX: number, clientY: number): GameObject | null => {
+      // Indoors there are no park hotspots — and the social signs sit right under
+      // the room on screen, so without this their hover tooltips / clicks would
+      // still fire through the room.
+      if (g.inRoom) return null
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return null
       if (
@@ -1167,6 +1191,34 @@ export default function ParkGame() {
     // Cosmetic "meow" — fired by tapping Koala. NOT a skill: no cooldown and no
     // global cooldown; it just plays the bubble locally + broadcasts so peers see
     // it (deliberately bypasses startAbility, which is cooldown/GCD-gated).
+    // Step into the warm house interior: remember the park spot to return to,
+    // then drop the koala at the room's entrance. The game loop takes over from
+    // here and draws ONLY the room (see gameLoop / drawRoomScene).
+    const enterRoom = () => {
+      g.parkReturn = { x: g.cat.x, y: g.cat.y, dir: g.cat.dir }
+      g.cat.x = ROOM_ENTRY.x
+      g.cat.y = ROOM_ENTRY.y
+      g.cat.dir = 'right'
+      g.cat.state = 'standing'
+      g.cat.idleFrames = 0
+      g.target = null
+      g.inRoom = true
+      radio.setNear(false) // the park radio doesn't reach indoors
+      hoveredObj = null // drop any park hotspot tooltip that was showing
+      setHover(null)
+    }
+    // Step back out to the park, restoring the koala where it meowed in.
+    const exitRoom = () => {
+      if (g.parkReturn) {
+        g.cat.x = g.parkReturn.x
+        g.cat.y = g.parkReturn.y
+        g.cat.dir = g.parkReturn.dir
+      }
+      g.parkReturn = null
+      g.target = null
+      g.cat.idleFrames = 0
+      g.inRoom = false
+    }
     const fireMeowEmote = () => {
       if (!actionAllowed()) return
       g.cat.state = 'standing'
@@ -1175,6 +1227,9 @@ export default function ParkGame() {
       g.emote = 'meow'
       g.emoteAt = performance.now()
       mp?.sendAction('meow')
+      // A meow at a house door steps inside; a meow indoors steps back out.
+      if (g.inRoom) exitRoom()
+      else if (g.nearHouse) enterRoom()
     }
     const activateHotspot = (o: GameObject) => {
       if (o.type === 'social' && o.href) {
@@ -1646,28 +1701,7 @@ export default function ParkGame() {
       )
       stars.forEach((star) => {
         const twinkle = 0.5 + 0.5 * Math.sin(g.frameCount * 0.03 + star.x * 0.1)
-        ctx.fillStyle = `rgba(255, 255, 230, ${twinkle * 0.9})`
-        if (star.s >= 2.5) {
-          // A few 4-point sparkle stars, with slightly uneven points (seeded by
-          // position so the shape is stable — only the brightness twinkles).
-          const rng = makeRng(Math.round(star.x) + 1)
-          const inner = star.s * 0.8
-          ctx.beginPath()
-          for (let i = 0; i < 8; i++) {
-            const ang = (i / 8) * Math.PI * 2 - Math.PI / 2
-            const rr = i % 2 === 0 ? star.s * (1.8 + rng() * 1.2) : inner
-            const px = star.x + Math.cos(ang) * rr
-            const py = star.y + Math.sin(ang) * rr
-            if (i === 0) ctx.moveTo(px, py)
-            else ctx.lineTo(px, py)
-          }
-          ctx.closePath()
-          ctx.fill()
-        } else {
-          ctx.beginPath()
-          ctx.arc(star.x, star.y, star.s, 0, Math.PI * 2)
-          ctx.fill()
-        }
+        drawStarAt(ctx!, star.x, star.y, star.s, twinkle * 0.9)
       })
     }
 
@@ -1684,36 +1718,7 @@ export default function ParkGame() {
       const moonX = PIXEL * 32.5
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
-      // Soft halo.
-      ctx.fillStyle = 'rgba(255, 253, 232, 0.12)'
-      ctx.beginPath()
-      ctx.arc(moonX, moonY, moonR * 1.7, 0, Math.PI * 2)
-      ctx.fill()
-      // Disc.
-      ctx.fillStyle = '#FFFDE8'
-      ctx.beginPath()
-      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2)
-      ctx.fill()
-      // Craters (slightly darker translucent spots).
-      ctx.fillStyle = 'rgba(208, 202, 175, 0.55)'
-      const craters: [number, number, number][] = [
-        [-0.35, -0.18, 0.16],
-        [0.28, -0.3, 0.1],
-        [0.12, 0.3, 0.14],
-        [-0.12, 0.16, 0.08],
-        [0.4, 0.1, 0.09],
-      ]
-      craters.forEach(([dx, dy, r]) => {
-        ctx!.beginPath()
-        ctx!.arc(
-          moonX + dx * moonR,
-          moonY + dy * moonR,
-          r * moonR,
-          0,
-          Math.PI * 2,
-        )
-        ctx!.fill()
-      })
+      drawMoonAt(ctx, moonX, moonY, moonR)
     }
 
     function drawDreamBubble() {
@@ -2652,6 +2657,11 @@ export default function ParkGame() {
             case 'photo':
               drawPhoto(obj)
               break
+            case 'house':
+              // Base-map house uses the shared shop sprite art (night-graded to
+              // match the park); it's a fixed fixture, so no pop-in/expiry.
+              drawShopSprite(ctx!, obj, g.frameCount, { night: true })
+              break
           }
         }
         if (shake) ctx!.restore()
@@ -3380,6 +3390,36 @@ export default function ParkGame() {
           }
         }
       })
+
+      // Are we standing at a house door? (box distance, so a big 4×4 house is
+      // reachable from any edge). Meowing here steps inside (see fireMeowEmote);
+      // the first time we arrive, pop a one-time hint over the house.
+      let nearHouse = false
+      const hcx = cat.x + 0.5
+      const hcy = cat.y + 0.5
+      let house: GameObject | null = null
+      for (const o of g.objects) {
+        if (o.type !== 'house') continue
+        const nx = Math.max(o.x, Math.min(hcx, o.x + o.w))
+        const ny = Math.max(o.y, Math.min(hcy, o.y + o.h))
+        if (Math.hypot(hcx - nx, hcy - ny) < HOUSE_REACH) {
+          nearHouse = true
+          house = o
+          break
+        }
+      }
+      g.nearHouse = nearHouse
+      if (nearHouse && house && !g.houseHintShown) {
+        g.houseHintShown = true
+        g.popups.push({
+          text: 'Meow to go inside 🏠',
+          x: house.x * PIXEL + (house.w * PIXEL) / 2,
+          y: house.y * PIXEL - 20,
+          life: 120,
+        })
+      } else if (!nearHouse) {
+        g.houseHintShown = false
+      }
     }
 
     // Camera measurements are cached and refreshed on resize / any canvas box
@@ -3444,16 +3484,14 @@ export default function ParkGame() {
     // where the canvas is sized by its `100%` width and ends up taller than the
     // viewport). The cat's on-canvas Y sits below the sky rows (WORLD_OFFSET),
     // hence the SKY_ROWS term. See parkCamera.ts for the (unit-tested) math.
-    function updateCamera() {
+    // Pan the camera to frame a focus point (map-tile coords). Defaults to the
+    // koala; indoors we pass the room's fixed centre so the room stays put in the
+    // middle of the viewport instead of drifting as the koala walks around it.
+    function updateCamera(focusX = g.cat.x + 0.5, focusY = g.cat.y + 0.5) {
       if (!canvas) return
-      const h = cameraPan(
-        (g.cat.x + 0.5) / MAP_COLS,
-        viewportW,
-        displayW,
-        CANVAS_WIDTH,
-      )
+      const h = cameraPan(focusX / MAP_COLS, viewportW, displayW, CANVAS_WIDTH)
       const v = cameraPan(
-        (SKY_ROWS + g.cat.y + 0.5) / MAP_ROWS,
+        (SKY_ROWS + focusY) / MAP_ROWS,
         viewportH,
         displayH,
         CANVAS_HEIGHT,
@@ -3583,6 +3621,36 @@ export default function ParkGame() {
     // Timestamp (rAF clock) of the last frame we actually drew — used to throttle
     // to ~30fps when reducedFps is on.
     let lastDrawTs = 0
+
+    // Indoors: draw ONLY the warm room over a black void — the park (background,
+    // objects, remote koalas, food, HUD) is skipped entirely this frame. The
+    // koala keeps its world-tile coords + the WORLD_OFFSET translate, so drawCat,
+    // the meow bubble, the follow-camera and pointer hit-testing all still work.
+    function drawRoomScene(dt: number) {
+      if (!ctx) return
+      ctx.fillStyle = '#000000'
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+      ctx.save()
+      ctx.translate(0, WORLD_OFFSET)
+      const mv = controls.getMove()
+      g.target = updateRoomCat(g.cat, dt, g.keys, mv, g.target)
+      drawRoom(ctx, PIXEL, SCALE)
+      const nowMs = performance.now()
+      drawCat(
+        g.cat,
+        undefined,
+        jumpLiftTiles(g.jumpAt, nowMs) * PIXEL,
+        slapPhase(g.slapAt, nowMs),
+      )
+      if (g.emote) {
+        const et = (nowMs - g.emoteAt) / EMOTE_DURATION_MS
+        if (et >= 0 && et <= 1)
+          drawEmote(g.cat.x, g.cat.y, g.cat.dir, g.emote, et)
+        else g.emote = null
+      }
+      ctx.restore()
+    }
+
     function gameLoop(now = 0) {
       animId = 0
       // 30fps cap (opt-in). When on, skip frame work until ~32ms elapsed, but
@@ -3616,6 +3684,15 @@ export default function ParkGame() {
       // Draw in logical 960x816 coords scaled up to the high-res backing.
       ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+      // Indoors: draw only the warm room, still follow the koala with the camera,
+      // then bail — none of the park below is drawn while we're inside.
+      if (g.inRoom) {
+        drawRoomScene(dt)
+        updateCamera(ROOM_CENTER.x, ROOM_CENTER.y)
+        if (active()) animId = requestAnimationFrame(gameLoop)
+        return
+      }
 
       // Pre-rendered static sky + ground (blitted, smoothly upscaled).
       ctx!.drawImage(bgCanvas, 0, 0)
