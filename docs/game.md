@@ -19,14 +19,14 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   above the wash).
 - **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
   toward the pointer (release to stop). Mouse/pen engage immediately. **Space** =
-  jump; **Gamer mode** adds on-screen ability buttons + keys (shift = dash, 1/2/3
-  = bite/hand/meow, where **hand** is the paw-slap) — see Multiplayer → Abilities.
+  jump; the on-screen ability buttons + keyboard keys (shift = dash, 1/2/3 =
+  bite/hand/meow, where **hand** is the paw-slap) — see Multiplayer → Abilities.
 - **Controls (touch):** the hero stays a **scrollable** hero — a **swipe scrolls
   the page**, a tap on a channel sign / photo opens it, and a **double-tap** jumps.
   The canvas itself never steers by touch (no `preventDefault` in the touch path),
-  so scroll and play never fight. Movement on touch is the opt-in **Gamer-mode**
-  on-screen joystick (a fixed, discreet golden stick bottom-left; the ability
-  buttons sit bottom-right). By default there is **no on-screen D-pad**.
+  so scroll and play never fight. Movement on touch is the on-screen **joystick**
+  (a fixed, discreet golden stick bottom-left; the ability buttons sit
+  bottom-right) — always shown, no on-screen D-pad.
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
@@ -105,11 +105,11 @@ FOODS = [{ key, label, emoji, points, weight, tier }, …]
 ## Shop & placed decorations
 
 A **shop** spends coins to buy decorations that spawn at Koala's tile. The
-**bottom control bar** (`client/src/components/BottomBar.tsx`) is two pills: the
-**score/likes pill — which opens the shop** (consolidated; no separate Shop
-button) and **Settings**. Shop opens a **bottom sheet** that leaves the park
-visible so you can see where things land. Settings is always available and holds
-the **Gamer-mode** toggle + the **radio mute** toggle (both persisted to
+**top-right cluster** (`client/src/components/BottomBar.tsx`, mounted by Home next
+to the social icons) is two pills: the **score/likes pill — which opens the shop**
+(consolidated; no separate Shop button) and **Settings**. Shop opens a **bottom
+sheet** that leaves the park visible so you can see where things land. Settings is
+always available and holds the **radio mute** toggle (persisted to
 `localStorage`), plus — when connected — the display-name field, the live online
 roster, and the world stats. It's bridged through a small framework-agnostic store
 so the React UI and the imperative canvas never fight.
@@ -245,13 +245,14 @@ ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
   shop-placed decor never moves. **Object reactions are client-local** — peers
   only see the swipe pose (see the PR follow-ups: syncing reactions + a shared
   ball). **Bite/meow** = cosmetic emotes (`drawEmote`).
-- **Gamer mode + controls** (`controlsStore`, persisted, off by default, works
-  solo — toggled in Settings): shows a fixed, discreet golden **joystick** (mobile
-  only, bottom-left) that writes an analog move vector the loop reads each frame,
-  and an **ability dock** (bottom-right, desktop too) with per-ability cooldown
-  sweeps. The controls are `<button>` overlay zones in Home's `pointer-events-none`
-  layer, so only they capture touch — the canvas never steers by touch, so an
-  empty-area swipe still scrolls the page (the site stays scrollable).
+- **On-screen controls** (`controlsStore`) — **always shown** (this is the default;
+  there's no toggle): a fixed, discreet golden **joystick** (mobile only,
+  bottom-left) that writes an analog move vector the loop reads each frame, and an
+  **ability dock** (bottom-right, desktop too) — a big Jump + a tight arc of
+  dash/bite/hand with Meow tucked beside Jump, each with cooldown sweeps. The
+  controls are `<button>` overlay zones in Home's `pointer-events-none` layer, so
+  only they capture touch — the canvas never steers by touch, so an empty-area
+  swipe still scrolls the page (the site stays scrollable).
 - **Presence + stats:** the connection exposes a live roster (`onPresence` → self
   - remotes) and the world's durable stats (`onStats` → active-24h, total sessions
     ever, this session's visit count). Both are fed into `parkStore` and shown inside

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, ChevronsRight, Hand, MessageCircle, Zap } from 'lucide-react'
 import {
   ABILITY_COOLDOWNS_MS,
@@ -23,12 +23,7 @@ const gold = (a: number) => `oklch(0.82 0.13 78 / ${a})`
 // Lives inside Home's pointer-events-none hero layer, so only these control zones
 // capture touch — an empty-area swipe still scrolls the page.
 export default function GamerControls({ atTop }: { atTop: boolean }) {
-  const gamer = useSyncExternalStore(
-    controls.subscribe,
-    controls.getGamerMode,
-    controls.getGamerMode,
-  )
-  if (!gamer || !atTop) return null
+  if (!atTop) return null
   return (
     <>
       {IS_TOUCH && <Joystick />}
