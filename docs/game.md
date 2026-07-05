@@ -25,12 +25,18 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   mobile — a second finger's tap is a non-primary pointer that never gets a
   synthesized click; keyboard/AT still fire via the `detail===0` click.
   **Meow** is not a button/key — it's a cosmetic emote fired by **tapping Koala**.
-- **Controls (touch):** the hero stays a **scrollable** hero — a **swipe scrolls
-  the page**, a tap on a channel sign / photo opens it, and a **double-tap** jumps.
-  The canvas itself never steers by touch (no `preventDefault` in the touch path),
-  so scroll and play never fight. Movement on touch is the on-screen **joystick**
-  (a fixed, discreet golden stick bottom-left; the ability buttons sit
-  bottom-right) — always shown, no on-screen D-pad.
+- **Controls (touch):** the hero stays a **scrollable** hero — a quick **swipe
+  scrolls the page**, a tap on a channel sign / photo opens it, a tap on Koala
+  meows, and a **double-tap** jumps. Movement is the on-screen **joystick** (a
+  fixed, discreet golden stick bottom-left; ability buttons bottom-right, always
+  shown) — **or** a **press-and-hold** anywhere on the open park: hold still for a
+  beat (`HOLD_MS`) and Koala walks toward your finger, following it as you drag
+  (release to stop), the same "walk toward the pointer" the mouse uses. The
+  hold-to-steer path is the **only** touch gesture that `preventDefault`s (and only
+  once engaged), so a plain swipe still scrolls natively; hold-vs-swipe is the only
+  way to tell steering from scrolling, so they interfere a little — the joystick
+  stays the primary mover and hold-to-walk is a zero-UI fallback for drop-in
+  players who never spot it.
 - **Camera:** on viewports narrower than the (scaled) canvas, a **horizontal
   camera** pans the canvas via CSS `transform` to keep Koala centered; the score
   HUD is offset by `g.hudShift` so it stays pinned to the viewport instead of
