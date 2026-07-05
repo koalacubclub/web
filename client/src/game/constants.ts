@@ -12,7 +12,7 @@ export const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 export const VIEW_COLS = 20
-export const GROUND_ROWS = 13 // the playable park (unchanged game logic)
+export const GROUND_ROWS = 14 // the playable park (a touch taller — more room at the bottom)
 export const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 export const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 export const PIXEL = 16 * SCALE

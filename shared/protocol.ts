@@ -11,7 +11,7 @@
 // These MUST stay in sync with MAP_COLS / GROUND_ROWS in ParkGame.tsx.
 export const WORLD = {
   cols: 58, // MAP_COLS
-  groundRows: 13, // GROUND_ROWS
+  groundRows: 14, // GROUND_ROWS
 } as const
 
 export type Dir = 'left' | 'right'

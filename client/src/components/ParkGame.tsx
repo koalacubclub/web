@@ -62,7 +62,7 @@ const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 const VIEW_COLS = 20
-const GROUND_ROWS = 13 // the playable park (unchanged game logic)
+const GROUND_ROWS = 14 // the playable park (a touch taller — more room at the bottom)
 const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 const PIXEL = 16 * SCALE
@@ -1525,13 +1525,13 @@ export default function ParkGame() {
       // Fills the bare sand gap below the hills (upper-centre) so grass meets the
       // ridge and there's no visible sand/hill seam — kept low enough that its top
       // tucks just under the ridge crest rather than poking into the sky.
-      drawBlobPatch(PIXEL * 6.8, PIXEL * 2.3, PIXEL * 3.4, PIXEL * 1.7, 4.9)
+      drawBlobPatch(PIXEL * 6.8, PIXEL * 2.9, PIXEL * 3.4, PIXEL * 1.7, 4.9)
       drawBlobPatch(PIXEL * 15, PIXEL * 3.5, PIXEL * 5, PIXEL * 3.5, 5.1)
       drawBlobPatch(PIXEL * 5, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 3, 7.4)
       drawBlobPatch(PIXEL * 13, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.8, 9.2)
       // Medium patches (touching the big ones)
       drawBlobPatch(PIXEL * 7.5, PIXEL * 4.5, PIXEL * 2.2, PIXEL * 1.6, 3.7)
-      drawBlobPatch(PIXEL * 10, PIXEL * 3, PIXEL * 1.8, PIXEL * 1.4, 2.3)
+      drawBlobPatch(PIXEL * 10, PIXEL * 3.6, PIXEL * 1.8, PIXEL * 1.4, 2.3)
       drawBlobPatch(PIXEL * 18.5, PIXEL * 8, PIXEL * 2, PIXEL * 2.5, 11.5)
       // Small patches scattered
       drawBlobPatch(PIXEL * 1, PIXEL * 7, PIXEL * 1.3, PIXEL * 1, 13.1)
@@ -1540,7 +1540,7 @@ export default function ParkGame() {
       // Right-half patches (cols 20..40) added when the map was doubled.
       drawBlobPatch(PIXEL * 22, PIXEL * 3.5, PIXEL * 4.4, PIXEL * 3.1, 21.4)
       drawBlobPatch(PIXEL * 28, PIXEL * 4, PIXEL * 5, PIXEL * 3.4, 23.7)
-      drawBlobPatch(PIXEL * 35, PIXEL * 3, PIXEL * 4.6, PIXEL * 3.3, 26.2)
+      drawBlobPatch(PIXEL * 35, PIXEL * 3.6, PIXEL * 4.6, PIXEL * 3.3, 26.2)
       drawBlobPatch(PIXEL * 25, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 2.9, 29.1)
       drawBlobPatch(PIXEL * 33, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 31.6)
       drawBlobPatch(PIXEL * 37.5, PIXEL * 8.5, PIXEL * 3.6, PIXEL * 2.6, 34.8)
@@ -1551,20 +1551,27 @@ export default function ParkGame() {
       // A few more left-half patches to match the added scenery.
       drawBlobPatch(PIXEL * 0.6, PIXEL * 4.4, PIXEL * 2.2, PIXEL * 1.4, 45.7)
       drawBlobPatch(PIXEL * 4.2, PIXEL * 6.2, PIXEL * 2, PIXEL * 1.3, 47.9)
-      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 49.3)
+      drawBlobPatch(PIXEL * 13, PIXEL * 3.2, PIXEL * 2.4, PIXEL * 1.5, 49.3)
       drawBlobPatch(PIXEL * 18.2, PIXEL * 7.5, PIXEL * 1.9, PIXEL * 1.4, 51.6)
       ctx.restore()
       // New-left grass patches (cols 0..17) — final coords, drawn untranslated.
       drawBlobPatch(PIXEL * 2, PIXEL * 4, PIXEL * 4.4, PIXEL * 3.1, 60.2)
       drawBlobPatch(PIXEL * 8, PIXEL * 3.6, PIXEL * 4.8, PIXEL * 3.3, 62.5)
-      drawBlobPatch(PIXEL * 14.5, PIXEL * 3.2, PIXEL * 4.6, PIXEL * 3.2, 64.8)
+      drawBlobPatch(PIXEL * 14.5, PIXEL * 3.8, PIXEL * 4.6, PIXEL * 3.2, 64.8)
       drawBlobPatch(PIXEL * 4.5, PIXEL * 9.4, PIXEL * 4.2, PIXEL * 2.9, 67.1)
       drawBlobPatch(PIXEL * 11.5, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 69.4)
       drawBlobPatch(PIXEL * 16.5, PIXEL * 8.3, PIXEL * 3.5, PIXEL * 2.6, 71.9)
       drawBlobPatch(PIXEL * 6.5, PIXEL * 5.1, PIXEL * 2.1, PIXEL * 1.5, 74.3)
       drawBlobPatch(PIXEL * 10, PIXEL * 7, PIXEL * 1.9, PIXEL * 1.4, 76.6)
       drawBlobPatch(PIXEL * 0.7, PIXEL * 4.3, PIXEL * 2.2, PIXEL * 1.4, 78.8)
-      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 81.2)
+      drawBlobPatch(PIXEL * 13, PIXEL * 3.2, PIXEL * 2.4, PIXEL * 1.5, 81.2)
+      // A few sparse patches in the extra bottom row — kept small + spaced so the
+      // sand shows through and the bottom doesn't read as solid green.
+      drawBlobPatch(PIXEL * 6, PIXEL * 12.6, PIXEL * 2.6, PIXEL * 1.6, 84.1)
+      drawBlobPatch(PIXEL * 19, PIXEL * 12.9, PIXEL * 2.4, PIXEL * 1.5, 88.9)
+      drawBlobPatch(PIXEL * 33, PIXEL * 12.5, PIXEL * 2.8, PIXEL * 1.6, 93.7)
+      drawBlobPatch(PIXEL * 46, PIXEL * 12.9, PIXEL * 2.5, PIXEL * 1.5, 98.4)
+      drawBlobPatch(PIXEL * 54, PIXEL * 12.6, PIXEL * 2, PIXEL * 1.3, 103.2)
     }
 
     function drawStars() {
@@ -3861,10 +3868,10 @@ export default function ParkGame() {
         // computing a true "cover" from the parent's real client box so it always
         // fills the screen (no letterbox / black gap) and stays correct across
         // orientation changes (iOS doesn't reliably recompute lvh on rotate).
-        // Full canvas is MAP_COLS×MAP_ROWS = 40/15 but only VIEW_COLS=20 show at a
-        // time (zoom = MAP_COLS/VIEW_COLS = 40/20), the camera pans the rest. Keep
+        // Full canvas is MAP_COLS×MAP_ROWS = 58/16 but only VIEW_COLS=20 show at a
+        // time (zoom = MAP_COLS/VIEW_COLS = 58/20), the camera pans the rest. Keep
         // these literals in sync with constants.
-        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)] aspect-[40/15] h-auto w-[max(calc(100%*40/20),calc(100lvh*40/15))]"
+        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)] aspect-[58/16] h-auto w-[max(calc(100%*58/20),calc(100lvh*58/16))]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
           // the browser scale it smoothly — no nearest-neighbor pixelation.
