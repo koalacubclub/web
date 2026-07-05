@@ -382,14 +382,6 @@ export default function ParkGame() {
         interactMsg: '✿ Pretty flowers!',
       },
       {
-        type: 'flowers',
-        x: 8,
-        y: 10,
-        w: 1,
-        h: 1,
-        interactMsg: '✿ So colorful!',
-      },
-      {
         type: 'pond',
         x: 14,
         y: 4,
