@@ -133,6 +133,10 @@ export function createMultiplayer(
     onBallMoved?: (id: string, x: number, y: number) => void
     /** A full resync (welcome, incl. reconnect) — drop any local ball sim. */
     onResync?: () => void
+    /** The server was already tracking this session (2nd tab / fast reload):
+     *  snap the local cat to the authoritative position so its fresh spawn isn't
+     *  speed-clamped against the still-present server baseline. */
+    onResume?: (x: number, y: number) => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
@@ -241,6 +245,9 @@ export function createMultiplayer(
         handle.stats = msg.stats
         if (msg.stats) opts.onStats?.(msg.stats)
         opts.onResync?.() // drop stale local ball sim before rebuilding from placed
+        // Only when the server was already tracking us: adopt its position so a
+        // fresh local spawn isn't clamped against the live server baseline.
+        if (msg.resumed) opts.onResume?.(msg.self.x, msg.self.y)
         emitPlaced()
         emitPresence()
         break

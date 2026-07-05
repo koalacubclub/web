@@ -785,6 +785,21 @@ export default function ParkGame() {
         g.ballRolling.clear()
         g.ballOwned.clear()
       },
+      onResume: (x, y) => {
+        // The server was already tracking this session (2nd tab / fast reload):
+        // snap to its authoritative position so our fresh local spawn isn't
+        // speed-clamped into place, and cancel any walk target so we don't
+        // immediately stroll off from the adopted spot.
+        g.cat.x = x
+        g.cat.y = y
+        g.target = null
+        // Also cancel any in-flight dash — otherwise the loop's dash block would
+        // overwrite the adopted position next frame from the pre-snap trajectory,
+        // re-triggering the very speed-clamp this snap avoids.
+        g.dashAt = -Infinity
+        g.dashFrom = { x, y }
+        g.dashTo = { x, y }
+      },
     })
     if (mp) {
       parkStore.setServerBuyer(mp.sendBuy)
