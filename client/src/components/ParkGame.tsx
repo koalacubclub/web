@@ -1004,8 +1004,15 @@ export default function ParkGame() {
       // Steering engaged → Koala follows the finger, and we claim the gesture so
       // the page stops scrolling under it (the listener is registered non-passive).
       if (touchSteering) {
+        // If the browser already committed to a native scroll, the event is no
+        // longer cancelable — we can't stop the page. Don't fight it (scroll +
+        // steer at once): bail out of steering and let the scroll win.
+        if (!e.cancelable) {
+          endTouch()
+          return
+        }
         aimAt(t.clientX, t.clientY)
-        if (e.cancelable) e.preventDefault()
+        e.preventDefault()
         return
       }
       if (
@@ -1028,10 +1035,7 @@ export default function ParkGame() {
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
       const t = touchById(e.changedTouches)
-      if (!t) {
-        endTouch() // e.g. touchcancel with no matching point → clean up + stop
-        return
-      }
+      if (!t) return // a DIFFERENT finger ended — leave our tracked touch alone
       // Steering was engaged → release to stop; no tap / meow / jump actions.
       if (touchSteering) {
         endTouch()
@@ -3257,9 +3261,19 @@ export default function ParkGame() {
     }
     const handleVisibility = () => {
       tabVisible = !document.hidden
+      // A backgrounding interruption may not deliver a touchend/cancel — drop any
+      // in-flight press-and-hold so steering can't stay stuck across the hide.
+      if (document.hidden) endTouch()
       ensureRunning()
     }
     const handleScroll = () => {
+      // The page actually moved → this gesture is a scroll, not a still hold.
+      // Cancel a pending press-and-hold before it can hijack the scroll (keys off
+      // the browser's own scroll decision, not our px tolerance).
+      if (holdTimer !== null) {
+        clearHold()
+        touchMoved = true
+      }
       updateOnScreen()
       setHover(null) // don't leave a tooltip stranded while scrolling away
     }
