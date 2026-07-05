@@ -37,7 +37,7 @@ import {
   type SlapEffect,
 } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
-import { drawShopSprite } from '@/game/sprites'
+import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import { NIGHT, night, makeRng } from '@/game/constants'
@@ -1868,6 +1868,13 @@ export default function ParkGame() {
     // Draw one object's art at its own position (no slap-shake wrapper). Shared by
     // the main object pass and the pond reflection pass.
     function drawObjectArt(o: GameObject, now: number, playing: boolean) {
+      // All ponds — base or shop-placed — use the reflective drawPond; a placed
+      // one keeps its pop-in/blink via withPlacedFlourish. (sprites.ts's own
+      // drawPond stays non-reflective, for the DOM-less shop previews.)
+      if (o.type === 'pond') {
+        withPlacedFlourish(ctx!, o, now, reducedMotion, () => drawPond(o))
+        return
+      }
       if (o.placedAt != null) {
         drawShopSprite(ctx!, o, g.frameCount, {
           now,
@@ -1886,9 +1893,6 @@ export default function ParkGame() {
           break
         case 'flowers':
           drawFlowers(o)
-          break
-        case 'pond':
-          drawPond(o)
           break
         case 'ball':
           drawBall(o)

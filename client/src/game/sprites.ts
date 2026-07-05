@@ -131,8 +131,8 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  // Match the base-map pond (cobalt-leaning; see drawPond in ParkGame).
-  ctx.fillStyle = INK('#4C90E4')
+  // Match the base-map pond (deep cobalt; see drawPond in ParkGame).
+  ctx.fillStyle = INK('#3C79C6')
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.5,
@@ -749,18 +749,14 @@ export interface DrawSpriteOptions {
   playing?: boolean
 }
 
-// Draw a shop sprite, wrapping placed items in a pop-in scale and a pre-expiry
-// blink (both wall-clock based, correct even though the game loop pauses
-// off-screen). Previews (no placedAt/now) draw static at full size.
-export function drawShopSprite(
-  ctx: Ctx,
+// Pop-in scale + pre-expiry blink alpha for a placed item (wall-clock based, so
+// it stays correct even though the game loop pauses off-screen). Identity for
+// previews (no `now`) or base objects (no `placedAt`).
+function placedFlourish(
   obj: SpriteObject,
-  frameCount: number,
-  opts: DrawSpriteOptions = {},
-) {
-  const { now, reducedMotion } = opts
-  PAL = opts.night ? NIGHT : COLORS
-  INK = opts.night ? night : (c) => c
+  now: number | undefined,
+  reducedMotion: boolean | undefined,
+): { scale: number; alpha: number } {
   let scale = 1
   let alpha = 1
   if (now != null && !reducedMotion) {
@@ -778,7 +774,20 @@ export function drawShopSprite(
       }
     }
   }
+  return { scale, alpha }
+}
 
+// Run `draw` wrapped in a placed item's pop-in scale + pre-expiry blink. Exported
+// so the game can apply the same flourish to sprites it renders itself rather
+// than via drawShopSprite (e.g. reflective ponds, which ParkGame draws).
+export function withPlacedFlourish(
+  ctx: Ctx,
+  obj: SpriteObject,
+  now: number | undefined,
+  reducedMotion: boolean | undefined,
+  draw: () => void,
+): void {
+  const { scale, alpha } = placedFlourish(obj, now, reducedMotion)
   const wrap = scale !== 1 || alpha !== 1
   if (wrap) {
     ctx.save()
@@ -791,45 +800,60 @@ export function drawShopSprite(
       ctx.translate(-cx, -cy)
     }
   }
-
-  switch (obj.type) {
-    case 'tree':
-      drawTree(ctx, obj)
-      break
-    case 'bench':
-      drawBench(ctx, obj)
-      break
-    case 'flowers':
-      drawFlowers(ctx, obj, frameCount)
-      break
-    case 'pond':
-      drawPond(ctx, obj, frameCount)
-      break
-    case 'ball':
-      drawBall(ctx, obj, frameCount)
-      break
-    case 'stone':
-      drawStone(ctx, obj)
-      break
-    case 'mushroom':
-      drawMushroom(ctx, obj)
-      break
-    case 'snowcat':
-      drawSnowcat(ctx, obj, frameCount)
-      break
-    case 'cardbox':
-      drawCardbox(ctx, obj)
-      break
-    case 'house':
-      drawHouse(ctx, obj)
-      break
-    case 'lighttree':
-      drawLightTree(ctx, obj, frameCount)
-      break
-    case 'radio':
-      drawRadio(ctx, obj, frameCount, opts.playing === true)
-      break
-  }
-
+  draw()
   if (wrap) ctx.restore()
+}
+
+// Draw a shop sprite, wrapping placed items in a pop-in scale and a pre-expiry
+// blink (both wall-clock based, correct even though the game loop pauses
+// off-screen). Previews (no placedAt/now) draw static at full size.
+export function drawShopSprite(
+  ctx: Ctx,
+  obj: SpriteObject,
+  frameCount: number,
+  opts: DrawSpriteOptions = {},
+) {
+  const { now, reducedMotion } = opts
+  PAL = opts.night ? NIGHT : COLORS
+  INK = opts.night ? night : (c) => c
+  withPlacedFlourish(ctx, obj, now, reducedMotion, () => {
+    switch (obj.type) {
+      case 'tree':
+        drawTree(ctx, obj)
+        break
+      case 'bench':
+        drawBench(ctx, obj)
+        break
+      case 'flowers':
+        drawFlowers(ctx, obj, frameCount)
+        break
+      case 'pond':
+        drawPond(ctx, obj, frameCount)
+        break
+      case 'ball':
+        drawBall(ctx, obj, frameCount)
+        break
+      case 'stone':
+        drawStone(ctx, obj)
+        break
+      case 'mushroom':
+        drawMushroom(ctx, obj)
+        break
+      case 'snowcat':
+        drawSnowcat(ctx, obj, frameCount)
+        break
+      case 'cardbox':
+        drawCardbox(ctx, obj)
+        break
+      case 'house':
+        drawHouse(ctx, obj)
+        break
+      case 'lighttree':
+        drawLightTree(ctx, obj, frameCount)
+        break
+      case 'radio':
+        drawRadio(ctx, obj, frameCount, opts.playing === true)
+        break
+    }
+  })
 }
