@@ -32,10 +32,10 @@ export default function GamerControls({ atTop }: { atTop: boolean }) {
   )
 }
 
-// A fixed analog joystick anchored bottom-left, drawn as a flat plate (two thin
-// gold ellipses, NO fill) with a simple ball knob that slides on it. It's a
-// <button> (so the canvas' window touch handlers bail via their `a,button` gate)
-// with touchAction none + stopPropagation.
+// A fixed analog joystick anchored bottom-left, drawn as a hand-drawn cat dish (a
+// rounded dome with two pointy ears + a little hook, thin gold outline, NO fill)
+// with a simple ball knob that slides on it. It's a <button> (so the canvas'
+// window touch handlers bail via their `a,button` gate) with touchAction none.
 function Joystick() {
   const baseRef = useRef<HTMLButtonElement>(null)
   const pointerId = useRef<number | null>(null)
@@ -99,17 +99,20 @@ function Joystick() {
         opacity: held ? 1 : 0.7,
       }}
     >
-      {/* Flat plate outline (rim + well), no fill */}
+      {/* Cat-dish outline: a rounded dome with two pointy ears + a little
+          bottom-left hook — a hand-drawn cat plate. No fill; thin gold line. */}
       <svg
         viewBox="0 0 100 100"
         className="absolute inset-0 h-full w-full"
         fill="none"
         stroke={line}
-        strokeWidth={2}
+        strokeWidth={2.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
         aria-hidden="true"
       >
-        <ellipse cx="50" cy="52" rx="46" ry="20" />
-        <ellipse cx="50" cy="50" rx="33" ry="13" />
+        <path d="M24 33 L27 13 L38 29 Q50 25 62 29 L73 13 L76 33 C87 47 88 69 78 85 Q50 93 24 85 C14 67 13 47 24 33 Z" />
+        <path d="M23 79 C15 83 16 92 25 88" />
       </svg>
       {/* Ball knob, slides with the drag */}
       <span
