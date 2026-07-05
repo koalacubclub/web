@@ -67,10 +67,25 @@ export function getGcdUntil(): number {
   return gcdUntil
 }
 
+// ── Engagement (game → UI): first time the player actually did something ─────
+// Set once the cat first moves or an ability fires — source-agnostic (keyboard,
+// joystick, on-screen buttons all converge in the game loop). The hero's
+// "scroll for more" cue polls this to fade itself shortly after play begins.
+let interactedAt = -Infinity
+/** Mark that the player has engaged with the game (idempotent — records first). */
+export function markInteracted(): void {
+  if (interactedAt === -Infinity) interactedAt = performance.now()
+}
+/** performance.now() of the first game interaction (−Infinity if none yet). */
+export function getInteractedAt(): number {
+  return interactedAt
+}
+
 // Test-only: reset module state between tests.
 export function __resetForTests(): void {
   clearMove()
   abilityFn = null
   gcdUntil = -Infinity
+  interactedAt = -Infinity
   for (const k of Object.keys(firedAt)) delete firedAt[k]
 }

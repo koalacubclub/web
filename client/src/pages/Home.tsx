@@ -16,6 +16,7 @@ import { TikTokIcon } from '@/components/TikTokIcon'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
 import GamerControls from '@/components/GamerControls'
+import * as controls from '@/game/controlsStore'
 import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
@@ -307,8 +308,10 @@ function FixedHero() {
 // (and fade out) once the hero is scrolled out of view.
 function HeroControls() {
   const [atTop, setAtTop] = useState(true)
-  // The scroll cue is a gentle hint: show it briefly on load, then fade it out
-  // (or as soon as the user scrolls at all).
+  // The "more below" cue stays put until the player actually engages with the
+  // game, so newcomers reading the scene still learn the page scrolls. Once they
+  // start playing (move Koala / fire an ability) it fades ~2s later so it stops
+  // competing for attention — or immediately if they scroll first.
   const [scrollCue, setScrollCue] = useState(true)
 
   useEffect(() => {
@@ -318,9 +321,21 @@ function HeroControls() {
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
-    const fade = window.setTimeout(() => setScrollCue(false), 6000)
+
+    // Poll the game's engagement signal (source-agnostic: keyboard, joystick,
+    // buttons). First interaction arms a short fade so the cue lingers just long
+    // enough to be noticed, then bows out while the player focuses on the game.
+    let fade = 0
+    const poll = window.setInterval(() => {
+      if (controls.getInteractedAt() !== -Infinity) {
+        window.clearInterval(poll)
+        fade = window.setTimeout(() => setScrollCue(false), 2000)
+      }
+    }, 200)
+
     return () => {
       window.removeEventListener('scroll', onScroll)
+      window.clearInterval(poll)
       clearTimeout(fade)
     }
   }, [])
@@ -364,27 +379,29 @@ function HeroControls() {
         </a>
       </div>
 
-      {/* Scroll-to-content cue — a quiet, low-opacity chevron that auto-fades
-          (the page is obviously scrollable now). Still tappable while shown. */}
-      <button
-        type="button"
-        onClick={scrollToContent}
-        aria-label="Scroll to content"
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex h-8 w-8 items-center justify-center text-white/40 transition-opacity duration-700 hover:text-white/70 ${
+      {/* Scroll-to-content cue — a labeled glass pill so it reads clearly as
+          "there's a whole page below" rather than as decoration. The full-screen
+          game hides the fold, so this makes the extra content discoverable.
+          Gentle bounce; fades once the player engages (see effect above). */}
+      <div
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 transition-opacity duration-700 ${
           scrollCue ? interactive : 'pointer-events-none opacity-0'
         }`}
       >
-        <motion.span
+        <motion.button
+          type="button"
+          onClick={scrollToContent}
+          aria-label="Scroll to see more"
+          className="group inline-flex items-center gap-2 rounded-full border border-[oklch(0.82_0.13_78)]/25 bg-black/40 px-4 py-2 text-[oklch(0.82_0.13_78)]/90 shadow-[0_4px_20px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors duration-300 hover:border-[oklch(0.82_0.13_78)]/45 hover:bg-black/55"
           animate={{ y: [0, 5, 0] }}
           transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut' }}
-          className="flex"
         >
-          <ChevronDown
-            className="h-6 w-6 drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]"
-            strokeWidth={2}
-          />
-        </motion.span>
-      </button>
+          <span className="text-[11px] font-light uppercase tracking-[0.2em]">
+            More below
+          </span>
+          <ChevronDown className="h-4 w-4" strokeWidth={2} />
+        </motion.button>
+      </div>
 
       {/* Gamer-mode overlay: fixed joystick (mobile) + ability buttons. Lives in
           this pointer-events-none layer so only its control zones capture touch. */}

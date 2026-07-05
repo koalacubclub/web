@@ -592,6 +592,7 @@ export default function ParkGame() {
       if (onGcd && now < g.gcdUntil) return
       if (now - controls.getFiredAt(a) < ABILITY_COOLDOWNS_MS[a]) return
       controls.markFired(a)
+      controls.markInteracted() // player is engaging — fades the hero scroll cue
       if (onGcd) {
         g.gcdUntil = now + GLOBAL_COOLDOWN_MS
         controls.markGcd(g.gcdUntil)
@@ -2895,14 +2896,18 @@ export default function ParkGame() {
       })
 
       if (!blocked) {
-        // First real movement dismisses the control hint (and remembers it, so
-        // returning movers never see it again). This is the one point both input
-        // modes converge on an actual position change — idle animation, blocked
-        // moves, and edge-clamped no-ops (newX === cat.x) don't reach here.
-        if (!hintMovedRef.current && (newX !== cat.x || newY !== cat.y)) {
-          hintMovedRef.current = true
-          parkStore.lsSet('kcc-hint-moved', '1')
-          setShowHint(false) // loop -> React bridge, same as setHover/setLightbox
+        // This is the one point both input modes converge on an actual position
+        // change — idle animation, blocked moves, and edge-clamped no-ops
+        // (newX === cat.x) don't reach here.
+        if (newX !== cat.x || newY !== cat.y) {
+          controls.markInteracted() // player is moving — fades the hero scroll cue
+          // First real movement also dismisses the control hint (and remembers
+          // it, so returning movers never see it again).
+          if (!hintMovedRef.current) {
+            hintMovedRef.current = true
+            parkStore.lsSet('kcc-hint-moved', '1')
+            setShowHint(false) // loop -> React bridge, same as setHover/setLightbox
+          }
         }
         cat.x = newX
         cat.y = newY
