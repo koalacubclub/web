@@ -50,7 +50,10 @@ import * as controls from '@/game/controlsStore'
  */
 
 const SCALE = 3
-const MAP_COLS = 40
+const MAP_COLS = 58
+// columns added on the LEFT to balance the map around the social hub; existing
+// content is shifted right by this at build/draw time.
+const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 const VIEW_COLS = 20
@@ -62,6 +65,20 @@ const CANVAS_WIDTH = MAP_COLS * PIXEL
 const CANVAS_HEIGHT = MAP_ROWS * PIXEL
 const GROUND_HEIGHT = GROUND_ROWS * PIXEL
 const WORLD_OFFSET = SKY_ROWS * PIXEL // px the park is pushed down for more sky
+
+// Random spawn near the social hub, recomputed each load so the cat lands in a
+// slightly different spot every visit. After the LEFT_PAD shift the hub sits at
+// cols 28 (instagram) / 30 (tiktok), center col 29. Mobile portrait shows only
+// ~7 columns across the width, so we clamp x to within ±1.25 cols of the hub
+// center — that keeps BOTH social signs on-screen at load on the narrowest
+// devices. y≈5 keeps the top-sky moon inside the desktop vertical load view.
+// Math.random() is fine here: this is browser game code, not security-sensitive.
+function randomSpawn(): { x: number; y: number } {
+  return {
+    x: 29 + (Math.random() - 0.5) * 2.5, // ~[27.75, 30.25] → both signs visible
+    y: 5 + (Math.random() - 0.5) * 1.5, // ~[4.25, 5.75] → moon stays in view
+  }
+}
 
 const COLORS = {
   // Near-black night sky matched to the site background (--background token)
@@ -302,13 +319,11 @@ export default function ParkGame() {
 
   const gameRef = useRef({
     cat: {
-      // x:20 centers the cat in the 40-wide map (so the view isn't lopsided
-      // to the right); y:4 keeps the top-sky moon comfortably inside the
-      // vertical camera's load view once the zoom is restored (the camera
-      // clamps and would cut the top sky if the cat spawned lower — y=5 only
-      // cleared the moon by ~1px on short viewports).
-      x: 20,
-      y: 4,
+      // Random spawn near the shifted social hub (center col 29), constrained so
+      // BOTH social signs (cols 28 & 30) stay visible even on ~7-col mobile
+      // portrait, and y≈5 keeps the top-sky moon in the desktop load view. This
+      // initializer runs once (useRef), so the spawn varies per page load.
+      ...randomSpawn(),
       dir: 'right' as 'left' | 'right',
       idle: true,
       interacting: false,
@@ -514,6 +529,81 @@ export default function ParkGame() {
         interactMsg: '✿ A little bloom by the path',
       },
     ]
+    // Balance the map around the social hub: shift ALL existing content right by
+    // LEFT_PAD (hub moves to IG col 28 / tiktok col 30, center col 29), THEN
+    // fill the freshly-emptied left region (cols 0..17) with new scenery below.
+    g.objects.forEach((o) => {
+      o.x += LEFT_PAD
+    })
+    // New-left decorations — final coords (already in the padded space), so they
+    // are pushed AFTER the shift and NOT offset.
+    g.objects.push(
+      {
+        type: 'tree',
+        x: 0,
+        y: 1,
+        w: 2,
+        h: 2,
+        interactMsg: "♪ Leaves stir at the park's far edge",
+      },
+      {
+        type: 'tree',
+        x: 7,
+        y: 1,
+        w: 2,
+        h: 2,
+        interactMsg: '♪ A tall old friend',
+      },
+      {
+        type: 'tree',
+        x: 14,
+        y: 2,
+        w: 2,
+        h: 2,
+        interactMsg: '♪ Dappled moonlight through the branches',
+      },
+      {
+        type: 'bench',
+        x: 4,
+        y: 3,
+        w: 2,
+        h: 1,
+        interactMsg: '♥ A quiet place to sit',
+      },
+      {
+        type: 'pond',
+        x: 10,
+        y: 9,
+        w: 3,
+        h: 2,
+        interactMsg: '~ Moonlight on still water',
+      },
+      {
+        type: 'flowers',
+        x: 2,
+        y: 8,
+        w: 1,
+        h: 1,
+        interactMsg: '✿ Night blooms!',
+      },
+      {
+        type: 'flowers',
+        x: 16,
+        y: 10,
+        w: 1,
+        h: 1,
+        interactMsg: '✿ A shy little patch',
+      },
+      { type: 'ball', x: 6, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
+      {
+        type: 'stone',
+        x: 1,
+        y: 10,
+        w: 1,
+        h: 1,
+        interactMsg: '... A warm resting rock',
+      },
+    )
     // Bright (un-graded) wings so the butterflies pop as vivid accents at night.
     g.butterflies = [
       { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
@@ -576,6 +666,30 @@ export default function ParkGame() {
         color: NIGHT.flower1,
       },
     ]
+    // Butterfly x is in raw px, so shift by LEFT_PAD * PIXEL to track the map
+    // content, then add new-left butterflies at final (already-padded) coords.
+    g.butterflies.forEach((b) => {
+      b.x += LEFT_PAD * PIXEL
+    })
+    g.butterflies.push(
+      { x: 150, y: 90, vx: 0.45, vy: 0.3, timer: 0, color: COLORS.butterfly },
+      {
+        x: 420,
+        y: 70,
+        vx: -0.35,
+        vy: 0.45,
+        timer: 0.5 * Math.PI,
+        color: COLORS.flower1,
+      },
+      {
+        x: 650,
+        y: 115,
+        vx: 0.4,
+        vy: -0.3,
+        timer: 0.25 * Math.PI,
+        color: COLORS.fishBowl,
+      },
+    )
   }, [])
 
   // Close the photo lightbox on Escape (only while it's open).
@@ -1305,6 +1419,10 @@ export default function ParkGame() {
         }
       }
 
+      // Existing baked grass texture is draw-only (no game logic), so instead of
+      // editing ~25 literals we translate the whole block right by LEFT_PAD.
+      ctx.save()
+      ctx.translate(LEFT_PAD * PIXEL, 0)
       // Large patches (some very big, overlapping)
       drawBlobPatch(PIXEL * 3, PIXEL * 4, PIXEL * 4.5, PIXEL * 3.2, 1.2)
       // Fills the bare sand gap below the hills (upper-centre) so grass meets the
@@ -1338,6 +1456,18 @@ export default function ParkGame() {
       drawBlobPatch(PIXEL * 4.2, PIXEL * 6.2, PIXEL * 2, PIXEL * 1.3, 47.9)
       drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 49.3)
       drawBlobPatch(PIXEL * 18.2, PIXEL * 7.5, PIXEL * 1.9, PIXEL * 1.4, 51.6)
+      ctx.restore()
+      // New-left grass patches (cols 0..17) — final coords, drawn untranslated.
+      drawBlobPatch(PIXEL * 2, PIXEL * 4, PIXEL * 4.4, PIXEL * 3.1, 60.2)
+      drawBlobPatch(PIXEL * 8, PIXEL * 3.6, PIXEL * 4.8, PIXEL * 3.3, 62.5)
+      drawBlobPatch(PIXEL * 14.5, PIXEL * 3.2, PIXEL * 4.6, PIXEL * 3.2, 64.8)
+      drawBlobPatch(PIXEL * 4.5, PIXEL * 9.4, PIXEL * 4.2, PIXEL * 2.9, 67.1)
+      drawBlobPatch(PIXEL * 11.5, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 69.4)
+      drawBlobPatch(PIXEL * 16.5, PIXEL * 8.3, PIXEL * 3.5, PIXEL * 2.6, 71.9)
+      drawBlobPatch(PIXEL * 6.5, PIXEL * 5.1, PIXEL * 2.1, PIXEL * 1.5, 74.3)
+      drawBlobPatch(PIXEL * 10, PIXEL * 7, PIXEL * 1.9, PIXEL * 1.4, 76.6)
+      drawBlobPatch(PIXEL * 0.7, PIXEL * 4.3, PIXEL * 2.2, PIXEL * 1.4, 78.8)
+      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 81.2)
     }
 
     function drawStars() {
@@ -1393,6 +1523,31 @@ export default function ParkGame() {
         { x: 1860, y: 18, s: 1 },
         { x: 1900, y: 30, s: 2 },
       ]
+      // Star x is raw px; shift the existing field right with the map content,
+      // then add new stars over the freshly-added left region (final coords).
+      stars.forEach((s) => {
+        s.x += LEFT_PAD * PIXEL
+      })
+      stars.push(
+        { x: 20, y: 10, s: 2 },
+        { x: 60, y: 26, s: 1.5 },
+        { x: 110, y: 7, s: 2.5 },
+        { x: 160, y: 32, s: 1 },
+        { x: 210, y: 16, s: 2 },
+        { x: 260, y: 38, s: 1.5 },
+        { x: 310, y: 9, s: 1 },
+        { x: 360, y: 24, s: 2 },
+        { x: 410, y: 6, s: 1.5 },
+        { x: 460, y: 30, s: 2.5 },
+        { x: 510, y: 14, s: 1 },
+        { x: 560, y: 40, s: 2 },
+        { x: 610, y: 11, s: 1.5 },
+        { x: 660, y: 28, s: 2 },
+        { x: 710, y: 18, s: 1 },
+        { x: 750, y: 34, s: 2.3 },
+        { x: 790, y: 22, s: 1.3 },
+        { x: 810, y: 12, s: 1.6 },
+      )
       stars.forEach((star) => {
         const twinkle = 0.5 + 0.5 * Math.sin(g.frameCount * 0.03 + star.x * 0.1)
         ctx.fillStyle = `rgba(255, 255, 230, ${twinkle * 0.9})`
@@ -1426,11 +1581,10 @@ export default function ParkGame() {
     function drawMoon() {
       if (!ctx) return
       // Keep the moon in the upper-center sky so it's visible the moment the
-      // page opens: the cat spawns centered at tile x:20 and the camera centers
-      // the view on it, so the moon must sit within that load-time centered
-      // band. PIXEL*20 sits in clear sky near the spawn, between the col-16 and
-      // col-21 trees, not behind any tree's leaves.
-      const moonX = PIXEL * 20
+      // page opens: after the LEFT_PAD shift the cat spawns near the hub (center
+      // col 29) and the camera centers the view on it, so the moon must sit in
+      // that load-time centered band. PIXEL*29 sits in clear sky by the hub/spawn.
+      const moonX = PIXEL * 29
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
       // Soft halo.
@@ -3287,8 +3441,13 @@ export default function ParkGame() {
       drawGround()
       // Same night grade as every object: the imprint tints its own colours via
       // night() (bright colours/whites still pop), so no global wash is needed.
+      // These baked decorations are draw-only, so shift them right by LEFT_PAD
+      // with a translate rather than editing their internal coordinates.
+      ctx!.save()
+      ctx!.translate(LEFT_PAD * PIXEL, 0)
       drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS, night)
       drawPawTrail()
+      ctx!.restore()
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
     }

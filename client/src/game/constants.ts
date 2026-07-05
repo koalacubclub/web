@@ -5,7 +5,10 @@
 // it can also be imported by tests.
 
 export const SCALE = 3
-export const MAP_COLS = 40
+export const MAP_COLS = 58
+// columns added on the LEFT to balance the map around the social hub; existing
+// content is shifted right by this at build/draw time.
+export const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 export const VIEW_COLS = 20
