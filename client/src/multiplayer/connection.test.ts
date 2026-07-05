@@ -439,6 +439,30 @@ describe('createMultiplayer', () => {
     mp.close()
   })
 
+  it('fires onResync on welcome (so stale local ball sim is dropped)', async () => {
+    const { createMultiplayer } = await import('./connection')
+    const order: string[] = []
+    const mp = createMultiplayer({
+      onResync: () => order.push('resync'),
+      onPlaced: () => order.push('placed'),
+    }) as Multiplayer
+    await vi.waitFor(() => expect(FakeWebSocket.instances.length).toBe(1))
+    const ws = FakeWebSocket.instances[0]
+    ws.fireOpen()
+    ws.receive({
+      t: 'welcome',
+      self: player('self'),
+      players: [],
+      food: [],
+      placed: [placedItem('b1', { type: 'ball' })],
+      likes: 0,
+      now: 0,
+    })
+    // Resync must run BEFORE the placed emit that rebuilds the objects.
+    expect(order).toEqual(['resync', 'placed'])
+    mp.close()
+  })
+
   it('routes moved to onBallMoved, updates the cache, and emits placed', async () => {
     const { createMultiplayer } = await import('./connection')
     const moves: unknown[] = []

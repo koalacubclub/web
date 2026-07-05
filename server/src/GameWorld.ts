@@ -362,8 +362,11 @@ export class GameWorld extends DurableObject<Env> {
       if (!r) return
       const item = this.placed.get(r.id)
       if (!item || item.type !== 'ball') return
+      // Clamp to the integer tiles a 1×1 ball can actually occupy — matching
+      // updateSlappables' bounce ceiling (groundRows - h). A tighter bound here
+      // would snap a ball resting on the bottom row up a tile.
       const rx = Math.max(0, Math.min(WORLD.cols - 1, Math.round(r.x)))
-      const ry = Math.max(1, Math.min(WORLD.groundRows - 2, Math.round(r.y)))
+      const ry = Math.max(1, Math.min(WORLD.groundRows - 1, Math.round(r.y)))
       item.x = rx
       item.y = ry
       this.ctx.storage.sql.exec(

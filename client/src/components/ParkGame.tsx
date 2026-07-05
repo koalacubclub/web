@@ -766,12 +766,24 @@ export default function ParkGame() {
         }
         g.ballRolling.add(id)
       },
-      // Authoritative resting tile: stop simulating this ball locally. Position is
-      // applied by the store emit (rebuildObjects) that the connection fires right
-      // after — with the id no longer rolling, it takes the server's tile.
+      // Authoritative resting tile: stop simulating this ball locally, then let the
+      // store emit (fired right after) settle it on the server's tile. Guard against
+      // a STALE echo: if the ball is rolling again (we re-slapped it inside the
+      // rest→moved round-trip), this `moved` is for the PREVIOUS roll — ignore it, or
+      // it would clear the shield and snap the live ball backward mid-flight. The
+      // newer roll's own `moved` (arriving once it's settled) clears it.
       onBallMoved: (id) => {
+        const o = g.objects.find((ob) => ob.id === id)
+        if (o && (o.vx != null || o.vy != null)) return // superseded by a newer roll
         g.ballRolling.delete(id)
         g.ballOwned.delete(id)
+      },
+      // Full resync (welcome, incl. reconnect): the server just sent the authoritative
+      // placed set, so drop any local ball simulation and yield to it — otherwise an
+      // orphaned roll (owner left before its `rest`) would stay shielded forever.
+      onResync: () => {
+        g.ballRolling.clear()
+        g.ballOwned.clear()
       },
     })
     if (mp) {
@@ -3615,14 +3627,17 @@ export default function ParkGame() {
       updateSlappables(g.objects, dt, MAP_COLS, GROUND_ROWS)
       // Persist the resting tile of any ball WE launched once it stops rolling
       // (updateSlappables clears vx/vy when a ball settles). One `rest` per roll —
-      // the server rounds, stores it, and broadcasts the authoritative tile. Peer-
-      // simulated balls (ballRolling but not ballOwned) are settled by `moved`.
+      // the server rounds, stores it, and broadcasts the authoritative tile. We stop
+      // tracking it as OWNED (so we send `rest` exactly once) but KEEP it in
+      // ballRolling: that shields the settled ball from a store rebuild until the
+      // authoritative `moved` echo arrives and clears it (see onBallMoved). Peer-
+      // simulated balls (ballRolling but never ballOwned) are likewise cleared by
+      // `moved` — or by a resync.
       if (g.ballOwned.size > 0) {
         for (const id of g.ballOwned) {
           const o = g.objects.find((ob) => ob.id === id)
           if (!o || (o.vx == null && o.vy == null)) {
             g.ballOwned.delete(id)
-            g.ballRolling.delete(id)
             if (o) mp?.sendRest(id, o.x, o.y)
           }
         }

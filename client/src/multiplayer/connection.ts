@@ -131,6 +131,8 @@ export function createMultiplayer(
     ) => void
     /** A ball's authoritative resting tile — stop simulating it locally. */
     onBallMoved?: (id: string, x: number, y: number) => void
+    /** A full resync (welcome, incl. reconnect) — drop any local ball sim. */
+    onResync?: () => void
   } = {},
 ): Multiplayer | null {
   if (!HTTP_BASE || !WS_BASE) return null
@@ -238,6 +240,7 @@ export function createMultiplayer(
         setLikes(msg.likes ?? 0)
         handle.stats = msg.stats
         if (msg.stats) opts.onStats?.(msg.stats)
+        opts.onResync?.() // drop stale local ball sim before rebuilding from placed
         emitPlaced()
         emitPresence()
         break
