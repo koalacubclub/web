@@ -40,7 +40,9 @@ import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
-import { NIGHT, night } from '@/game/constants'
+import { NIGHT, night, makeRng } from '@/game/constants'
+import { getPondReflection, drawPondStones, pondGeom } from '@/game/pond'
+import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
 
@@ -202,18 +204,6 @@ const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 // Interactive on-grass hotspots.
 const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
 const HERO_PHOTO = '/hero.webp' // Koala photo for the polaroid + lightbox
-
-// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
-// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
-function makeRng(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 interface GameObject {
   type: string
@@ -1864,54 +1854,10 @@ export default function ParkGame() {
       }
     }
 
-    // The mirrored static background above a pond never changes, so bake it once
-    // per pond into a sprite and cache it (keyed by pond position/size). Returns a
-    // sprite the size of the pond's bounding box holding the vertically-flipped
-    // slice of bgCanvas from directly above the water. bgCanvas is logical-size and
-    // includes the sky rows, so its pixel-Y = local-Y + WORLD_OFFSET.
-    const pondReflCache = new Map<string, HTMLCanvasElement | null>()
-    function pondReflection(obj: GameObject): HTMLCanvasElement | null {
-      const key = `${obj.x},${obj.y},${obj.w},${obj.h}`
-      const cached = pondReflCache.get(key)
-      if (cached !== undefined) return cached
-      if (typeof document === 'undefined') {
-        pondReflCache.set(key, null)
-        return null
-      }
-      const cx = obj.x * PIXEL + PIXEL * 1.5
-      const cy = obj.y * PIXEL + PIXEL
-      const rx = PIXEL * 1.4
-      const ry = PIXEL * 0.8
-      const rh = ry * 2
-      const w = Math.ceil(rx * 2)
-      const h = Math.ceil(rh)
-      const spr = document.createElement('canvas')
-      spr.width = w
-      spr.height = h
-      const sc = spr.getContext('2d')
-      if (!sc) {
-        pondReflCache.set(key, null)
-        return null
-      }
-      // Flip the slice vertically: sprite row 0 (waterline) samples the bg just
-      // above the water; deeper rows sample higher-up scenery.
-      const axisBg = cy - ry + WORLD_OFFSET // far waterline in bg pixels
-      sc.translate(0, rh)
-      sc.scale(1, -1)
-      sc.drawImage(bgCanvas, cx - rx, axisBg - rh, rx * 2, rh, 0, 0, rx * 2, rh)
-      pondReflCache.set(key, spr)
-      return spr
-    }
-
-    // Visible slice of the map in logical-x. The camera pans the canvas via a CSS
-    // transform, so only this slice is actually on screen (hudShift is the left
-    // edge; see cameraPan). Used both to cull the object pass and to skip
-    // reflecting off-screen objects.
-    function visibleX() {
-      const w =
-        displayW > 0 ? viewportW * (CANVAS_WIDTH / displayW) : CANVAS_WIDTH
-      return { left: g.hudShift, right: g.hudShift + w }
-    }
+    // Visible slice of the map in logical-x (thin wrapper over the pure
+    // visibleRange so both the object cull and the reflection pass share it). The
+    // camera pans the canvas via a CSS transform, so only this slice is on screen.
+    const visibleX = () => visibleRange(g.hudShift, viewportW, displayW)
 
     // Draw one object's art at its own position (no slap-shake wrapper). Shared by
     // the main object pass and the pond reflection pass.
@@ -1955,12 +1901,7 @@ export default function ParkGame() {
 
     function drawPond(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      const cx = x + PIXEL * 1.5
-      const cy = y + PIXEL
-      const rx = PIXEL * 1.4
-      const ry = PIXEL * 0.8
+      const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
       // Still water body.
       ctx.fillStyle = night('#3C79C6')
       ctx.beginPath()
@@ -1975,9 +1916,9 @@ export default function ParkGame() {
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.clip()
       // Baked environment reflection: the mirrored static background (sky/hills/
-      // grass) above the pond never changes, so it's baked once per pond into a
-      // sprite (see pondReflection) and just blitted here.
-      const refl = pondReflection(obj)
+      // grass) above the pond never changes, so it's baked once per pond (see
+      // getPondReflection) and just blitted here.
+      const refl = getPondReflection(bgCanvas, obj.x, obj.y)
       if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
       // Object reflections: mirror nearby scenery ABOVE the pond down into the
       // water about the far waterline (same axis as the baked env). Only objects
@@ -1992,7 +1933,7 @@ export default function ParkGame() {
           const oL = o.x * PIXEL
           const oR = (o.x + o.w) * PIXEL
           if (oR < cx - rx - PIXEL || oL > cx + rx + PIXEL) return false // off water
-          if (oR < vis.left || oL > vis.right) return false // off screen
+          if (!isVisibleX(oL, oR, vis)) return false // off screen
           const oBase = (o.y + o.h) * PIXEL
           return oBase <= cy + ry && oBase >= axis - REFLECT_UP // above & near
         })
@@ -2041,42 +1982,8 @@ export default function ParkGame() {
       ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
       ctx.globalAlpha = 1
       ctx.restore()
-      // Rim stones: seeded per pond so they're stable frame-to-frame but have an
-      // irregular rhythm — radii and fit jittered so no two neighbours match, and
-      // the angular gaps are uneven so some stones bunch into clusters.
-      const stoneRng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-      const stoneCount = 8 + Math.floor(stoneRng() * 4) // 8–11 stones
-      // Walk the ring in uneven steps: squared random → mostly tight gaps (stones
-      // touching in clusters) with the occasional wide gap of open rim.
-      const gaps: number[] = []
-      let gapTotal = 0
-      for (let i = 0; i < stoneCount; i++) {
-        const gp = 0.2 + stoneRng() ** 2 * 2
-        gaps.push(gp)
-        gapTotal += gp
-      }
-      const base = stoneRng() * Math.PI * 2 // rotate the whole ring per pond
-      let acc = 0
-      for (let i = 0; i < stoneCount; i++) {
-        acc += gaps[i]
-        const angle = base + (acc / gapTotal) * Math.PI * 2
-        const spread = 0.82 + stoneRng() * 0.16 // sit right on/just inside the rim
-        const sx = cx + Math.cos(angle) * rx * spread
-        const sy = cy + Math.sin(angle) * ry * spread
-        const r = SCALE * (1.3 + stoneRng() * 1.7) // mix of small + chunky stones
-        ctx.fillStyle = stoneRng() < 0.5 ? NIGHT.stone : NIGHT.stoneDark
-        ctx.beginPath()
-        ctx.ellipse(
-          sx,
-          sy,
-          r,
-          r * (0.75 + stoneRng() * 0.35),
-          0,
-          0,
-          Math.PI * 2,
-        )
-        ctx.fill()
-      }
+      // Rim stones: seeded per pond, clustered and size-varied (see pondStones).
+      drawPondStones(ctx, obj.x, obj.y)
     }
 
     function drawBall(obj: GameObject) {
@@ -2779,12 +2686,12 @@ export default function ParkGame() {
       let radioTrack = 0
       // Off-screen cull: skip any object whose footprint — plus a pad for canopy/
       // rim overhang — falls entirely outside the visible slice (see visibleX).
-      const { left: visLeft, right: visRight } = visibleX()
+      const vis = visibleX()
       const cullPad = PIXEL * 2
       sorted.forEach((obj) => {
         const oLeft = obj.x * PIXEL
         const oRight = (obj.x + obj.w) * PIXEL
-        if (oRight < visLeft - cullPad || oLeft > visRight + cullPad) return
+        if (!isVisibleX(oLeft, oRight, vis, cullPad)) return
         // A freshly-slapped object jitters briefly (wrap its whole draw).
         const shake = obj.hitAt
           ? slapShake(obj.hitAt, performance.now(), PIXEL)
