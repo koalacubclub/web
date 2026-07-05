@@ -986,7 +986,18 @@ export default function ParkGame() {
     }
     const activateHotspot = (o: GameObject) => {
       if (o.type === 'social' && o.href) {
-        window.open(o.href, '_blank', 'noopener,noreferrer')
+        // On touch devices a `_blank` tab gets orphaned as a leftover
+        // about:blank once a universal link hands the URL off to the native
+        // IG/TikTok app — so navigate the current tab instead. Desktop keeps
+        // the game open in place by opening a real new tab.
+        const coarse =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(pointer: coarse)').matches
+        if (coarse) {
+          window.location.href = o.href
+        } else {
+          window.open(o.href, '_blank', 'noopener,noreferrer')
+        }
       } else if (o.type === 'photo') {
         hoveredObj = null
         setHover(null)
