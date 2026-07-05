@@ -19,9 +19,9 @@ export const COLORS = {
   // Near-black night sky matched to the site background (--background token)
   sky: 'oklch(0.1 0.008 60)',
   skyLight: 'oklch(0.11 0.008 60)',
-  grass: '#9FD593',
-  grassDark: '#71B86D',
-  grassLight: '#BBE8B0',
+  grass: '#94D584',
+  grassDark: '#63B85E',
+  grassLight: '#ACE89E',
   dirt: '#D4A574',
   dirtLight: '#E8C9A0',
   treeTrunk: '#8B6914',
