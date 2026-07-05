@@ -665,7 +665,7 @@ function ContentPanel() {
 
               {/* Closing */}
               <Reveal delay={0.2}>
-                <p className="text-white/25 text-[9px] uppercase tracking-[0.4em] mt-4">
+                <p className="text-white/40 text-[9px] uppercase tracking-[0.4em] mt-4">
                   Made with love by Koala's humans
                 </p>
               </Reveal>
