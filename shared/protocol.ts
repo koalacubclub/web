@@ -357,6 +357,45 @@ export const CLIENT_SEND_HZ = 12
 // so honest clients are never affected.
 export const MAX_INBOUND_MSGS_PER_SEC = 25
 
+// The koala's walking speed, in tiles/ms — the single source of truth for both
+// the client's per-frame step (ParkGame's updateCat) and the server's speed cap.
+// The server caps how fast a session's position may change to this, so a hostile
+// client can't teleport across the map to snatch food (collection validates
+// proximity against the SERVER position). ≈ the old 0.035 tiles/frame at 60fps.
+export const MOVE_SPEED_TILES_PER_MS = 0.0021
+
+// Slack multiplier on the per-update move budget. Honest movement bursts a
+// little over the nominal speed — variable frame dt, rounding, and the
+// immediate pose/dir sends that bypass the send throttle can land close
+// together — so we allow a generous margin. The goal is "no teleport across the
+// map", not pixel-perfect policing.
+export const MOVE_SPEED_SLACK = 1.75
+
+// Clamp an untrusted new position so the step from `prev` can't exceed what
+// honest movement could cover in `dtMs`: a walk budget (speed × dt × slack)
+// plus a one-off DASH_TILES allowance when a dash is in its live window. If the
+// move is within budget it's returned unchanged; otherwise it's pulled back
+// along the movement vector to the farthest reachable point (clamp, never
+// reject — rejecting would freeze the server position and rubber-band honest
+// laggy players). Shared so the client can mirror the rule if it ever needs to.
+export function clampToSpeed(
+  prev: { x: number; y: number },
+  next: { x: number; y: number },
+  dtMs: number,
+  dashActive: boolean,
+  speed: number = MOVE_SPEED_TILES_PER_MS,
+): { x: number; y: number } {
+  const dt = Math.max(1, dtMs)
+  let budget = speed * dt * MOVE_SPEED_SLACK
+  if (dashActive) budget += DASH_TILES
+  const dx = next.x - prev.x
+  const dy = next.y - prev.y
+  const dist = Math.hypot(dx, dy)
+  if (dist <= budget) return { x: next.x, y: next.y }
+  const k = budget / dist
+  return { x: prev.x + dx * k, y: prev.y + dy * k }
+}
+
 // Validate and clamp an untrusted state payload. Returns null for anything that
 // isn't a well-formed, finite position. Used server-side (never trust the wire)
 // and safe to reuse client-side.

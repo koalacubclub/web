@@ -15,6 +15,7 @@ import {
   AIR_PITY_MS,
   AIR_POINTS_MULT,
   AIR_SPAWN_SHARE,
+  clampToSpeed,
   COLLECT_RADIUS,
   DEFAULT_BALLS,
   FOOD_SPAWN_COOLDOWN_MS,
@@ -24,6 +25,7 @@ import {
   foodCap,
   JUMP_DURATION_MS,
   MAX_INBOUND_MSGS_PER_SEC,
+  MOVE_SPEED_TILES_PER_MS,
   PLACED_PERMANENT,
   PLACED_TTL_MS,
   PROTOCOL_VERSION,
@@ -87,6 +89,18 @@ export class GameWorld extends DurableObject<Env> {
   // Per-(session, ability) last-used epoch ms for cooldown enforcement, keyed
   // `${sessionId}::${ability}`. Ephemeral; cleared on disconnect.
   private lastActionAt = new Map<string, number>()
+
+  // Last accepted position + the server receive time (epoch ms) for each
+  // session, used to cap movement speed. Ephemeral: a missing entry (first
+  // update, respawn, or a hibernation wake) resets the baseline — that update is
+  // accepted as-is and clamping starts from the next one.
+  private lastMove = new Map<string, { x: number; y: number; t: number }>()
+
+  // The movement-speed cap (tiles/ms) used by the state clamp. Defaults to the
+  // real shared constant in production; tests raise it in-place (via
+  // runInDurableObject) so movement-heavy setup isn't paced by the real speed,
+  // while the anti-teleport tests keep this default to exercise the true cap.
+  private moveSpeed = MOVE_SPEED_TILES_PER_MS
 
   // Server-owned placed decorations (bought with likes). Shared across players,
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
@@ -299,6 +313,30 @@ export class GameWorld extends DurableObject<Env> {
     if (msg.t === 'state') {
       const s = sanitizeState(msg.s)
       if (!s) return
+      // Cap how far the position may jump since the last accepted update, so a
+      // hostile client can't teleport (which would beat the collect proximity
+      // check — it validates against this server-side position). A live dash
+      // window grants a one-off burst allowance. No prior sample → accept and
+      // seed the baseline. Clamp x/y only; pose/dir/interacting are cosmetic.
+      const prev = this.lastMove.get(a.id)
+      if (prev) {
+        // Credit the one-off dash allowance to whichever update interval the
+        // dash landed in (its action timestamp is newer than our last accepted
+        // sample) — robust to jitter, and dash's own cooldown bounds it to once
+        // per lunge. Ignore the plain window here to avoid clamping honest dashes.
+        const dashActive =
+          (this.lastActionAt.get(`${a.id}::dash`) ?? 0) > prev.t
+        const { x, y } = clampToSpeed(
+          prev,
+          s,
+          now - prev.t,
+          dashActive,
+          this.moveSpeed,
+        )
+        s.x = x
+        s.y = y
+      }
+      this.lastMove.set(a.id, { x: s.x, y: s.y, t: now })
       this.positions.set(a.id, s)
       // Persist last-known position on the socket so it survives hibernation.
       ws.serializeAttachment({ ...a, s } satisfies Attachment)
@@ -501,6 +539,7 @@ export class GameWorld extends DurableObject<Env> {
       this.positions.delete(a.id)
       this.rate.delete(a.id)
       this.jumpAt.delete(a.id)
+      this.lastMove.delete(a.id)
       for (const k of this.lastActionAt.keys()) {
         if (k.startsWith(`${a.id}::`)) this.lastActionAt.delete(k)
       }
