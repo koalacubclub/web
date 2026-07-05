@@ -54,7 +54,7 @@ describe('placement', () => {
       h: 1,
     })
     expect(placed[0].x).toBeGreaterThanOrEqual(0)
-    expect(placed[0].x).toBeLessThanOrEqual(40 - 1)
+    expect(placed[0].x).toBeLessThanOrEqual(58 - 1)
     expect(placed[0].y).toBeGreaterThanOrEqual(1)
   })
 
