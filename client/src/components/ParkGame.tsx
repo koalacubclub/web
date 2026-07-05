@@ -615,11 +615,11 @@ export default function ParkGame() {
     controls.registerAbility(startAbility)
 
     // Desktop keyboard shortcuts for the extra abilities (jump = space).
+    // (Meow isn't here — it's a cosmetic emote fired by clicking/tapping Koala.)
     const EXTRA_ABILITY_KEYS: Record<string, AbilityKind> = {
       shift: 'dash',
       '1': 'bite',
       '2': 'hand', // paw-slap
-      '3': 'meow',
     }
 
     // Jostle the nearest object the koala can reach when it slaps (ball rolls,
@@ -782,6 +782,8 @@ export default function ParkGame() {
     let hoveredObj: GameObject | null = null
     let pressedHotspot: GameObject | null = null
     let touchHotspot: GameObject | null = null
+    let pressedCat = false // mouse pressed on Koala (→ meow on release)
+    let touchCat = false // touch started on Koala (→ meow on a clean tap)
     const hotspotAt = (clientX: number, clientY: number): GameObject | null => {
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return null
@@ -806,6 +808,42 @@ export default function ParkGame() {
           return o
       }
       return null
+    }
+    // Hit-test a screen point against the local Koala's tile box (same rect/tile
+    // math as hotspotAt), with a little padding so the tap is forgiving. We test
+    // the tile position, not the jump-lifted sprite, so the target stays stable.
+    const catHitAt = (clientX: number, clientY: number): boolean => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return false
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      )
+        return false
+      const tx = (((clientX - rect.left) / rect.width) * CANVAS_WIDTH) / PIXEL
+      const py = ((clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      const ty = (py - WORLD_OFFSET) / PIXEL
+      const pad = 0.35
+      return (
+        tx >= g.cat.x - pad &&
+        tx <= g.cat.x + 1 + pad &&
+        ty >= g.cat.y - pad &&
+        ty <= g.cat.y + 1 + pad
+      )
+    }
+    // Cosmetic "meow" — fired by tapping Koala. NOT a skill: no cooldown and no
+    // global cooldown; it just plays the bubble locally + broadcasts so peers see
+    // it (deliberately bypasses startAbility, which is cooldown/GCD-gated).
+    const fireMeowEmote = () => {
+      if (!actionAllowed()) return
+      g.cat.state = 'standing'
+      g.cat.idle = false
+      g.cat.idleFrames = 0
+      g.emote = 'meow'
+      g.emoteAt = performance.now()
+      mp?.sendAction('meow')
     }
     const activateHotspot = (o: GameObject) => {
       if (o.type === 'social' && o.href) {
@@ -859,6 +897,11 @@ export default function ParkGame() {
         pressedHotspot = hs
         return
       }
+      // A press on Koala is a click (→ meow on release), not a walk.
+      if (catHitAt(e.clientX, e.clientY)) {
+        pressedCat = true
+        return
+      }
       engage(e.clientX, e.clientY)
     }
     const handlePointerMove = (e: PointerEvent) => {
@@ -877,6 +920,12 @@ export default function ParkGame() {
           activateHotspot(pressedHotspot)
         }
         pressedHotspot = null
+        return
+      }
+      // Click released on Koala (not a drag) → cosmetic meow.
+      if (pressedCat) {
+        if (catHitAt(e.clientX, e.clientY)) fireMeowEmote()
+        pressedCat = false
         return
       }
       disengage()
@@ -913,6 +962,7 @@ export default function ParkGame() {
       touchStartY = t.clientY
       touchMoved = false
       touchHotspot = hotspotAt(t.clientX, t.clientY)
+      touchCat = catHitAt(t.clientX, t.clientY)
       // No preventDefault anywhere in the touch path → the page scrolls freely.
     }
     const handleTouchMove = (e: TouchEvent) => {
@@ -930,6 +980,7 @@ export default function ParkGame() {
       touchId = null
       touchMoved = false
       touchHotspot = null
+      touchCat = false
     }
     const handleTouchEnd = (e: TouchEvent) => {
       if (touchId === null) return
@@ -940,6 +991,13 @@ export default function ParkGame() {
         if (!touchMoved && hotspotAt(t.clientX, t.clientY) === touchHotspot) {
           activateHotspot(touchHotspot)
         }
+        endTouch()
+        return
+      }
+      // Tap on Koala → cosmetic meow (before the double-tap so it doesn't count
+      // toward a jump pair; off-cat taps still feed double-tap-jump).
+      if (touchCat) {
+        if (!touchMoved && catHitAt(t.clientX, t.clientY)) fireMeowEmote()
         endTouch()
         return
       }
