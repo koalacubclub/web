@@ -75,8 +75,12 @@ relays `{state, id, s}` to everyone else. Remote koalas are interpolated client-
 (`rx/ry` eased toward the authoritative `x/y`). Leg/tail/idle-bob animation is derived
 locally from a shared frame clock — never sent.
 
-Positions are a **pure cosmetic relay**: the server never simulates or reconciles
-movement (see [Known gaps](#known-gaps--future-hardening)).
+Positions are **relayed, not simulated** — the server never integrates or reconciles
+movement. But they're not free-form: the DO clamps to world bounds and, as of PR #81,
+**speed-clamps** each step, and it treats its stored position as **authoritative for
+collect proximity**. So a position is a client-driven value the server bounds and
+trusts for the economy — not a purely cosmetic one (see
+[Known gaps](#known-gaps--future-hardening)).
 
 ### Food (server-authoritative, in-memory, lazy)
 
