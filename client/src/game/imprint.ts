@@ -163,7 +163,7 @@ export function drawKoalaImprint(
     colors.grassDark,
     colors.treeLeavesLight,
     colors.grassLight, // occasional highlight
-    '#8CC152', // a few yellow-green leaves for variety
+    '#C2EC63', // a few bright yellow-green leaves for variety
   ].map(tint)
   const leafVein = 'rgba(55,70,64,0.45)'
   // White blossoms only (a soft yellow eye for a little definition).
