@@ -54,7 +54,8 @@ function drawTree(ctx: Ctx, obj: SpriteObject) {
   const jy = (rng() - 0.5) * PIXEL * 0.12
   ctx.fillStyle = PAL.treeTrunk
   ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
-  ctx.fillStyle = PAL.treeLeaves
+  // Match the base-map tree canopy (see drawTree in ParkGame).
+  ctx.fillStyle = INK('#3D9C4E')
   ctx.beginPath()
   ctx.arc(x + PIXEL + jx, y + PIXEL * 0.6 + jy, PIXEL * 0.9 * s, 0, Math.PI * 2)
   ctx.fill()
@@ -95,12 +96,13 @@ function drawBench(ctx: Ctx, obj: SpriteObject) {
 function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
+  // Bright (un-graded) petals so blooms pop as vivid accents (matches base-map).
   const palette = [
-    PAL.flower1,
-    PAL.flower2,
-    PAL.flower3,
-    PAL.heart,
-    PAL.butterfly,
+    COLORS.flower1,
+    COLORS.flower2,
+    COLORS.flower3,
+    COLORS.heart,
+    COLORS.butterfly,
   ]
   const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
   const bobOffset = Math.sin(frameCount * 0.05 + obj.x) * 2
@@ -117,7 +119,7 @@ function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
     ctx.fill()
-    ctx.fillStyle = PAL.fishBowl
+    ctx.fillStyle = COLORS.fishBowl
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
     ctx.fill()
@@ -129,7 +131,8 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  ctx.fillStyle = PAL.water
+  // Match the base-map pond (cobalt-leaning; see drawPond in ParkGame).
+  ctx.fillStyle = INK('#4C90E4')
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.5,
@@ -141,7 +144,7 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     Math.PI * 2,
   )
   ctx.fill()
-  ctx.fillStyle = PAL.waterLight
+  ctx.fillStyle = INK('#84B2F0')
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.2,
@@ -216,7 +219,7 @@ function drawStone(ctx: Ctx, obj: SpriteObject) {
 function drawMushroom(ctx: Ctx, obj: SpriteObject) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
-  ctx.fillStyle = INK('#F5F5DC')
+  ctx.fillStyle = PAL.white // white stem, pops like the spots + other whites
   ctx.fillRect(x + PIXEL * 0.35, y + PIXEL * 0.5, PIXEL * 0.3, PIXEL * 0.4)
   ctx.fillStyle = INK('#FF6B6B')
   ctx.beginPath()
@@ -381,7 +384,9 @@ function drawHouse(ctx: Ctx, obj: SpriteObject) {
   const W = obj.w * PIXEL
   const H = obj.h * PIXEL
 
-  const trim = INK('#EFEBE0')
+  // Near-neutral white (low saturation) so the night grade's whiteness recovery
+  // keeps it bright — the casings/trim pop like the other objects' whites.
+  const trim = INK('#EFEFEE')
   const wall = INK('#8C9096')
   const wallLine = INK('#767A80')
   const roof = INK('#A6A29A')
