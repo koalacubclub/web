@@ -41,7 +41,13 @@ import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import { NIGHT, night, makeRng } from '@/game/constants'
-import { getPondReflection, drawPondStones, pondGeom } from '@/game/pond'
+import {
+  getPondReflection,
+  drawPondStones,
+  pondGeom,
+  reflectObjects,
+  reflectCat,
+} from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -1920,59 +1926,40 @@ export default function ParkGame() {
       // getPondReflection) and just blitted here.
       const refl = getPondReflection(bgCanvas, obj.x, obj.y)
       if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
-      // Object reflections: mirror nearby scenery ABOVE the pond down into the
-      // water about the far waterline (same axis as the baked env). Only objects
-      // that are horizontally over the water, within a few tiles above it, and on
-      // screen are considered — drawn opaque, then the wash below submerges them.
-      const axis = cy - ry // far waterline
-      const REFLECT_UP = PIXEL * 3 // how far above the waterline to reach
-      const vis = visibleX()
-      const near = g.objects
-        .filter((o) => {
-          if (o.type === 'pond') return false // don't reflect ponds
-          const oL = o.x * PIXEL
-          const oR = (o.x + o.w) * PIXEL
-          if (oR < cx - rx - PIXEL || oL > cx + rx + PIXEL) return false // off water
-          if (!isVisibleX(oL, oR, vis)) return false // off screen
-          const oBase = (o.y + o.h) * PIXEL
-          return oBase <= cy + ry && oBase >= axis - REFLECT_UP // above & near
-        })
-        .sort((a, b) => a.y - b.y) // far (higher up) first, nearer on top
-      for (const o of near) {
-        ctx.save()
-        ctx.translate(0, 2 * axis)
-        ctx.scale(1, -1) // flip about the waterline
-        drawObjectArt(o, performance.now(), false)
-        ctx.restore()
-      }
-      // Cat reflections: mirror each koala across its feet-line. Opaque; the water
-      // wash below submerges them. Skip the local koala while she's airborne.
-      const reflectCat = (c: DrawableCat) => {
-        const ccx = (c.x + 0.5) * PIXEL
-        const feetY = (c.y + 0.95) * PIXEL
-        if (Math.abs(ccx - cx) > rx + PIXEL) return // not over the pond
-        if (feetY < cy - ry - PIXEL * 2 || feetY > cy + ry) return
-        ctx.save()
-        ctx.translate(0, 2 * feetY)
-        ctx.scale(1, -1) // flip vertically about the feet-line
-        drawCat(c, undefined, 0, 0)
-        ctx.restore()
-      }
+      // Object reflections: nearby scenery above the pond, mirrored into the water
+      // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
+      // wash below submerges them.
+      reflectObjects(ctx, obj.x, obj.y, g.objects, visibleX(), (o) =>
+        drawObjectArt(o, performance.now(), false),
+      )
+      // Cat reflections: mirror each koala across its feet-line. Skip the local
+      // koala while she's airborne; interacting:false so the "hearts" popping over
+      // her head aren't reflected.
       const airborne =
         g.jumpAt !== -Infinity && jumpLiftTiles(g.jumpAt, performance.now()) > 0
-      // interacting:false so the "hearts" popping over her head aren't reflected.
-      if (!airborne) reflectCat({ ...g.cat, interacting: false })
+      if (!airborne) {
+        reflectCat(ctx, obj.x, obj.y, g.cat.x, g.cat.y, () =>
+          drawCat({ ...g.cat, interacting: false }, undefined, 0, 0),
+        )
+      }
       if (mp) {
         for (const p of mp.players.values()) {
-          reflectCat({
-            x: p.rx,
-            y: p.ry,
-            dir: p.dir,
-            idle: false,
-            interacting: false,
-            idleFrames: 0,
-            state: p.pose,
-          })
+          reflectCat(ctx, obj.x, obj.y, p.rx, p.ry, () =>
+            drawCat(
+              {
+                x: p.rx,
+                y: p.ry,
+                dir: p.dir,
+                idle: false,
+                interacting: false,
+                idleFrames: 0,
+                state: p.pose,
+              },
+              undefined,
+              0,
+              0,
+            ),
+          )
         }
       }
       // Water wash — one translucent layer over everything so the reflections read

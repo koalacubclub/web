@@ -4,6 +4,7 @@
 // and reused. The reflection *compositing* (mirroring cats/objects + the water
 // wash) stays in ParkGame since it needs live game state.
 import { PIXEL, SCALE, WORLD_OFFSET, NIGHT, makeRng } from './constants'
+import { isVisibleX, type VisibleRange } from './culling'
 
 const TAU = Math.PI * 2
 
@@ -119,4 +120,111 @@ export function getPondReflection(
   sc.drawImage(bg, cx - rx, axisBg - rh, rx * 2, rh, 0, 0, rx * 2, rh)
   reflCache.set(key, spr)
   return spr
+}
+
+// ── Live reflections (cats + scenery) ───────────────────────────────────────
+// The mirroring geometry/gating lives here (pure + testable); the caller passes
+// a draw callback for the actual sprite, since those need live game state.
+
+const REFLECT_UP = PIXEL * 3 // how far above the waterline scenery still reflects
+
+/** An object's tile footprint, as needed to decide if it reflects in a pond. */
+export interface ReflectBox {
+  type: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Mirror `draw` about a horizontal axis (logical px) — the core water flip. */
+function mirrorY(
+  ctx: CanvasRenderingContext2D,
+  axisY: number,
+  draw: () => void,
+): void {
+  ctx.save()
+  ctx.translate(0, 2 * axisY)
+  ctx.scale(1, -1)
+  draw()
+  ctx.restore()
+}
+
+/**
+ * Whether an object reflects in the pond at tile (x, y): not a pond, horizontally
+ * over the water, within REFLECT_UP above the waterline, and on screen (`vis`).
+ */
+export function objectReflectsInPond(
+  o: ReflectBox,
+  x: number,
+  y: number,
+  vis: VisibleRange,
+): boolean {
+  if (o.type === 'pond') return false // don't reflect ponds
+  const { cx, cy, rx, ry } = pondGeom(x, y)
+  const oL = o.x * PIXEL
+  const oR = (o.x + o.w) * PIXEL
+  if (oR < cx - rx - PIXEL || oL > cx + rx + PIXEL) return false // off water
+  if (!isVisibleX(oL, oR, vis)) return false // off screen
+  const oBase = (o.y + o.h) * PIXEL
+  return oBase <= cy + ry && oBase >= cy - ry - REFLECT_UP // above & near
+}
+
+/**
+ * Mirror the scenery above the pond at tile (x, y) into the water, about the far
+ * waterline. `drawObject(o)` draws one object's art at its own position (the
+ * caller owns the type→art dispatch). Reflected far-to-near so nearer objects
+ * layer on top.
+ */
+export function reflectObjects<T extends ReflectBox>(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  objects: readonly T[],
+  vis: VisibleRange,
+  drawObject: (o: T) => void,
+): void {
+  const { cy, ry } = pondGeom(x, y)
+  const axis = cy - ry // far waterline
+  const near = objects
+    .filter((o) => objectReflectsInPond(o, x, y, vis))
+    .sort((a, b) => a.y - b.y) // far (higher up) first, nearer on top
+  for (const o of near) mirrorY(ctx, axis, () => drawObject(o))
+}
+
+/**
+ * The Y axis (logical px) to mirror a cat at tile (catX, catY) about if it
+ * reflects in the pond at tile (x, y) — its feet-line — or null if it's not over
+ * the water.
+ */
+export function catReflectAxis(
+  catX: number,
+  catY: number,
+  x: number,
+  y: number,
+): number | null {
+  const { cx, cy, rx, ry } = pondGeom(x, y)
+  const ccx = (catX + 0.5) * PIXEL
+  const feetY = (catY + 0.95) * PIXEL
+  if (Math.abs(ccx - cx) > rx + PIXEL) return null // not over the pond
+  if (feetY < cy - ry - PIXEL * 2 || feetY > cy + ry) return null
+  return feetY
+}
+
+/**
+ * Mirror a cat across its feet-line into the pond at tile (x, y), if it's over
+ * the water. `draw()` renders the cat at its own position (opaque; the caller's
+ * water wash submerges it).
+ */
+export function reflectCat(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  catX: number,
+  catY: number,
+  draw: () => void,
+): void {
+  const axis = catReflectAxis(catX, catY, x, y)
+  if (axis == null) return
+  mirrorY(ctx, axis, draw)
 }
