@@ -229,15 +229,25 @@ function AbilityBtn({
     return () => cancelAnimationFrame(raf)
   }, [a])
 
-  // Fire on click so keyboard (Enter/Space) + assistive tech work — a native
-  // button turns those into `click`, never `pointerdown`. onPointerDown only stops
-  // the event reaching the canvas' window-level gesture handlers.
+  // Fire on POINTERDOWN, not click. On mobile you cast while running: one finger
+  // holds the joystick, another taps a spell. That second finger is a non-primary
+  // pointer, and the browser never synthesizes a `click` for it — so a click-only
+  // button silently swallows the tap. pointerdown is delivered regardless, so the
+  // spell fires immediately even mid-run (the GCD/per-ability cooldown is the only
+  // thing that stops a second spell). Keyboard/assistive tech still works: Enter/
+  // Space synthesize a click with detail===0, which we fire; real pointer clicks
+  // (detail>0) already fired on pointerdown, so we skip them to avoid double-firing.
   return (
     <button
       type="button"
       aria-label={label}
-      onClick={() => controls.fireAbility(a)}
-      onPointerDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => {
+        e.stopPropagation()
+        if (e.button === 0) controls.fireAbility(a)
+      }}
+      onClick={(e) => {
+        if (e.detail === 0) controls.fireAbility(a)
+      }}
       className="pointer-events-auto flex items-center justify-center rounded-full backdrop-blur-[1px] transition-colors"
       style={{
         width: size,
