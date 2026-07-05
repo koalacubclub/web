@@ -19,8 +19,12 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
   above the wash).
 - **Controls (desktop):** arrow keys / WASD, or mouse press-and-drag to walk Koala
   toward the pointer (release to stop). Mouse/pen engage immediately. **Space** =
-  jump; the on-screen ability buttons + keyboard keys (shift = dash, 1/2/3 =
-  bite/hand/meow, where **hand** is the paw-slap) — see Multiplayer → Abilities.
+  jump; the on-screen ability buttons + keyboard keys (shift = dash, 1/2 =
+  bite/hand, where **hand** is the paw-slap) — see Multiplayer → Abilities.
+  Ability buttons fire on **pointerdown** (not click) so you can cast mid-run on
+  mobile — a second finger's tap is a non-primary pointer that never gets a
+  synthesized click; keyboard/AT still fire via the `detail===0` click.
+  **Meow** is not a button/key — it's a cosmetic emote fired by **tapping Koala**.
 - **Controls (touch):** the hero stays a **scrollable** hero — a **swipe scrolls
   the page**, a tap on a channel sign / photo opens it, and a **double-tap** jumps.
   The canvas itself never steers by touch (no `preventDefault` in the touch path),
@@ -244,12 +248,20 @@ ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
   `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble and
   shop-placed decor never moves. **Object reactions are client-local** — peers
   only see the swipe pose (see the PR follow-ups: syncing reactions + a shared
-  ball). **Bite/meow** = cosmetic emotes (`drawEmote`).
+  ball). **Bite** = a cosmetic emote (`drawEmote`); **meow** is the same emote but
+  fired by **tapping Koala**, not a dock button (cosmetic, `ABILITY_COOLDOWNS_MS.
+meow = 0`, off the GCD). **Global cooldown** (`GLOBAL_COOLDOWN_MS`,
+  `isOnGlobalCooldown`): firing any GCD ability briefly blocks the other GCD
+  abilities so you can't fire two at once; **jump and meow are off the GCD**, and
+  movement is never gated (run and cast). It's a client-side input gate; the
+  server keeps its own per-ability enforcement.
 - **On-screen controls** (`controlsStore`) — **always shown** (this is the default;
   there's no toggle): a fixed, discreet golden **joystick** (mobile only,
   bottom-left) that writes an analog move vector the loop reads each frame, and an
-  **ability dock** (bottom-right, desktop too) — a big Jump + a tight arc of
-  dash/bite/hand with Meow tucked beside Jump, each with cooldown sweeps. The
+  **ability dock** (bottom-right, desktop too) — a big Jump in the corner + the
+  main abilities (dash/bite/hand) fanned in an even arc around it (`arcDeg`
+  spreads them symmetric about the 135° diagonal, so the gaps stay proportional
+  however many there are), each with cooldown sweeps. The
   controls are `<button>` overlay zones in Home's `pointer-events-none` layer, so
   only they capture touch — the canvas never steers by touch, so an empty-area
   swipe still scrolls the page (the site stays scrollable).
