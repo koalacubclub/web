@@ -1913,7 +1913,7 @@ export default function ParkGame() {
       if (!ctx) return
       const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
       // Still water body.
-      ctx.fillStyle = night('#3C79C6')
+      ctx.fillStyle = night('#5A97DB')
       ctx.beginPath()
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -1969,7 +1969,7 @@ export default function ParkGame() {
       // Water wash — one translucent layer over everything so the reflections read
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
-      ctx.fillStyle = night('#3C79C6')
+      ctx.fillStyle = night('#5A97DB')
       ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
       ctx.globalAlpha = 1
       ctx.restore()

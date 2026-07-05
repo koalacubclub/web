@@ -131,8 +131,8 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  // Match the base-map pond (deep cobalt; see drawPond in ParkGame).
-  ctx.fillStyle = INK('#3C79C6')
+  // Match the base-map pond (soft blue; see drawPond in ParkGame).
+  ctx.fillStyle = INK('#5A97DB')
   ctx.beginPath()
   ctx.ellipse(
     x + PIXEL * 1.5,

@@ -84,12 +84,16 @@ export function drawPondStones(
   }
 }
 
+// How far above the HORIZON the reflection samples: raise this to pull in more
+// open sky (and less of the hill ridge), lower it toward 0 to include the hills.
+const REFLECT_LIFT = PIXEL * 1.2
+
 // Baked environment reflection, cached per pond (keyed by tile position). The
 // mirrored static background never changes, so it's baked once into a sprite the
-// size of the pond's bounding box. We sample the sky/hills band anchored at the
+// size of the pond's bounding box. We sample a sky band anchored above the
 // HORIZON — NOT the ground directly above the pond — so the water reflects the
-// sky and distant hills, not the sand/grass it sits on (objects and cats reflect
-// live, separately). Returns null without a DOM (SSR/tests).
+// open sky (and a hint of the distant hills), not the sand/grass it sits on
+// (objects and cats reflect live, separately). Returns null without a DOM.
 const reflCache = new Map<string, HTMLCanvasElement | null>()
 export function getPondReflection(
   bg: HTMLCanvasElement,
@@ -113,12 +117,14 @@ export function getPondReflection(
     reflCache.set(key, null)
     return null
   }
-  // Flip the slice vertically: sprite row 0 (far waterline) samples the hills at
-  // the horizon; deeper rows sample higher sky. Anchored at HORIZON (not the
-  // pond), so it's always sky/hills — never the ground the pond sits on.
+  // Flip the slice vertically: sprite row 0 (far waterline) samples the highest
+  // point of the band; deeper rows sample lower toward the horizon. Anchored
+  // REFLECT_LIFT above HORIZON (not the pond), so it's always sky — never the
+  // ground the pond sits on.
+  const bandBottom = HORIZON - REFLECT_LIFT
   sc.translate(0, rh)
   sc.scale(1, -1)
-  sc.drawImage(bg, cx - rx, HORIZON - rh, rx * 2, rh, 0, 0, rx * 2, rh)
+  sc.drawImage(bg, cx - rx, bandBottom - rh, rx * 2, rh, 0, 0, rx * 2, rh)
   reflCache.set(key, spr)
   return spr
 }
