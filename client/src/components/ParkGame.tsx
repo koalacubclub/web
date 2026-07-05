@@ -966,16 +966,26 @@ export default function ParkGame() {
       const cy = g.cat.y + 0.5
       let best: GameObject | null = null
       let bestD = Infinity
+      // Balls take priority: track the nearest reachable ball separately so an
+      // overlapping ball is still kickable even when another item sits closer.
+      let bestBall: GameObject | null = null
+      let bestBallD = Infinity
       for (const o of g.objects) {
         if (o.type === 'social' || o.type === 'photo') continue
         const nx = Math.max(o.x, Math.min(cx, o.x + o.w))
         const ny = Math.max(o.y, Math.min(cy, o.y + o.h))
         const d = Math.hypot(cx - nx, cy - ny)
-        if (d < SLAP_REACH && d < bestD) {
+        if (d >= SLAP_REACH) continue
+        if (d < bestD) {
           best = o
           bestD = d
         }
+        if (o.type === 'ball' && d < bestBallD) {
+          bestBall = o
+          bestBallD = d
+        }
       }
+      if (bestBall) best = bestBall // prefer a reachable ball over anything else
       if (!best) return // whiff — just the pose
 
       const bx = best.x + best.w / 2 // tile-space centre
