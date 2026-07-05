@@ -20,6 +20,9 @@ export const CANVAS_WIDTH = MAP_COLS * PIXEL
 export const CANVAS_HEIGHT = MAP_ROWS * PIXEL
 export const GROUND_HEIGHT = GROUND_ROWS * PIXEL
 export const WORLD_OFFSET = SKY_ROWS * PIXEL // px the park is pushed down for more sky
+// Where the sky gradient ends and the ground begins (the hills ridge blends
+// across it). Ponds reflect the sky/hills band anchored here, not the ground.
+export const HORIZON = WORLD_OFFSET + PIXEL * 1.8
 
 export const COLORS = {
   // Near-black night sky matched to the site background (--background token)

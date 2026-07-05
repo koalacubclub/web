@@ -37,10 +37,10 @@ import {
   type SlapEffect,
 } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
-import { drawShopSprite } from '@/game/sprites'
+import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
-import { NIGHT, night, makeRng } from '@/game/constants'
+import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
 import {
   getPondReflection,
   drawPondStones,
@@ -1868,6 +1868,13 @@ export default function ParkGame() {
     // Draw one object's art at its own position (no slap-shake wrapper). Shared by
     // the main object pass and the pond reflection pass.
     function drawObjectArt(o: GameObject, now: number, playing: boolean) {
+      // All ponds — base or shop-placed — use the reflective drawPond; a placed
+      // one keeps its pop-in/blink via withPlacedFlourish. (sprites.ts's own
+      // drawPond stays non-reflective, for the DOM-less shop previews.)
+      if (o.type === 'pond') {
+        withPlacedFlourish(ctx!, o, now, reducedMotion, () => drawPond(o))
+        return
+      }
       if (o.placedAt != null) {
         drawShopSprite(ctx!, o, g.frameCount, {
           now,
@@ -1886,9 +1893,6 @@ export default function ParkGame() {
           break
         case 'flowers':
           drawFlowers(o)
-          break
-        case 'pond':
-          drawPond(o)
           break
         case 'ball':
           drawBall(o)
@@ -1909,7 +1913,7 @@ export default function ParkGame() {
       if (!ctx) return
       const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
       // Still water body.
-      ctx.fillStyle = night('#3C79C6')
+      ctx.fillStyle = night('#5A97DB')
       ctx.beginPath()
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -1965,7 +1969,7 @@ export default function ParkGame() {
       // Water wash — one translucent layer over everything so the reflections read
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
-      ctx.fillStyle = night('#3C79C6')
+      ctx.fillStyle = night('#5A97DB')
       ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
       ctx.globalAlpha = 1
       ctx.restore()
@@ -3589,7 +3593,7 @@ export default function ParkGame() {
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-      const horizon = WORLD_OFFSET + PIXEL * 1.8
+      const horizon = HORIZON
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
       skyGrad.addColorStop(0, COLORS.sky)
       skyGrad.addColorStop(0.6, COLORS.skyLight)

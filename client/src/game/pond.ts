@@ -3,7 +3,7 @@
 // from ParkGame so the pure parts (geometry + stone layout) can be unit-tested
 // and reused. The reflection *compositing* (mirroring cats/objects + the water
 // wash) stays in ParkGame since it needs live game state.
-import { PIXEL, SCALE, WORLD_OFFSET, NIGHT, makeRng } from './constants'
+import { PIXEL, SCALE, HORIZON, NIGHT, makeRng } from './constants'
 import { isVisibleX, type VisibleRange } from './culling'
 
 const TAU = Math.PI * 2
@@ -84,11 +84,16 @@ export function drawPondStones(
   }
 }
 
+// How far above the HORIZON the reflection samples: raise this to pull in more
+// open sky (and less of the hill ridge), lower it toward 0 to include the hills.
+const REFLECT_LIFT = PIXEL * 1.2
+
 // Baked environment reflection, cached per pond (keyed by tile position). The
-// mirrored static background above a pond never changes, so it's baked once into
-// a sprite the size of the pond's bounding box: a vertically-flipped slice of
-// `bg` from directly above the water (bg is logical-size incl. the sky rows, so
-// its pixel-Y = local-Y + WORLD_OFFSET). Returns null without a DOM (SSR/tests).
+// mirrored static background never changes, so it's baked once into a sprite the
+// size of the pond's bounding box. We sample a sky band anchored above the
+// HORIZON — NOT the ground directly above the pond — so the water reflects the
+// open sky (and a hint of the distant hills), not the sand/grass it sits on
+// (objects and cats reflect live, separately). Returns null without a DOM.
 const reflCache = new Map<string, HTMLCanvasElement | null>()
 export function getPondReflection(
   bg: HTMLCanvasElement,
@@ -102,7 +107,7 @@ export function getPondReflection(
     reflCache.set(key, null)
     return null
   }
-  const { cx, cy, rx, ry } = pondGeom(x, y)
+  const { cx, rx, ry } = pondGeom(x, y)
   const rh = ry * 2
   const spr = document.createElement('canvas')
   spr.width = Math.ceil(rx * 2)
@@ -112,12 +117,14 @@ export function getPondReflection(
     reflCache.set(key, null)
     return null
   }
-  // Flip the slice vertically: sprite row 0 (waterline) samples the bg just
-  // above the water; deeper rows sample higher-up scenery.
-  const axisBg = cy - ry + WORLD_OFFSET // far waterline in bg pixels
+  // Flip the slice vertically: sprite row 0 (far waterline) samples the highest
+  // point of the band; deeper rows sample lower toward the horizon. Anchored
+  // REFLECT_LIFT above HORIZON (not the pond), so it's always sky — never the
+  // ground the pond sits on.
+  const bandBottom = HORIZON - REFLECT_LIFT
   sc.translate(0, rh)
   sc.scale(1, -1)
-  sc.drawImage(bg, cx - rx, axisBg - rh, rx * 2, rh, 0, 0, rx * 2, rh)
+  sc.drawImage(bg, cx - rx, bandBottom - rh, rx * 2, rh, 0, 0, rx * 2, rh)
   reflCache.set(key, spr)
   return spr
 }

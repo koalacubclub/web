@@ -223,13 +223,16 @@ mushrooms, etc.), give the placement rhythm — do NOT line things up:
   rim overhang — falls entirely outside it (`isVisibleX`), so most of the map's
   objects are never drawn. Both helpers are pure and unit-tested (`culling.test.ts`).
 - **Reflective ponds are cheap.** Each pond shows a still, reflective surface. The
-  mirrored **static** background above it never changes, so it's **baked once per
-  pond** into a cached sprite (`getPondReflection` in `game/pond.ts`, keyed by tile)
-  and blitted — no per-frame `bgCanvas` resampling. On top, nearby scenery and cats
-  are mirrored live, but only when they pass cheap gates (over the water, within a
-  few tiles above it, on screen — `objectReflectsInPond` / `catReflectAxis`, also
-  unit-tested); the expensive sprite draw runs only for the rare object/cat actually
-  above a visible pond. Off-screen ponds cost nothing (culled with everything else).
+  mirrored **static** sky + hills never change, so they're **baked once per pond**
+  into a cached sprite (`getPondReflection` in `game/pond.ts`, keyed by tile) and
+  blitted — no per-frame `bgCanvas` resampling. The bake samples the **sky/hills
+  band at the `HORIZON`**, not the ground directly above the pond, so the water
+  reflects the sky and distant hills rather than the sand/grass it sits on. On top,
+  nearby scenery and cats are mirrored live, but only when they pass cheap gates
+  (over the water, within a few tiles above it, on screen — `objectReflectsInPond` /
+  `catReflectAxis`, also unit-tested); the expensive sprite draw runs only for the
+  rare object/cat actually above a visible pond. Off-screen ponds cost nothing
+  (culled with everything else).
 - **The loop pauses when it can't be seen.** `requestAnimationFrame` stops when the
   tab is hidden (`visibilitychange`) or the hero is scrolled out of view. The hero
   is `position: fixed` (always intersecting the viewport), so this uses a scroll
