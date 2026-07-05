@@ -7,6 +7,7 @@ import {
   type AbilityKind,
 } from '@koala/shared'
 import * as controls from '@/game/controlsStore'
+import { arcDeg } from './abilityWheel'
 
 // Coarse-pointer = touch device. The joystick is mobile-only; the ability buttons
 // show on both (desktop also has keyboard shortcuts).
@@ -145,15 +146,10 @@ const ABILITY_META: Record<
 const JUMP_SIZE = 72
 const MAIN_BTN = 48
 const ARC_R = 72 // radius of the main arc from the jump centre
-// Symmetric about 135° — the corner diagonal the jump sits on — so the three
-// icons fan evenly around it (equal radius, equal 40° gaps, mirror-balanced).
-// (Was centred on 120° to counterweight a tiny meow button that used to tuck into
-// the lower-left; that button is gone, so recentre on the true diagonal.)
-const MAIN_ARC = [
-  { a: 'dash' as const, deg: 95 },
-  { a: 'bite' as const, deg: 135 },
-  { a: 'hand' as const, deg: 175 },
-]
+// The main abilities you aim/use, fanned in an even arc hugging the Jump — the
+// angles come from `arcDeg` (symmetric about the 135° diagonal, self-rebalancing
+// as the list grows/shrinks). See ./abilityWheel.
+const MAIN_ABILITIES = ['dash', 'bite', 'hand'] as const
 // Box big enough to hold the arc (jump centre sits at its bottom-right).
 const BOX = JUMP_SIZE / 2 + ARC_R + MAIN_BTN / 2 + 4
 
@@ -179,12 +175,12 @@ function AbilityDock() {
         height: BOX,
       }}
     >
-      {MAIN_ARC.map(({ a, deg }) => (
+      {MAIN_ABILITIES.map((a, i) => (
         <AbilityBtn
           key={a}
           a={a}
           size={MAIN_BTN}
-          style={place(deg, ARC_R, MAIN_BTN)}
+          style={place(arcDeg(i, MAIN_ABILITIES.length), ARC_R, MAIN_BTN)}
         />
       ))}
       <AbilityBtn
