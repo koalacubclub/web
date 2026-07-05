@@ -178,10 +178,13 @@ export function objectReflectsInPond(
 }
 
 /**
- * Mirror the scenery above the pond at tile (x, y) into the water, about the far
- * waterline. `drawObject(o)` draws one object's art at its own position (the
- * caller owns the type→art dispatch). Reflected far-to-near so nearer objects
- * layer on top.
+ * Mirror the scenery above the pond at tile (x, y) into the water. Each object is
+ * flipped about its OWN base (ground-contact line) — like cats flip about their
+ * feet — so the reflection stays attached to the object and the whole thing
+ * (incl. a tall lighttree's glow) folds down into the water instead of being
+ * pushed below the shallow pond and clipped. `drawObject(o)` draws one object's
+ * art at its own position (the caller owns the type→art dispatch). Reflected
+ * far-to-near so nearer objects layer on top; the pond clip keeps it in-bounds.
  */
 export function reflectObjects<T extends ReflectBox>(
   ctx: CanvasRenderingContext2D,
@@ -191,12 +194,10 @@ export function reflectObjects<T extends ReflectBox>(
   vis: VisibleRange,
   drawObject: (o: T) => void,
 ): void {
-  const { cy, ry } = pondGeom(x, y)
-  const axis = cy - ry // far waterline
   const near = objects
     .filter((o) => objectReflectsInPond(o, x, y, vis))
     .sort((a, b) => a.y - b.y) // far (higher up) first, nearer on top
-  for (const o of near) mirrorY(ctx, axis, () => drawObject(o))
+  for (const o of near) mirrorY(ctx, (o.y + o.h) * PIXEL, () => drawObject(o))
 }
 
 /**
