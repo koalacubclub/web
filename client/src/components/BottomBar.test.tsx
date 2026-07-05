@@ -50,6 +50,23 @@ describe('BottomBar', () => {
     expect(localStorage.getItem('kcc-muted')).toBe('1')
   })
 
+  it('toggles the 30fps performance cap from the settings popover (persisted)', () => {
+    render(<BottomBar atTop={true} />)
+    fireEvent.click(screen.getByRole('button', { name: /settings/i }))
+    // Defaults to full frame rate (opt-in cap).
+    const perfBtn = screen.getByRole('button', {
+      name: /cap the game to 30 fps/i,
+    })
+    expect(perfBtn).toHaveAttribute('aria-pressed', 'false')
+    expect(perfBtn).toHaveTextContent('60 fps')
+    // Click → 30fps cap on, and the preference is persisted.
+    fireEvent.click(perfBtn)
+    const onBtn = screen.getByRole('button', { name: /full frame rate/i })
+    expect(onBtn).toHaveAttribute('aria-pressed', 'true')
+    expect(onBtn).toHaveTextContent('30 fps')
+    expect(localStorage.getItem('koala:reduced-fps')).toBe('1')
+  })
+
   it('lists online players and world stats in the settings menu', () => {
     store.applyServerPresence([
       { id: 'a', name: 'Alice', self: true },

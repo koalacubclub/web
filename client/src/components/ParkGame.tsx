@@ -33,6 +33,7 @@ import {
 import { IG_PROFILE } from '@/data/reels'
 import { drawShopSprite } from '@/game/sprites'
 import { radio } from '@/game/radio'
+import * as perfPrefs from '@/game/perfPrefs'
 import { NIGHT, night } from '@/game/constants'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -49,7 +50,7 @@ import * as controls from '@/game/controlsStore'
  */
 
 const SCALE = 3
-const MAP_COLS = 20
+const MAP_COLS = 40
 const GROUND_ROWS = 13 // the playable park (unchanged game logic)
 const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 const MAP_ROWS = GROUND_ROWS + SKY_ROWS
@@ -399,6 +400,72 @@ export default function ParkGame() {
       },
       { type: 'ball', x: 8, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
       { type: 'stone', x: 1, y: 9, w: 1, h: 1, interactMsg: '... A warm rock' },
+      // New right-half scenery (cols 20..39) added when the map was doubled.
+      {
+        type: 'tree',
+        x: 21,
+        y: 1,
+        w: 2,
+        h: 2,
+        interactMsg: '♪ Wind in the branches...',
+      },
+      {
+        type: 'tree',
+        x: 28,
+        y: 1,
+        w: 2,
+        h: 2,
+        interactMsg: '♪ An apple orchard!',
+      },
+      {
+        type: 'tree',
+        x: 35,
+        y: 1,
+        w: 2,
+        h: 2,
+        interactMsg: '♪ Deep in the grove',
+      },
+      {
+        type: 'bench',
+        x: 25,
+        y: 3,
+        w: 2,
+        h: 1,
+        interactMsg: '♥ Perfect picnic spot',
+      },
+      {
+        type: 'pond',
+        x: 32,
+        y: 9,
+        w: 3,
+        h: 2,
+        interactMsg: '~ Ripples in the moonlight',
+      },
+      {
+        type: 'flowers',
+        x: 21,
+        y: 9,
+        w: 1,
+        h: 1,
+        interactMsg: '✿ Wildflowers bloom!',
+      },
+      {
+        type: 'flowers',
+        x: 30,
+        y: 10,
+        w: 1,
+        h: 1,
+        interactMsg: '✿ A hidden patch!',
+      },
+      { type: 'ball', x: 28, y: 6, w: 1, h: 1, interactMsg: '★ Boing boing!' },
+      {
+        type: 'stone',
+        x: 37,
+        y: 8,
+        w: 1,
+        h: 1,
+        interactMsg: '... A mossy stone',
+      },
       // Interactive hotspots (hover tooltip + click) — non-solid, no interactMsg
       // so the cat's proximity popups skip them; handled by pointer hit-testing.
       {
@@ -420,6 +487,32 @@ export default function ParkGame() {
         h: 1,
       },
       { type: 'photo', photo: true, x: 17, y: 8, w: 1, h: 1 },
+      // A touch more left-half scenery (cols 0..19), placed in open gaps so it
+      // doesn't overlap existing decor or the unique brand/photo hotspots.
+      {
+        type: 'tree',
+        x: 0,
+        y: 3,
+        w: 2,
+        h: 2,
+        interactMsg: "♪ Leaves whisper at the park's edge",
+      },
+      {
+        type: 'stone',
+        x: 4,
+        y: 5,
+        w: 1,
+        h: 1,
+        interactMsg: '○ A smooth little stone',
+      },
+      {
+        type: 'flowers',
+        x: 18,
+        y: 6,
+        w: 1,
+        h: 1,
+        interactMsg: '✿ A little bloom by the path',
+      },
     ]
     g.butterflies = [
       { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: NIGHT.butterfly },
@@ -438,6 +531,48 @@ export default function ParkGame() {
         vy: -0.2,
         timer: Math.PI / 2,
         color: NIGHT.fishBowl,
+      },
+      // Right-half butterflies added when the map was doubled.
+      {
+        x: 1080,
+        y: 75,
+        vx: 0.4,
+        vy: 0.4,
+        timer: 0.5 * Math.PI,
+        color: NIGHT.butterfly,
+      },
+      {
+        x: 1400,
+        y: 110,
+        vx: -0.35,
+        vy: 0.3,
+        timer: 1 * Math.PI,
+        color: NIGHT.flower1,
+      },
+      {
+        x: 1650,
+        y: 90,
+        vx: 0.5,
+        vy: -0.25,
+        timer: 1.5 * Math.PI,
+        color: NIGHT.fishBowl,
+      },
+      // A couple more left-half butterflies (x within the load-time view).
+      {
+        x: 180,
+        y: 95,
+        vx: 0.35,
+        vy: 0.4,
+        timer: 0.2 * Math.PI,
+        color: NIGHT.butterfly,
+      },
+      {
+        x: 640,
+        y: 110,
+        vx: -0.35,
+        vy: 0.3,
+        timer: 0.65 * Math.PI,
+        color: NIGHT.flower1,
       },
     ]
   }, [])
@@ -1183,6 +1318,22 @@ export default function ParkGame() {
       drawBlobPatch(PIXEL * 1, PIXEL * 7, PIXEL * 1.3, PIXEL * 1, 13.1)
       drawBlobPatch(PIXEL * 9, PIXEL * 8, PIXEL * 1.5, PIXEL * 1.2, 15.8)
       drawBlobPatch(PIXEL * 19, PIXEL * 5, PIXEL * 1.2, PIXEL * 0.9, 17.3)
+      // Right-half patches (cols 20..40) added when the map was doubled.
+      drawBlobPatch(PIXEL * 22, PIXEL * 3.5, PIXEL * 4.4, PIXEL * 3.1, 21.4)
+      drawBlobPatch(PIXEL * 28, PIXEL * 4, PIXEL * 5, PIXEL * 3.4, 23.7)
+      drawBlobPatch(PIXEL * 35, PIXEL * 3, PIXEL * 4.6, PIXEL * 3.3, 26.2)
+      drawBlobPatch(PIXEL * 25, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 2.9, 29.1)
+      drawBlobPatch(PIXEL * 33, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 31.6)
+      drawBlobPatch(PIXEL * 37.5, PIXEL * 8.5, PIXEL * 3.6, PIXEL * 2.6, 34.8)
+      drawBlobPatch(PIXEL * 24.5, PIXEL * 5, PIXEL * 2.1, PIXEL * 1.5, 36.3)
+      drawBlobPatch(PIXEL * 31, PIXEL * 7, PIXEL * 1.9, PIXEL * 1.4, 38.5)
+      drawBlobPatch(PIXEL * 38.5, PIXEL * 5.5, PIXEL * 1.4, PIXEL * 1.1, 40.9)
+      drawBlobPatch(PIXEL * 20.5, PIXEL * 7, PIXEL * 1.3, PIXEL * 1, 43.2)
+      // A few more left-half patches to match the added scenery.
+      drawBlobPatch(PIXEL * 0.6, PIXEL * 4.4, PIXEL * 2.2, PIXEL * 1.4, 45.7)
+      drawBlobPatch(PIXEL * 4.2, PIXEL * 6.2, PIXEL * 2, PIXEL * 1.3, 47.9)
+      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 49.3)
+      drawBlobPatch(PIXEL * 18.2, PIXEL * 7.5, PIXEL * 1.9, PIXEL * 1.4, 51.6)
     }
 
     function drawStars() {
@@ -1209,6 +1360,34 @@ export default function ParkGame() {
         { x: 120, y: 42, s: 1 },
         { x: 420, y: 42, s: 1.5 },
         { x: 750, y: 42, s: 1 },
+        // A few more left-half stars (within the load-time view).
+        { x: 55, y: 14, s: 1.6 },
+        { x: 190, y: 22, s: 2.1 },
+        { x: 330, y: 9, s: 1.3 },
+        { x: 520, y: 30, s: 1.8 },
+        { x: 700, y: 16, s: 2.3 },
+        { x: 880, y: 26, s: 1.5 },
+        // Right-half stars (x > 960) added when the map was doubled.
+        { x: 975, y: 14, s: 2 },
+        { x: 1010, y: 30, s: 1 },
+        { x: 1055, y: 8, s: 2.5 },
+        { x: 1110, y: 22, s: 1.5 },
+        { x: 1160, y: 36, s: 1 },
+        { x: 1210, y: 10, s: 2 },
+        { x: 1260, y: 26, s: 1.5 },
+        { x: 1310, y: 6, s: 1 },
+        { x: 1360, y: 20, s: 2 },
+        { x: 1410, y: 38, s: 1.5 },
+        { x: 1460, y: 12, s: 2.5 },
+        { x: 1510, y: 28, s: 1 },
+        { x: 1560, y: 9, s: 2 },
+        { x: 1610, y: 33, s: 1.5 },
+        { x: 1660, y: 16, s: 1 },
+        { x: 1710, y: 24, s: 2 },
+        { x: 1760, y: 7, s: 2.5 },
+        { x: 1810, y: 40, s: 1.5 },
+        { x: 1860, y: 18, s: 1 },
+        { x: 1900, y: 30, s: 2 },
       ]
       stars.forEach((star) => {
         const twinkle = 0.5 + 0.5 * Math.sin(g.frameCount * 0.03 + star.x * 0.1)
@@ -1242,7 +1421,13 @@ export default function ParkGame() {
     // clips its lower edge.
     function drawMoon() {
       if (!ctx) return
-      const moonX = CANVAS_WIDTH - PIXEL * 1.2
+      // Keep the moon in the upper-left sky so it's visible the moment the page
+      // opens: the cat spawns at tile x:9 and the camera clamps to the LEFT edge
+      // on load, so anything near the far-right (the old CANVAS_WIDTH position)
+      // is off-screen until you pan there. PIXEL*6 sits in clear sky between the
+      // col-2 and col-10 trees (and clear of the new col-0 tree), not behind any
+      // tree's leaves. Must stay within this load-time (left-clamped) view.
+      const moonX = PIXEL * 6
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
       // Soft halo.
@@ -3115,8 +3300,26 @@ export default function ParkGame() {
 
     let lastNow = 0
     let lastSweepAt = 0
+    // "Performance" preference (opt-in 30fps cap). Seeded from storage and kept
+    // current via a subscription so the game loop reads it without a re-render.
+    let reducedFps = perfPrefs.isReducedFps()
+    const unsubscribePerf = perfPrefs.subscribe(() => {
+      reducedFps = perfPrefs.isReducedFps()
+    })
+    // Timestamp (rAF clock) of the last frame we actually drew — used to throttle
+    // to ~30fps when reducedFps is on.
+    let lastDrawTs = 0
     function gameLoop(now = 0) {
       animId = 0
+      // 30fps cap (opt-in). When on, skip frame work until ~32ms elapsed, but
+      // keep the rAF chain alive so the next frame can draw. dt-based motion
+      // self-corrects, so slower frames just move further per frame. No effect
+      // when the toggle is off.
+      if (reducedFps && now - lastDrawTs < 32) {
+        if (active()) animId = requestAnimationFrame(gameLoop)
+        return
+      }
+      lastDrawTs = now
       // Elapsed ms since last frame, clamped so a tab-resume / stall can't make
       // the cat teleport. First frame assumes ~60fps.
       const dt = lastNow ? Math.min(now - lastNow, 100) : 1000 / 60
@@ -3326,6 +3529,7 @@ export default function ParkGame() {
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleResize)
       ro?.disconnect()
+      unsubscribePerf()
       radio.dispose()
       document.body.classList.remove('kcc-dragging')
       mp?.close()

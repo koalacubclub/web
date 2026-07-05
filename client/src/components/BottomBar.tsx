@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Settings, Volume2, VolumeX, X } from 'lucide-react'
 import * as parkStore from '@/game/parkStore'
 import { radio } from '@/game/radio'
+import * as perfPrefs from '@/game/perfPrefs'
 import { MULTIPLAYER_ENABLED } from '@/multiplayer/connection'
 import { NAME_MAX } from '@koala/shared'
 import Shop from './Shop'
@@ -27,11 +28,18 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [muted, setMuted] = useState(() => radio.isMuted())
+  const [reducedFps, setReducedFps] = useState(() => perfPrefs.isReducedFps())
 
   const toggleMuted = () => {
     const next = !muted
     radio.setMuted(next) // click is a user gesture → audio can (re)start
     setMuted(next)
+  }
+
+  const toggleReducedFps = () => {
+    const next = !reducedFps
+    perfPrefs.setReducedFps(next) // persisted; the game loop's ref picks it up
+    setReducedFps(next)
   }
 
   const shopTriggerRef = useRef<HTMLButtonElement>(null)
@@ -193,6 +201,24 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                       <Volume2 className="h-4 w-4" />
                     )}
                     {muted ? 'Muted' : 'On'}
+                  </button>
+                </div>
+
+                {/* Performance — caps the game to ~30fps (persisted, default off) */}
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-white/50">Performance</span>
+                  <button
+                    type="button"
+                    onClick={toggleReducedFps}
+                    aria-pressed={reducedFps}
+                    aria-label={
+                      reducedFps
+                        ? 'Switch to full frame rate (60 fps)'
+                        : 'Cap the game to 30 fps to save power'
+                    }
+                    className="flex items-center gap-1.5 rounded-full bg-white/[0.12] px-3 py-1.5 text-sm text-white/90 ring-1 ring-white/15 transition-colors hover:bg-white/20"
+                  >
+                    {reducedFps ? '30 fps' : '60 fps'}
                   </button>
                 </div>
 

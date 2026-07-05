@@ -5,7 +5,7 @@
 // it can also be imported by tests.
 
 export const SCALE = 3
-export const MAP_COLS = 20
+export const MAP_COLS = 40
 export const GROUND_ROWS = 13 // the playable park (unchanged game logic)
 export const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 export const MAP_ROWS = GROUND_ROWS + SKY_ROWS
