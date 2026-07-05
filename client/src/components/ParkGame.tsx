@@ -419,7 +419,7 @@ export default function ParkGame() {
         w: 1,
         h: 1,
       },
-      { type: 'photo', photo: true, x: 17, y: 8, w: 1, h: 1 },
+      { type: 'photo', photo: true, x: 16.6, y: 10, w: 1, h: 1 },
     ]
     // Bright (un-graded) wings so the butterflies pop as vivid accents at night.
     g.butterflies = [
