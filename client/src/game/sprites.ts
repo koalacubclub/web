@@ -119,7 +119,7 @@ function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
     ctx.fill()
-    ctx.fillStyle = COLORS.fishBowl
+    ctx.fillStyle = '#FFF07A' // brighter yellow flower center
     ctx.beginPath()
     ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
     ctx.fill()
