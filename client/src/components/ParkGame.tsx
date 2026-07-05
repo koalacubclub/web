@@ -51,6 +51,9 @@ import * as controls from '@/game/controlsStore'
 
 const SCALE = 3
 const MAP_COLS = 40
+// columns visible across the viewport width = the zoom level; independent of
+// MAP_COLS so widening the map pans the camera instead of shrinking sprites.
+const VIEW_COLS = 20
 const GROUND_ROWS = 13 // the playable park (unchanged game logic)
 const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 const MAP_ROWS = GROUND_ROWS + SKY_ROWS
@@ -299,8 +302,13 @@ export default function ParkGame() {
 
   const gameRef = useRef({
     cat: {
-      x: 9,
-      y: 7,
+      // x:20 centers the cat in the 40-wide map (so the view isn't lopsided
+      // to the right); y:4 keeps the top-sky moon comfortably inside the
+      // vertical camera's load view once the zoom is restored (the camera
+      // clamps and would cut the top sky if the cat spawned lower — y=5 only
+      // cleared the moon by ~1px on short viewports).
+      x: 20,
+      y: 4,
       dir: 'right' as 'left' | 'right',
       idle: true,
       interacting: false,
@@ -1421,13 +1429,12 @@ export default function ParkGame() {
     // clips its lower edge.
     function drawMoon() {
       if (!ctx) return
-      // Keep the moon in the upper-left sky so it's visible the moment the page
-      // opens: the cat spawns at tile x:9 and the camera clamps to the LEFT edge
-      // on load, so anything near the far-right (the old CANVAS_WIDTH position)
-      // is off-screen until you pan there. PIXEL*6 sits in clear sky between the
-      // col-2 and col-10 trees (and clear of the new col-0 tree), not behind any
-      // tree's leaves. Must stay within this load-time (left-clamped) view.
-      const moonX = PIXEL * 6
+      // Keep the moon in the upper-center sky so it's visible the moment the
+      // page opens: the cat spawns centered at tile x:20 and the camera centers
+      // the view on it, so the moon must sit within that load-time centered
+      // band. PIXEL*20 sits in clear sky near the spawn, between the col-16 and
+      // col-21 trees, not behind any tree's leaves.
+      const moonX = PIXEL * 20
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
       // Soft halo.
@@ -3568,7 +3575,7 @@ export default function ParkGame() {
           // svh (not dvh) so the size resolves at first paint and stays put: dvh
           // can resolve late on mobile, growing the canvas from ~0 to full screen
           // after paint — a large layout shift (this was ~0.30 CLS). svh is stable.
-          width: `max(100%, calc(100svh * ${MAP_COLS} / ${MAP_ROWS}))`,
+          width: `max(calc(100% * ${MAP_COLS} / ${VIEW_COLS}), calc(100svh * ${MAP_COLS} / ${MAP_ROWS}))`,
           height: 'auto',
           aspectRatio: `${MAP_COLS} / ${MAP_ROWS}`,
         }}
