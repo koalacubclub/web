@@ -129,6 +129,16 @@ export const ABILITY_COOLDOWNS_MS: Record<AbilityKind, number> = {
   meow: 1500,
 }
 
+// Global cooldown (WoW-style): firing any GCD ability briefly blocks every other
+// GCD ability, so you can't fire two at once — but movement is unaffected (you
+// can run and cast). Jump is intentionally OFF the GCD (a core traversal you can
+// always do, like jumping in WoW). This is a client-side input gate; the server
+// keeps its own per-ability enforcement.
+export const GLOBAL_COOLDOWN_MS = 700
+export function isOnGlobalCooldown(a: AbilityKind): boolean {
+  return a !== 'jump'
+}
+
 // Airborne food shares the ground food's foodCap budget: each spawn rolls this
 // probability to be airborne (else ground), so it never adds beyond the cap.
 // ~1/3 → roughly one airborne treat for every two ground ones, at any player

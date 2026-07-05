@@ -14,6 +14,8 @@ import {
   EMOTE_DURATION_MS,
   FOOD_TTL_MS,
   foodCap,
+  GLOBAL_COOLDOWN_MS,
+  isOnGlobalCooldown,
   JUMP_DURATION_MS,
   SLAP_REACH,
   type AbilityKind,
@@ -335,6 +337,8 @@ export default function ParkGame() {
     dashAt: -Infinity,
     dashFrom: { x: 0, y: 0 },
     dashTo: { x: 0, y: 0 },
+    // Global cooldown: performance.now() until which GCD abilities are blocked.
+    gcdUntil: -Infinity,
     // Latest emote (bite/hand/meow) + when it started, for the local overlay.
     emote: null as AbilityKind | null,
     emoteAt: -Infinity,
@@ -590,8 +594,16 @@ export default function ParkGame() {
     // and tells the server (which broadcasts it; jump opens the air-food window).
     const startAbility = (a: AbilityKind) => {
       const now = performance.now()
+      const onGcd = isOnGlobalCooldown(a)
+      // Global cooldown: you can't fire a second GCD ability until it ends (WoW-
+      // style). Movement is untouched — you can run and cast. Jump is off-GCD.
+      if (onGcd && now < g.gcdUntil) return
       if (now - controls.getFiredAt(a) < ABILITY_COOLDOWNS_MS[a]) return
       controls.markFired(a)
+      if (onGcd) {
+        g.gcdUntil = now + GLOBAL_COOLDOWN_MS
+        controls.markGcd(g.gcdUntil)
+      }
       g.cat.state = 'standing'
       g.cat.idle = false
       g.cat.idleFrames = 0

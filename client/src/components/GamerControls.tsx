@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ArrowUp, ChevronsRight, Hand, MessageCircle, Zap } from 'lucide-react'
-import { ABILITY_COOLDOWNS_MS, type AbilityKind } from '@koala/shared'
+import {
+  ABILITY_COOLDOWNS_MS,
+  GLOBAL_COOLDOWN_MS,
+  isOnGlobalCooldown,
+  type AbilityKind,
+} from '@koala/shared'
 import * as controls from '@/game/controlsStore'
 
 // Coarse-pointer = touch device. The joystick is mobile-only; the ability buttons
@@ -225,9 +230,19 @@ function AbilityBtn({
   useEffect(() => {
     let raf = 0
     const cd = ABILITY_COOLDOWNS_MS[a]
+    const onGcd = isOnGlobalCooldown(a)
     const tick = () => {
-      const since = performance.now() - controls.getFiredAt(a)
-      setCooldown(cd > 0 ? Math.max(0, 1 - since / cd) : 0)
+      const now = performance.now()
+      // Per-ability cooldown wedge…
+      const perAbility =
+        cd > 0 ? Math.max(0, 1 - (now - controls.getFiredAt(a)) / cd) : 0
+      // …plus the shared global cooldown (every GCD button sweeps together).
+      let gcd = 0
+      if (onGcd) {
+        const until = controls.getGcdUntil()
+        if (now < until) gcd = Math.min(1, (until - now) / GLOBAL_COOLDOWN_MS)
+      }
+      setCooldown(Math.max(perAbility, gcd))
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
