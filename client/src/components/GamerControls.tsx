@@ -37,9 +37,8 @@ export default function GamerControls({ atTop }: { atTop: boolean }) {
   )
 }
 
-// A fixed analog joystick anchored bottom-left, shaped like a cat food bowl (a
-// rimmed bowl with two ears) so it reads as a toy, drawn as a thin gold outline
-// with NO fill. The knob is a little cosmetic "pole" (lever + ball). It's a
+// A fixed analog joystick anchored bottom-left, drawn as a flat plate (two thin
+// gold ellipses, NO fill) with a simple ball knob that slides on it. It's a
 // <button> (so the canvas' window touch handlers bail via their `a,button` gate)
 // with touchAction none + stopPropagation.
 function Joystick() {
@@ -105,43 +104,28 @@ function Joystick() {
         opacity: held ? 1 : 0.7,
       }}
     >
-      {/* Cat-bowl outline (no fill) */}
+      {/* Flat plate outline (rim + well), no fill */}
       <svg
         viewBox="0 0 100 100"
         className="absolute inset-0 h-full w-full"
         fill="none"
         stroke={line}
         strokeWidth={2}
-        strokeLinejoin="round"
         aria-hidden="true"
       >
-        {/* ears */}
-        <path d="M26 30 L20 15 L38 24 Z" />
-        <path d="M74 30 L80 15 L62 24 Z" />
-        {/* bowl: rim ellipse + rounded body */}
-        <ellipse cx="50" cy="34" rx="34" ry="10" />
-        <path d="M16 34 C18 64, 30 82, 50 82 C70 82, 82 64, 84 34" />
+        <ellipse cx="50" cy="52" rx="46" ry="20" />
+        <ellipse cx="50" cy="50" rx="33" ry="13" />
       </svg>
-      {/* Cosmetic pole (lever) + ball knob, moved with the drag */}
+      {/* Ball knob, slides with the drag */}
       <span
         aria-hidden="true"
-        className="absolute left-1/2 top-1/2"
+        className="absolute left-1/2 top-1/2 h-9 w-9 rounded-full"
         style={{
+          background: gold(held ? 0.7 : 0.45),
+          boxShadow: `0 0 12px ${gold(held ? 0.4 : 0.2)}`,
           transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
         }}
-      >
-        <span
-          className="block h-10 w-1.5 -translate-y-4 rounded-full"
-          style={{ background: gold(held ? 0.45 : 0.28) }}
-        />
-        <span
-          className="absolute left-1/2 top-0 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{
-            background: gold(held ? 0.7 : 0.45),
-            boxShadow: `0 0 10px ${gold(held ? 0.4 : 0.2)}`,
-          }}
-        />
-      </span>
+      />
     </button>
   )
 }
