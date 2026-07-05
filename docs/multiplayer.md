@@ -126,7 +126,7 @@ peers animate. `jump` additionally opens that session's airborne-collect window.
 |---|---|---|
 | positions | in-memory `Map` | No — repopulated from attachments / spawn |
 | food | in-memory `Map` | No — refills on next traffic |
-| jumpAt / lastActionAt / rate | in-memory `Map` | No |
+| jumpAt / lastActionAt / lastMove / rate | in-memory `Map` | No — `lastMove` reset on wake is intentional (see [Known gaps](#known-gaps--future-hardening)) |
 | placed (cache) | in-memory `Map` | Rehydrated from SQLite |
 | **likes** (wallet) | **SQLite** | Yes |
 | **names** | **SQLite** | Yes |
@@ -209,19 +209,18 @@ deployed backend makes players' solo savings appear to vanish.
 
 ## Known gaps / future hardening
 
-- **Movement speed isn't validated** — only bounds are. Because the collect proximity
-  check compares against the position the client itself reported, a determined cheater
-  could "teleport" (within bounds) next to a food via a `state` message and then collect
-  it. This is a deliberate trade-off (positions are cosmetic; likes have no real value),
-  but it's the one real economy hole.
-
-  A proportionate fix, using the same ephemeral-map pattern as `jumpAt`: track the last
-  accepted position + server-receive timestamp per session, and **clamp** (never reject)
-  a new `state` to the farthest reachable point along the vector. Derive the budget from
-  the walk speed (`0.0021` tiles/ms) times `dt`, plus a `DASH_TILES` allowance while a
-  dash window is live, with generous slack to avoid rubber-banding honest laggy players.
-  Lift the walk-speed constant into `shared/protocol.ts` so both sides agree. This
-  degrades "teleport-collect" to "walk at legal speed," i.e. fair play.
+- **Movement speed** was historically unvalidated — only bounds were. Because the
+  collect proximity check compares against the position the client itself reported, a
+  cheater could "teleport" (within bounds) next to a food via a `state` message and then
+  collect it. Being addressed in PR #81 (`feat/anticheat-speed`): a per-session
+  `lastMove` map + `clampToSpeed()` cap each `state` step to `MOVE_SPEED_TILES_PER_MS ×
+  dt × slack`, plus a one-off `DASH_TILES` allowance during a live dash window. It
+  **clamps** (never rejects) so honest laggy players don't rubber-band. Note the
+  interaction with hibernation: `lastMove` is *not* rehydrated on wake — a missing entry
+  (first update / respawn / hibernation wake) resets the baseline, so the first
+  post-wake `state` is accepted unclamped and clamping resumes from the next one. That
+  mirrors why `positions` is restored from attachments: clamp what's cheatable, but
+  never punish honest clients.
 
 - **Protocol version isn't enforced.** `PROTOCOL_VERSION` is written into the socket
   attachment but never compared, so a breaking wire change has no handshake guard yet.
@@ -234,4 +233,51 @@ deployed backend makes players' solo savings appear to vanish.
 
 - **Single global room.** Everyone routes to `idFromName("world-main")`: one DO instance,
   one SQLite, one single-threaded turn loop, O(players) broadcasts. Sharding would mean
-  more room names — but then presence/economy stop being global.
+  more room names (`worker.ts` has a single `ROOM` constant) — but then presence/economy
+  stop being global. This is the one architectural fork worth deciding deliberately.
+
+- **No connection heartbeat.** The DO doesn't use `setWebSocketAutoResponse` or any
+  server-side ping. A silently-dead connection (network vanished without a clean close)
+  is only reaped when the edge's TCP timeout fires `webSocketClose`, so a disappeared
+  player can linger as a "ghost" in everyone else's roster until then.
+
+- **Multi-tab broadcast quirk.** `broadcast(msg, exceptId)` excludes by **session id**,
+  not socket. Two tabs share one session, so your own `state`/`acted`/`pushed` are
+  withheld from *both* your sockets — the two tabs won't sync to each other (each renders
+  its own local cat). Harmless, but surprising when debugging with two tabs.
+
+- **Balls are semi-trusted.** `push` writes the client-reported position straight to
+  memory (bounds-clamped only) and relays it; only `rest` persists a rounded tile. A
+  hostile client could relocate a ball to any in-bounds tile via `push` — cosmetic, and
+  it self-heals on the next `rest`. Velocity is clamped (`MAX_BALL_SPEED`); position is
+  not speed-checked the way player movement is.
+
+- **Names are charset-sanitized, not moderated.** `sanitizeName` allows Unicode
+  letters/numbers + a little punctuation and caps length, but there's no profanity/abuse
+  filter — and names are visible to everyone and attached to placed items.
+
+- **Schema is additive-only.** Tables use `CREATE TABLE IF NOT EXISTS`; there's no
+  migration framework. Adding a column later means a manual `ALTER`/new-table dance — the
+  wrangler `migrations` block only governs the DO *class*, not the table schema.
+
+## Operational notes
+
+- **Single region → global RTT.** A Durable Object lives in one physical location, so
+  every player worldwide connects to that one point; far-away players see higher latency.
+  There's no multi-region replication. The upside of "single instance" is that it's
+  **single-threaded** — all mutations are serialized, which is exactly why the atomic
+  food claim (`food.delete` before award) is race-free.
+
+- **Deploys are a brief blip for everyone.** Shipping new Worker/DO code evicts the
+  running instance and drops all WebSockets; clients reconnect (deterministic backoff,
+  no jitter → lockstep waves) and get a fresh `welcome` resync. Durable state survives,
+  so it self-heals.
+
+- **Identity is anonymous and device-local.** A per-browser signed cookie — no account,
+  no cross-device sync. Clearing cookies (or rotating `SESSION_SECRET`) yields a new
+  session and a fresh wallet.
+
+- **Tests poke DO internals.** `server/test/world.test.ts` drives the DO via
+  `runInDurableObject` (e.g. the speed-cap tests raise `moveSpeed` in-place for
+  movement-heavy setup); `client/src/multiplayer/connection.test.ts` covers the client.
+  Follow that pattern when adding server behavior.
