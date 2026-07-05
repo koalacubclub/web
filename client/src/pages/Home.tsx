@@ -50,7 +50,13 @@ function Reveal({
   delay?: number
 }) {
   const ref = useRef(null)
-  const isInView = useInView(ref, { once: true, margin: '-10%' })
+  // Trigger when any part enters the viewport. A negative bottom rootMargin
+  // (e.g. '-10%') would inset the trigger line above the page bottom, so the
+  // last element on the page can never cross it on tall viewports and stays
+  // frozen at its hidden initial state — which is exactly what happened to the
+  // footer credit in some browsers (Atlas). Keep the margin at 0 so bottom-most
+  // reveals always fire.
+  const isInView = useInView(ref, { once: true })
 
   return (
     <motion.div
@@ -665,7 +671,7 @@ function ContentPanel() {
 
               {/* Closing */}
               <Reveal delay={0.2}>
-                <p className="text-white/10 text-[9px] uppercase tracking-[0.4em] mt-4">
+                <p className="text-white/40 text-[9px] uppercase tracking-[0.4em] mt-4">
                   Made with love by Koala's humans
                 </p>
               </Reveal>
