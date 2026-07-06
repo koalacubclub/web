@@ -3804,11 +3804,13 @@ export default function ParkGame() {
     const unsubscribeDev = devPrefs.subscribe(() => {
       devFlags = devPrefs.getFlags()
     })
-    // FPS readout: a true rolling-window average (frames ÷ elapsed over ~0.5s),
-    // fed the RAW frame delta — not the motion `dt`, which is clamped to 100ms and
-    // would floor the reading at 10fps and hide real stalls. `fpsWorst` is the
-    // longest single frame in the window (ms) — the average reads ~60 even with
-    // occasional jank, so this is what surfaces the "feels laggy" hitches.
+    // FPS readout: a true rolling-window average (frames ÷ elapsed), fed the RAW
+    // frame delta — not the motion `dt`, which is clamped to 100ms and would floor
+    // the reading at 10fps and hide real stalls. `fpsWorst` is the longest single
+    // frame in the window (ms) — the average reads ~60 even with occasional jank,
+    // so this is what surfaces the "feels laggy" hitches. 1s window matches the
+    // common web FPS panel (stats.js).
+    const FPS_WINDOW_MS = 1000
     let fps = 60
     let fpsWorst = 0
     let fpsFrames = 0
@@ -3834,13 +3836,13 @@ export default function ParkGame() {
       const rawDt = lastNow ? now - lastNow : 1000 / 60
       const dt = Math.min(rawDt, 100)
       lastNow = now
-      // Accurate FPS: average over a ~0.5s window (frames ÷ elapsed), not a noisy
+      // Accurate FPS: average over the window (frames ÷ elapsed), not a noisy
       // instantaneous 1000/dt. Only kept current when the HUD is on.
       if (devFlags.fps) {
         fpsFrames++
         fpsElapsed += rawDt
         if (rawDt > fpsPeakDt) fpsPeakDt = rawDt
-        if (fpsElapsed >= 500) {
+        if (fpsElapsed >= FPS_WINDOW_MS) {
           fps = (fpsFrames * 1000) / fpsElapsed
           fpsWorst = fpsPeakDt
           fpsFrames = 0
