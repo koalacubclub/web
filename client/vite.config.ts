@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -56,33 +56,45 @@ ${memberItems}
   }
 }
 
-// The Koala photo's single source of truth is src/assets/hero.webp (alongside
-// the reel sources), so vite-imagetools can generate the small in-game variants
-// from it (see src/data/heroPhoto.ts). But the social-share tags (og:image /
-// twitter:image in index.html) and the in-game lightbox need it at a STABLE,
-// unhashed public URL — /hero.webp. This plugin emits that copy verbatim from
-// the same source at build and serves it in dev, so there's exactly ONE file to
-// maintain (no hand-synced public/ duplicate).
-function heroOgImage(): Plugin {
-  const src = fileURLToPath(new URL('./src/assets/hero.webp', import.meta.url))
+const MIME: Record<string, string> = {
+  webp: 'image/webp',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  json: 'application/json',
+  txt: 'text/plain',
+}
+
+// Files in src/assets/rooted/ are served verbatim at the site root (/<name>) —
+// in dev and in the build output. Use this (instead of public/) for assets that
+// need a STABLE, unhashed URL — og:image, a canvas/lightbox referencing a fixed
+// path — but must ALSO be importable by vite-imagetools (which only sees src/),
+// so a single source feeds both. Drop a file in; there's nothing to hand-sync.
+function rootedAssets(): Plugin {
+  const dir = fileURLToPath(new URL('./src/assets/rooted', import.meta.url))
+  const read = () => readdirSync(dir).map((name) => ({ name, dir }))
   return {
-    name: 'emit-hero-og-image',
+    name: 'rooted-assets',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url === '/hero.webp') {
-          res.setHeader('Content-Type', 'image/webp')
-          res.end(readFileSync(src))
-          return
-        }
-        next()
+        const name = req.url?.replace(/^\//, '').split('?')[0] ?? ''
+        const file = read().find((f) => f.name === name)
+        if (!file) return next()
+        const ext = name.slice(name.lastIndexOf('.') + 1)
+        if (MIME[ext]) res.setHeader('Content-Type', MIME[ext])
+        res.end(readFileSync(`${file.dir}/${file.name}`))
       })
     },
     generateBundle() {
-      this.emitFile({
-        type: 'asset',
-        fileName: 'hero.webp',
-        source: readFileSync(src),
-      })
+      for (const { name, dir } of read()) {
+        this.emitFile({
+          type: 'asset',
+          fileName: name,
+          source: readFileSync(`${dir}/${name}`),
+        })
+      }
     },
   }
 }
@@ -94,7 +106,7 @@ export default defineConfig({
     tailwindcss(),
     imagetools(),
     crawlableContent(),
-    heroOgImage(),
+    rootedAssets(),
   ],
   resolve: {
     alias: {

@@ -1,47 +1,34 @@
-// Build-time responsive variants of the Koala photo used by the in-game
-// polaroid (src/components/ParkGame.tsx): the tiny on-grass polaroid drawn on
-// the canvas, and its hover preview. vite-imagetools emits optimized WebP from
-// the pristine source in src/assets/hero.webp; the raw source is never shipped.
+// Small responsive variants of the Koala photo for the in-game polaroid + its
+// hover preview (src/components/ParkGame.tsx), generated at build by
+// vite-imagetools. The full-res image is served verbatim at /hero.webp (the
+// rooted source doubles as the og:image and the lightbox master).
 //
-// The full-res *lightbox* image is intentionally NOT generated here — it's
-// served verbatim at the stable public URL /hero.webp (see ParkGame's
-// HERO_PHOTO const), which also doubles as the og:image / twitter:image URL and
-// avoids a second lossy transcode of an already-lossy source. That /hero.webp is
-// emitted from THIS SAME source (src/assets/hero.webp) by the heroOgImage()
-// plugin in vite.config.ts — so this file is the single source of truth for the
-// photo; there is no public/ duplicate to keep in sync.
-//
-// Mirrors src/data/reelPosters.ts: we use import.meta.glob with an explicit cast
-// rather than a static `import x from './f.webp?query'`, because the query suffix
-// defeats vite/client's `*.webp` ambient type and would break `tsc -b`.
+// Uses import.meta.glob + cast, not `import x from './f.webp?query'` — a query
+// suffix defeats vite/client's `*.webp` ambient type and breaks `tsc -b`.
 
 const one = (m: Record<string, string>): string => Object.values(m)[0]
 
-// Canvas polaroid source. The polaroid is drawn cover-fit into a ~64-device-px
-// box (the canvas backing store is clamped to 2× DPR), so 128w is a crisp 2×
-// margin — anything larger is wasted. This is the ONLY hero image eagerly
-// fetched on initial load (~1.8 KB vs the old 290 KB).
+// Canvas polaroid (drawn cover-fit into ~64 device px). The only hero image on
+// the initial-load path (~1.8 KB vs the old ~290 KB).
 export const heroCanvasSrc = one(
-  import.meta.glob('../assets/hero.webp', {
+  import.meta.glob('../assets/rooted/hero.webp', {
     query: '?w=128&format=webp&quality=72',
     import: 'default',
     eager: true,
   }) as Record<string, string>,
 )
 
-// Hover preview: rendered at w-40 / sm:w-52 (160 / 208 CSS px). The srcset lets
-// the browser pick 320/480/640 by DPR; fetched only on pointer-enter.
+// Hover preview (w-40 / sm:w-52); browser picks 320/480/640 by DPR.
 export const heroHoverSrcSet = one(
-  import.meta.glob('../assets/hero.webp', {
+  import.meta.glob('../assets/rooted/hero.webp', {
     query: '?w=320;480;640&format=webp&quality=72&as=srcset',
     import: 'default',
     eager: true,
   }) as Record<string, string>,
 )
 
-// Single-URL fallback for the hover <img>'s `src` (no-srcset browsers).
 export const heroHoverSrc = one(
-  import.meta.glob('../assets/hero.webp', {
+  import.meta.glob('../assets/rooted/hero.webp', {
     query: '?w=640&format=webp&quality=72',
     import: 'default',
     eager: true,

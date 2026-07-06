@@ -201,10 +201,8 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 // Interactive on-grass hotspots.
 const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
-// Full-res Koala photo, used only by the click-to-open lightbox. Served as the
-// static public asset (not via imagetools) so it doubles as the og:image /
-// twitter:image URL. The polaroid + hover preview use small imagetools variants
-// (see @/data/heroPhoto); this heavy file is fetched only on demand.
+// Full-res Koala photo (stable /hero.webp), used only by the click-to-open
+// lightbox. The polaroid + hover use small variants — see @/data/heroPhoto.
 const HERO_PHOTO = '/hero.webp'
 
 // Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
