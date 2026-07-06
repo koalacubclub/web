@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -55,9 +56,58 @@ ${memberItems}
   }
 }
 
+const MIME: Record<string, string> = {
+  webp: 'image/webp',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  svg: 'image/svg+xml',
+  ico: 'image/x-icon',
+  json: 'application/json',
+  txt: 'text/plain',
+}
+
+// Files in src/assets/rooted/ are served verbatim at the site root (/<name>) —
+// in dev and in the build output. Use this (instead of public/) for assets that
+// need a STABLE, unhashed URL — og:image, a canvas/lightbox referencing a fixed
+// path — but must ALSO be importable by vite-imagetools (which only sees src/),
+// so a single source feeds both. Drop a file in; there's nothing to hand-sync.
+function rootedAssets(): Plugin {
+  const dir = fileURLToPath(new URL('./src/assets/rooted', import.meta.url))
+  const read = () => readdirSync(dir).map((name) => ({ name, dir }))
+  return {
+    name: 'rooted-assets',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const name = req.url?.replace(/^\//, '').split('?')[0] ?? ''
+        const file = read().find((f) => f.name === name)
+        if (!file) return next()
+        const ext = name.slice(name.lastIndexOf('.') + 1)
+        if (MIME[ext]) res.setHeader('Content-Type', MIME[ext])
+        res.end(readFileSync(`${file.dir}/${file.name}`))
+      })
+    },
+    generateBundle() {
+      for (const { name, dir } of read()) {
+        this.emitFile({
+          type: 'asset',
+          fileName: name,
+          source: readFileSync(`${dir}/${name}`),
+        })
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), imagetools(), crawlableContent()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    imagetools(),
+    crawlableContent(),
+    rootedAssets(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

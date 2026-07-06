@@ -27,6 +27,7 @@ import {
   type AbilityKind,
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
+import { ProgressiveImage } from './ProgressiveImage'
 import { jumpLiftTiles } from '@/game/jump'
 import { drawKoalaImprint } from '@/game/imprint'
 import {
@@ -38,6 +39,7 @@ import {
   type SlapEffect,
 } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
+import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
@@ -211,7 +213,9 @@ const FOODS_BY_KEY: Record<string, FoodType> = Object.fromEntries(
 const FOOD_TOTAL_WEIGHT = FOODS.reduce((sum, f) => sum + f.weight, 0)
 // Interactive on-grass hotspots.
 const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
-const HERO_PHOTO = '/hero.webp' // Koala photo for the polaroid + lightbox
+// Full-res Koala photo (stable /hero.webp), used only by the click-to-open
+// lightbox. The polaroid + hover use small variants — see @/data/heroPhoto.
+const HERO_PHOTO = '/hero.webp'
 
 interface GameObject {
   type: string
@@ -866,9 +870,21 @@ export default function ParkGame() {
     rebuildObjects()
     const unsubscribeStore = parkStore.subscribe(rebuildObjects)
 
-    // Preload the Koala photo used by the on-grass polaroid + its lightbox.
+    // Preload the tiny polaroid variant for the on-grass photo. The full-res
+    // image (HERO_PHOTO) is deferred to the lightbox and warmed on intent below.
     const heroImg = new Image()
-    heroImg.src = HERO_PHOTO
+    heroImg.src = heroCanvasSrc
+
+    // Warm the full-res lightbox photo the moment the player shows intent —
+    // hover on desktop, or the tap that opens the lightbox on touch — so it
+    // opens without a cold ~290 KB fetch. Fires at most once.
+    let heroFullWarmed = false
+    const warmHeroFull = () => {
+      if (heroFullWarmed) return
+      heroFullWarmed = true
+      const warm = new Image()
+      warm.src = HERO_PHOTO
+    }
 
     // Offscreen canvas holding the fully static sky + ground. Rendered once,
     // then blitted each frame instead of recomputing the grass blobs, sand
@@ -1210,6 +1226,7 @@ export default function ParkGame() {
       } else if (o.type === 'photo') {
         hoveredObj = null
         setHover(null)
+        warmHeroFull() // covers touch/keyboard opens that never fire a hover
         lightboxRef.current = true
         setLightbox(true)
       }
@@ -1231,6 +1248,7 @@ export default function ParkGame() {
       const sy =
         rect.top + ((WORLD_OFFSET + o.y * PIXEL) / CANVAS_HEIGHT) * rect.height
       if (o.type === 'photo') {
+        warmHeroFull() // prefetch full-res so the lightbox opens flash-free
         setHover({ kind: 'photo', label: 'Koala', sx, sy })
       } else {
         setHover({
@@ -4129,8 +4147,11 @@ export default function ParkGame() {
                 style={{ left: hover.sx, top: hover.sy - 10 }}
               >
                 {hover.kind === 'photo' ? (
-                  <img
-                    src={HERO_PHOTO}
+                  <ProgressiveImage
+                    lowSrc={heroCanvasSrc}
+                    highSrc={heroHoverSrc}
+                    highSrcSet={heroHoverSrcSet}
+                    sizes="(min-width: 640px) 208px, 160px"
                     alt="Koala"
                     className="w-40 rounded-lg border-2 border-white/80 shadow-[0_10px_30px_rgba(0,0,0,0.5)] sm:w-52"
                   />
@@ -4149,8 +4170,9 @@ export default function ParkGame() {
                 onClick={closeLightbox}
                 className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
               >
-                <img
-                  src={HERO_PHOTO}
+                <ProgressiveImage
+                  lowSrc={heroHoverSrc}
+                  highSrc={HERO_PHOTO}
                   alt="Koala"
                   className="max-h-[90vh] max-w-[92vw] rounded-xl shadow-2xl"
                 />
