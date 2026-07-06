@@ -3646,11 +3646,22 @@ export default function ParkGame() {
     // while the world scrolls behind it. Shows the frame rate plus the concepts
     // this overlay exists to expose: the cat's tile, the zoom (visible/total
     // columns), the tile size in px, and the retina backing scale.
-    function drawDevHud(fps: number, showFps: boolean, showCoords: boolean) {
+    function drawDevHud(
+      fps: number,
+      worstMs: number,
+      showFps: boolean,
+      showCoords: boolean,
+    ) {
       if (!ctx || !canvas) return
       const lines: string[] = []
       if (showFps) {
-        lines.push(`FPS ${Math.round(fps)}${reducedFps ? ' (cap 30)' : ''}`)
+        // Average + the window's longest frame (ms). A 60fps average with a worst
+        // frame well above ~17ms means visible hitching (GC/heavy frame), which is
+        // the "feels laggy but reads 60" case.
+        const worst = worstMs > 0 ? ` · worst ${Math.round(worstMs)}ms` : ''
+        lines.push(
+          `FPS ${Math.round(fps)}${reducedFps ? ' (cap 30)' : ''}${worst}`,
+        )
       }
       if (showCoords) {
         // The same point, in all four unit systems, so the conversion pipeline is
@@ -3806,13 +3817,23 @@ export default function ParkGame() {
       reducedFps = perfPrefs.isReducedFps()
     })
     // Developer overlays (query-param gated: tile grid + FPS HUD). Same ref-kept-
-    // in-sync pattern so the loop reads them without a React re-render. `fpsEma` is
-    // a smoothed frames-per-second estimate for the HUD readout.
+    // in-sync pattern so the loop reads them without a React re-render.
     let devFlags = devPrefs.getFlags()
     const unsubscribeDev = devPrefs.subscribe(() => {
       devFlags = devPrefs.getFlags()
     })
-    let fpsEma = 60
+    // FPS readout: a true rolling-window average (frames ÷ elapsed), fed the RAW
+    // frame delta — not the motion `dt`, which is clamped to 100ms and would floor
+    // the reading at 10fps and hide real stalls. `fpsWorst` is the longest single
+    // frame in the window (ms) — the average reads ~60 even with occasional jank,
+    // so this is what surfaces the "feels laggy" hitches. 1s window matches the
+    // common web FPS panel (stats.js).
+    const FPS_WINDOW_MS = 1000
+    let fps = 60
+    let fpsWorst = 0
+    let fpsFrames = 0
+    let fpsElapsed = 0
+    let fpsPeakDt = 0
     // Timestamp (rAF clock) of the last frame we actually drew — used to throttle
     // to ~30fps when reducedFps is on.
     let lastDrawTs = 0
@@ -3827,13 +3848,26 @@ export default function ParkGame() {
         return
       }
       lastDrawTs = now
-      // Elapsed ms since last frame, clamped so a tab-resume / stall can't make
-      // the cat teleport. First frame assumes ~60fps.
-      const dt = lastNow ? Math.min(now - lastNow, 100) : 1000 / 60
+      // Raw elapsed ms since last frame. `dt` clamps it so a tab-resume / stall
+      // can't teleport the cat; the FPS readout uses the raw value so real drops
+      // aren't hidden by the clamp. First frame assumes ~60fps.
+      const rawDt = lastNow ? now - lastNow : 1000 / 60
+      const dt = Math.min(rawDt, 100)
       lastNow = now
-      // Smooth the instantaneous FPS for a steady dev readout (only kept current
-      // when the HUD is on).
-      if (devFlags.fps && dt > 0) fpsEma += (1000 / dt - fpsEma) * 0.1
+      // Accurate FPS: average over the window (frames ÷ elapsed), not a noisy
+      // instantaneous 1000/dt. Only kept current when the HUD is on.
+      if (devFlags.fps) {
+        fpsFrames++
+        fpsElapsed += rawDt
+        if (rawDt > fpsPeakDt) fpsPeakDt = rawDt
+        if (fpsElapsed >= FPS_WINDOW_MS) {
+          fps = (fpsFrames * 1000) / fpsElapsed
+          fpsWorst = fpsPeakDt
+          fpsFrames = 0
+          fpsElapsed = 0
+          fpsPeakDt = 0
+        }
+      }
       // Elapsed time in 60fps-frame units. Scales every animation (the
       // frameCount clock below + per-frame integrations like butterflies/popups/
       // idle) so they run at the same pace regardless of frame rate.
@@ -3981,7 +4015,7 @@ export default function ParkGame() {
         ctx!.restore()
       }
       if (devFlags.fps || devFlags.coords)
-        drawDevHud(fpsEma, devFlags.fps, devFlags.coords)
+        drawDevHud(fps, fpsWorst, devFlags.fps, devFlags.coords)
       // (The score/likes HUD + the presence roster now live in the DOM
       // BottomBar / Settings menu, not on the canvas.)
 
