@@ -46,6 +46,23 @@ Example: `src/assets/rooted/hero.webp` is the `og:image`/`twitter:image` target
 and the lightbox's full-res master (served at `/hero.webp`), and is _also_ the
 source `heroPhoto.ts` reads to generate the tiny polaroid + hover variants.
 
+## Painting them progressively (LQIP / blur-up)
+
+Swapping a small variant up to a large one naively flashes blank while the large
+one downloads. [`ProgressiveImage`](../client/src/components/ProgressiveImage.tsx)
+avoids that: it paints an **already-cached** low-res image instantly, then swaps
+to the fully-decoded high-res one in place. It's a drop-in `<img>` replacement.
+
+The catch — and the reason it ties back to the variant sizes above — is that
+`lowSrc` must genuinely be cheap and already fetched, or you're just wrapping a
+plain `<img>` with no win. That's why the photo hover preview uses the 128w
+`heroCanvasSrc` (preloaded on mount) as `lowSrc`, swapping up to the 320/480/640
+`heroHoverSrcSet`; and the lightbox uses the 640w `heroHoverSrc` (already fetched
+by the hover) as `lowSrc`, swapping up to full-res `/hero.webp`. Lazy-loaded
+images (the reel feed, avatars) have no earlier cached copy, so they'd need a
+dedicated tiny LQIP variant before this helps. See the component's JSDoc for the
+mechanism and reuse caveats.
+
 ## Quick decision
 
 | Need                                                                | Put it in            | How it's used                                |

@@ -26,6 +26,7 @@ import {
   type AbilityKind,
 } from '@koala/shared'
 import { cameraPan } from './parkCamera'
+import { ProgressiveImage } from './ProgressiveImage'
 import { jumpLiftTiles } from '@/game/jump'
 import { drawKoalaImprint } from '@/game/imprint'
 import {
@@ -3910,9 +3911,10 @@ export default function ParkGame() {
                 style={{ left: hover.sx, top: hover.sy - 10 }}
               >
                 {hover.kind === 'photo' ? (
-                  <img
-                    src={heroHoverSrc}
-                    srcSet={heroHoverSrcSet}
+                  <ProgressiveImage
+                    lowSrc={heroCanvasSrc}
+                    highSrc={heroHoverSrc}
+                    highSrcSet={heroHoverSrcSet}
                     sizes="(min-width: 640px) 208px, 160px"
                     alt="Koala"
                     className="w-40 rounded-lg border-2 border-white/80 shadow-[0_10px_30px_rgba(0,0,0,0.5)] sm:w-52"
@@ -3932,8 +3934,9 @@ export default function ParkGame() {
                 onClick={closeLightbox}
                 className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
               >
-                <img
-                  src={HERO_PHOTO}
+                <ProgressiveImage
+                  lowSrc={heroHoverSrc}
+                  highSrc={HERO_PHOTO}
                   alt="Koala"
                   className="max-h-[90vh] max-w-[92vw] rounded-xl shadow-2xl"
                 />
