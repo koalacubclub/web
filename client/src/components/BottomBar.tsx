@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Settings, Volume2, VolumeX, X } from 'lucide-react'
+import { Bug, Settings, Volume2, VolumeX, X } from 'lucide-react'
 import * as parkStore from '@/game/parkStore'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
+import * as devPrefs from '@/game/devPrefs'
 import { MULTIPLAYER_ENABLED } from '@/multiplayer/connection'
 import { NAME_MAX } from '@koala/shared'
 import Shop from './Shop'
@@ -26,9 +27,20 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
 
   const [shopOpen, setShopOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [devOpen, setDevOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
   const [muted, setMuted] = useState(() => radio.isMuted())
   const [reducedFps, setReducedFps] = useState(() => perfPrefs.isReducedFps())
+  // Unlocked once per session by the `?dev` query param (persisted). When off,
+  // the Dev button never renders.
+  const devMode = devPrefs.isDevMode()
+  const [devFlags, setDevFlags] = useState(() => devPrefs.getFlags())
+
+  const toggleDevFlag = (key: keyof devPrefs.DevFlags) => {
+    const next = !devFlags[key]
+    devPrefs.setFlag(key, next) // persisted; the game loop's ref picks it up
+    setDevFlags(devPrefs.getFlags())
+  }
 
   const toggleMuted = () => {
     const next = !muted
@@ -51,6 +63,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
     if (!atTop) {
       setShopOpen(false)
       setSettingsOpen(false)
+      setDevOpen(false)
     }
   }, [atTop])
 
@@ -91,6 +104,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
           type="button"
           onClick={() => {
             setSettingsOpen(false)
+            setDevOpen(false)
             setShopOpen(true)
           }}
           aria-haspopup="dialog"
@@ -111,7 +125,10 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
           <button
             ref={settingsTriggerRef}
             type="button"
-            onClick={() => setSettingsOpen((v) => !v)}
+            onClick={() => {
+              setDevOpen(false)
+              setSettingsOpen((v) => !v)
+            }}
             aria-haspopup="dialog"
             aria-expanded={settingsOpen}
             aria-label="Settings"
@@ -277,10 +294,116 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Dev — hidden unless unlocked by the `?dev` query param. Toggles the
+            on-canvas debug overlays (tile grid + FPS/info HUD). */}
+        {devMode && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setSettingsOpen(false)
+                setShopOpen(false)
+                setDevOpen((v) => !v)
+              }}
+              aria-haspopup="dialog"
+              aria-expanded={devOpen}
+              aria-label="Developer overlays"
+              className={PILL}
+            >
+              <Bug className="h-4 w-4" />
+            </button>
+
+            <AnimatePresence>
+              {devOpen && (
+                <motion.div
+                  role="dialog"
+                  aria-label="Developer overlays"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.18 }}
+                  onPointerDownCapture={(e) => e.stopPropagation()}
+                  onTouchStartCapture={(e) => e.stopPropagation()}
+                  className="fixed right-4 top-14 w-[min(16rem,calc(100vw-2rem))] rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7 sm:top-[4.25rem]"
+                >
+                  <div className="mb-3 flex items-center justify-between">
+                    <span
+                      className="text-base text-white/90"
+                      style={{ fontFamily: DISPLAY_FONT }}
+                    >
+                      Developer
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDevOpen(false)}
+                      aria-label="Close developer overlays"
+                      className="flex h-6 w-6 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  <DevToggle
+                    label="Tile grid"
+                    on={devFlags.tiles}
+                    onClick={() => toggleDevFlag('tiles')}
+                  />
+                  <DevToggle
+                    label="Pixel grid"
+                    on={devFlags.pixels}
+                    onClick={() => toggleDevFlag('pixels')}
+                  />
+                  <DevToggle
+                    label="FPS counter"
+                    on={devFlags.fps}
+                    onClick={() => toggleDevFlag('fps')}
+                  />
+                  <DevToggle
+                    label="Coords"
+                    on={devFlags.coords}
+                    onClick={() => toggleDevFlag('coords')}
+                  />
+
+                  <p className="mt-3 text-xs leading-snug text-white/40">
+                    Unlocked via <code className="text-white/60">?dev</code>.
+                    Add <code className="text-white/60">?dev=0</code> to hide.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
       </div>
 
       <Shop open={shopOpen} onClose={() => setShopOpen(false)} />
     </>
+  )
+}
+
+// One labelled on/off row in the Developer popover (styled like the Settings
+// toggles). Shows the current state as the button text.
+function DevToggle({
+  label,
+  on,
+  onClick,
+}: {
+  label: string
+  on: boolean
+  onClick: () => void
+}) {
+  return (
+    <div className="mt-3 flex items-center justify-between first:mt-0">
+      <span className="text-xs text-white/50">{label}</span>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={on}
+        className="min-w-[3.5rem] rounded-full bg-white/[0.12] px-3 py-1.5 text-sm text-white/90 ring-1 ring-white/15 transition-colors hover:bg-white/20"
+      >
+        {on ? 'On' : 'Off'}
+      </button>
+    </div>
   )
 }
 

@@ -12,7 +12,7 @@ export const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 export const VIEW_COLS = 20
-export const GROUND_ROWS = 13 // the playable park (unchanged game logic)
+export const GROUND_ROWS = 14 // the playable park (a touch taller — more room at the bottom)
 export const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 export const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 export const PIXEL = 16 * SCALE
@@ -20,6 +20,9 @@ export const CANVAS_WIDTH = MAP_COLS * PIXEL
 export const CANVAS_HEIGHT = MAP_ROWS * PIXEL
 export const GROUND_HEIGHT = GROUND_ROWS * PIXEL
 export const WORLD_OFFSET = SKY_ROWS * PIXEL // px the park is pushed down for more sky
+// Where the sky gradient ends and the ground begins (the hills ridge blends
+// across it). Ponds reflect the sky/hills band anchored here, not the ground.
+export const HORIZON = WORLD_OFFSET + PIXEL * 1.8
 
 export const COLORS = {
   // Near-black night sky matched to the site background (--background token)
@@ -126,3 +129,15 @@ export function night(color: string): string {
 export const NIGHT = Object.fromEntries(
   Object.entries(COLORS).map(([k, v]) => [k, night(v)]),
 ) as typeof COLORS
+
+// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
+// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
+export function makeRng(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}

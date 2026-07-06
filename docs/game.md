@@ -13,7 +13,9 @@ is drawn **procedurally** with `ctx` shapes (no spritesheet, no image assets).
 - **Coordinate system:** tiles of `PIXEL = 16 * SCALE` (48px). The map is
   `MAP_COLS=58` × `MAP_ROWS = GROUND_ROWS(13) + SKY_ROWS(2)`. The playable park is
   the ground rows; the world is drawn shifted down by `WORLD_OFFSET` so there's sky
-  above it. Positions are tile coords; cat/food centers are `tile + 0.5`.
+  above it. Positions are tile coords; cat/food centers are `tile + 0.5`. For the
+  full tile→logical→device→screen pipeline, why the abstractions exist, and the
+  `?dev` developer overlays that visualize it, see [rendering.md](./rendering.md).
 - **Render order:** ground/objects/cat are drawn, then a purple `multiply` night
   wash over everything, then stars/moon/**food**/popups/HUD on top (true colors,
   above the wash).
@@ -144,13 +146,17 @@ so the React UI and the imperative canvas never fight.
   the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
   Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
   plus shop-only sprites: `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
-- **Boombox (interactive):** the 2×1 `radio` sprite plays a gentle looping
-  chiptune when Koala walks within ~2.5 tiles of it — its speakers pulse and music
-  notes drift up. The tune is a quiet C-pentatonic loop synthesised with the Web
-  Audio API in `client/src/game/radio.ts` (created lazily after a user gesture,
-  per autoplay rules; a no-op where Web Audio is unavailable). The game loop
-  reports the _local_ koala's proximity each frame (`radio.setNear`), fading the
-  sound in/out; it's silenced when the loop pauses (scroll away / tab hidden).
+- **Boombox (interactive):** the 2×1 `radio` sprite plays a driving rave loop when
+  Koala walks within ~2.5 tiles of it — its speakers pulse and music notes drift
+  up. The audio is synthesised with the Web Audio API in `client/src/game/radio.ts`
+  (created lazily after a user gesture, per autoplay rules; a no-op where Web Audio
+  is unavailable). The game loop reports the _local_ koala's proximity each frame
+  (`radio.setNear`), fading the sound in/out; it's silenced when the loop pauses
+  (scroll away / tab hidden). There are **two tracks**: `TRACK_A` (a ~140 BPM
+  four-on-the-floor A-minor house loop) and `TRACK_B` (a slower ~115 BPM half-time
+  D-minor loop with a 2-bar melody). **Slapping the radio cycles** play-A → off →
+  play-B → off → … (`radioCycle` 0–3 on the object; `radio.setTrack` picks the
+  loop). The Settings **mute** toggle silences all of it globally (persisted).
 - **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
   primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
   art so a bought tree looks like a park tree. The shop renders the **real item
@@ -174,6 +180,31 @@ so the React UI and the imperative canvas never fight.
   - `kcc-device-id` + schema version) behind the same `sync` seam. Callers (game
     loop + shop UI) don't change between modes.
 
+## Scenery layout — keep it organic
+
+The park should read as a natural, hand-placed scene, not a grid. Whenever you
+**expand the map** (more cols/rows) or **add base objects** (trees, benches,
+mushrooms, etc.), give the placement rhythm — do NOT line things up:
+
+- **Vary the Y** of a row of objects. Trees especially must not all sit at the
+  same `y` along the horizon — stagger them (integer or fractional tiles, e.g.
+  `y: 1.2 / 1.7 / 2.3`) so the treeline undulates instead of forming a straight
+  band.
+- **Space unevenly along X.** Avoid a constant gap between neighbours (a "picket
+  fence" look). Mix short and long gaps (e.g. cols `16, 20, 27, 37` → gaps
+  `4, 7, 10`).
+- The procedural per-object jitter (`makeRng` seeded by tile) varies each
+  sprite's size/shape, but it does NOT move the tile — the varied `x/y` above is
+  what breaks the alignment.
+- New grass patches (`drawBlobPatch`) follow the same rule: overlap + scatter at
+  irregular sizes/positions; keep the topmost ones tucked under the hill ridge and
+  don't blanket the bottom edge solid (leave sand showing).
+- **Keep the moon in clear sky** (`drawMoon`, `moonX`): it must not overlap trees
+  or other objects, and only the hill ridge may just clip its lower edge — never
+  let a tree/canopy or a raised object collide with the disc. If you move the moon
+  or add tall objects near it, re-check they don't touch. It also has to stay
+  inside the load-time centered view band (~cols 19–39) so it's visible on open.
+
 ## Rendering & performance
 
 - **Device-resolution canvas.** The backing store is sized to ~device pixels —
@@ -187,6 +218,23 @@ so the React UI and the imperative canvas never fight.
   sand, dirt) never change, so they're rendered a single time into an **offscreen
   canvas** and blitted with one `drawImage` per frame instead of recomputing all
   the bézier/gradient work every frame.
+- **Off-screen objects are culled.** The camera pans the wide (58-column) canvas
+  via a CSS transform, so only a ~20-column slice is ever visible. The object pass
+  computes that slice once per frame (`visibleRange` in `game/culling.ts`, from the
+  camera's `hudShift`) and skips any object whose footprint — plus a pad for canopy/
+  rim overhang — falls entirely outside it (`isVisibleX`), so most of the map's
+  objects are never drawn. Both helpers are pure and unit-tested (`culling.test.ts`).
+- **Reflective ponds are cheap.** Each pond shows a still, reflective surface. The
+  mirrored **static** sky + hills never change, so they're **baked once per pond**
+  into a cached sprite (`getPondReflection` in `game/pond.ts`, keyed by tile) and
+  blitted — no per-frame `bgCanvas` resampling. The bake samples the **sky/hills
+  band at the `HORIZON`**, not the ground directly above the pond, so the water
+  reflects the sky and distant hills rather than the sand/grass it sits on. On top,
+  nearby scenery and cats are mirrored live, but only when they pass cheap gates
+  (over the water, within a few tiles above it, on screen — `objectReflectsInPond` /
+  `catReflectAxis`, also unit-tested); the expensive sprite draw runs only for the
+  rare object/cat actually above a visible pond. Off-screen ponds cost nothing
+  (culled with everything else).
 - **The loop pauses when it can't be seen.** `requestAnimationFrame` stops when the
   tab is hidden (`visibilitychange`) or the hero is scrolled out of view. The hero
   is `position: fixed` (always intersecting the viewport), so this uses a scroll
@@ -252,7 +300,7 @@ ability)` (`ABILITY_COOLDOWNS_MS`), applies any side effect, and rebroadcasts
   (distance to the object's **box**, so big objects like the pond are reachable at
   an edge): a **ball** is knocked directly away from the cat
   (`updateSlappables` integrates velocity + friction + edge bounce), the **pond**
-  splashes, a **radio** toggles its music, and everything else does a brief
+  splashes, a **radio** cycles its music (play A → off → play B → off), and everything else does a brief
   `slapShake` wobble + spark burst (`drawEffects`); pond/house don't wobble. **Balls
   are server-synced** (see Multiplayer → Balls); the other object reactions are
   still client-local (peers only see the swipe pose). **Bite** = a cosmetic emote (`drawEmote`); **meow** is the same emote but

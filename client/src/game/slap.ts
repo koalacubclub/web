@@ -19,6 +19,49 @@ export function slapSwing(startedAt: number, now: number): number {
   return t > 0 ? Math.sin(Math.PI * t) : 0
 }
 
+// The minimal shape pickSlapTarget needs (GameObject is a structural superset).
+export interface SlapTarget {
+  type: string
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// Choose which object a slap hits from the cat centre (cx, cy), within `reach`
+// tiles. Distance is measured to each object's BOX (not its centre), so big
+// objects like the pond/house are reachable when the cat is beside an edge; UI
+// hotspots (social/photo) are skipped. A reachable BALL takes priority over
+// everything else — even a closer item — so a ball overlapping another object
+// stays kickable. Returns the chosen object, or null on a whiff.
+export function pickSlapTarget<T extends SlapTarget>(
+  objects: readonly T[],
+  cx: number,
+  cy: number,
+  reach: number,
+): T | null {
+  let best: T | null = null
+  let bestD = Infinity
+  let bestBall: T | null = null
+  let bestBallD = Infinity
+  for (const o of objects) {
+    if (o.type === 'social' || o.type === 'photo') continue
+    const nx = Math.max(o.x, Math.min(cx, o.x + o.w))
+    const ny = Math.max(o.y, Math.min(cy, o.y + o.h))
+    const d = Math.hypot(cx - nx, cy - ny)
+    if (d >= reach) continue
+    if (d < bestD) {
+      best = o
+      bestD = d
+    }
+    if (o.type === 'ball' && d < bestBallD) {
+      bestBall = o
+      bestBallD = d
+    }
+  }
+  return bestBall ?? best
+}
+
 // A short-lived slap impact burst (impact stars, or a pond splash), in canvas px.
 // `born` is a frameCount stamp; `life` counts down in frame-units.
 export interface SlapEffect {

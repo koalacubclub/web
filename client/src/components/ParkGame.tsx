@@ -22,6 +22,7 @@ import {
   GLOBAL_COOLDOWN_MS,
   isOnGlobalCooldown,
   JUMP_DURATION_MS,
+  MOVE_SPEED_TILES_PER_MS,
   SLAP_REACH,
   type AbilityKind,
 } from '@koala/shared'
@@ -34,14 +35,24 @@ import {
   slapShake,
   updateSlappables,
   drawEffects,
+  pickSlapTarget,
   type SlapEffect,
 } from '@/game/slap'
 import { IG_PROFILE } from '@/data/reels'
 import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
-import { drawShopSprite } from '@/game/sprites'
+import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
-import { NIGHT, night } from '@/game/constants'
+import * as devPrefs from '@/game/devPrefs'
+import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
+import {
+  getPondReflection,
+  drawPondStones,
+  pondGeom,
+  reflectObjects,
+  reflectCat,
+} from '@/game/pond'
+import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
 
@@ -64,7 +75,7 @@ const LEFT_PAD = 18
 // columns visible across the viewport width = the zoom level; independent of
 // MAP_COLS so widening the map pans the camera instead of shrinking sprites.
 const VIEW_COLS = 20
-const GROUND_ROWS = 13 // the playable park (unchanged game logic)
+const GROUND_ROWS = 14 // the playable park (a touch taller — more room at the bottom)
 const SKY_ROWS = 2 // extra sky rows on top; the world is shifted down by these
 const MAP_ROWS = GROUND_ROWS + SKY_ROWS
 const PIXEL = 16 * SCALE
@@ -206,18 +217,6 @@ const TIKTOK_PROFILE = 'https://tiktok.com/@koalacubclub'
 // lightbox. The polaroid + hover use small variants — see @/data/heroPhoto.
 const HERO_PHOTO = '/hero.webp'
 
-// Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
-// (seeded by tile position) yet stay identical frame-to-frame — no flicker.
-function makeRng(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
 interface GameObject {
   type: string
   x: number
@@ -242,7 +241,9 @@ interface GameObject {
   hitAt?: number
   vx?: number
   vy?: number
-  mutedByTap?: boolean // 'radio': slapped to toggle its music off/on
+  // 'radio': each slap advances this 0→1→2→3→0…: 0 = play track A, 1 = off,
+  // 2 = play track B, 3 = off. Even = playing (track = state 2 ? B : A); odd = off.
+  radioCycle?: number
 }
 
 interface Butterfly {
@@ -399,12 +400,12 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 16,
-        y: 1,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ A bird chirps!',
       },
-      { type: 'tree', x: 10, y: 1, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
+      { type: 'tree', x: 10, y: 1.6, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
       {
         type: 'bench',
         x: 6,
@@ -433,24 +434,24 @@ export default function ParkGame() {
       // New right-half scenery (cols 20..39) added when the map was doubled.
       {
         type: 'tree',
-        x: 21,
-        y: 1,
+        x: 20,
+        y: 2.3,
         w: 2,
         h: 2,
         interactMsg: '♪ Wind in the branches...',
       },
       {
         type: 'tree',
-        x: 28,
-        y: 1,
+        x: 27,
+        y: 1.3,
         w: 2,
         h: 2,
         interactMsg: '♪ An apple orchard!',
       },
       {
         type: 'tree',
-        x: 35,
-        y: 1,
+        x: 37,
+        y: 2,
         w: 2,
         h: 2,
         interactMsg: '♪ Deep in the grove',
@@ -555,7 +556,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 0,
-        y: 1,
+        y: 1.7,
         w: 2,
         h: 2,
         interactMsg: "♪ Leaves stir at the park's far edge",
@@ -563,7 +564,7 @@ export default function ParkGame() {
       {
         type: 'tree',
         x: 7,
-        y: 1,
+        y: 1.2,
         w: 2,
         h: 2,
         interactMsg: '♪ A tall old friend',
@@ -789,6 +790,21 @@ export default function ParkGame() {
         g.ballRolling.clear()
         g.ballOwned.clear()
       },
+      onResume: (x, y) => {
+        // The server was already tracking this session (2nd tab / fast reload):
+        // snap to its authoritative position so our fresh local spawn isn't
+        // speed-clamped into place, and cancel any walk target so we don't
+        // immediately stroll off from the adopted spot.
+        g.cat.x = x
+        g.cat.y = y
+        g.target = null
+        // Also cancel any in-flight dash — otherwise the loop's dash block would
+        // overwrite the adopted position next frame from the pre-snap trajectory,
+        // re-triggering the very speed-clamp this snap avoids.
+        g.dashAt = -Infinity
+        g.dashFrom = { x, y }
+        g.dashTo = { x, y }
+      },
     })
     if (mp) {
       parkStore.setServerBuyer(mp.sendBuy)
@@ -980,18 +996,9 @@ export default function ParkGame() {
       // is beside an edge. Skip UI hotspots.
       const cx = g.cat.x + 0.5
       const cy = g.cat.y + 0.5
-      let best: GameObject | null = null
-      let bestD = Infinity
-      for (const o of g.objects) {
-        if (o.type === 'social' || o.type === 'photo') continue
-        const nx = Math.max(o.x, Math.min(cx, o.x + o.w))
-        const ny = Math.max(o.y, Math.min(cy, o.y + o.h))
-        const d = Math.hypot(cx - nx, cy - ny)
-        if (d < SLAP_REACH && d < bestD) {
-          best = o
-          bestD = d
-        }
-      }
+      // Nearest reachable object (balls take priority so an overlapping ball stays
+      // kickable). See pickSlapTarget in game/slap.ts.
+      const best = pickSlapTarget(g.objects, cx, cy, SLAP_REACH)
       if (!best) return // whiff — just the pose
 
       const bx = best.x + best.w / 2 // tile-space centre
@@ -1008,9 +1015,11 @@ export default function ParkGame() {
         best.hitAt = now
       }
       if (best.type === 'radio') {
-        best.mutedByTap = !best.mutedByTap
+        // Cycle play-A → off → play-B → off → …
+        const cyc = ((best.radioCycle ?? 0) + 1) % 4
+        best.radioCycle = cyc
         g.popups.push({
-          text: best.mutedByTap ? '♪ off' : '♪ on',
+          text: cyc % 2 === 1 ? '♪ off' : cyc === 0 ? '♪ 1' : '♪ 2',
           x: bxp,
           y: byp - PIXEL * 0.4,
           life: 70,
@@ -1543,13 +1552,13 @@ export default function ParkGame() {
       // Fills the bare sand gap below the hills (upper-centre) so grass meets the
       // ridge and there's no visible sand/hill seam — kept low enough that its top
       // tucks just under the ridge crest rather than poking into the sky.
-      drawBlobPatch(PIXEL * 6.8, PIXEL * 2.3, PIXEL * 3.4, PIXEL * 1.7, 4.9)
+      drawBlobPatch(PIXEL * 6.8, PIXEL * 2.9, PIXEL * 3.4, PIXEL * 1.7, 4.9)
       drawBlobPatch(PIXEL * 15, PIXEL * 3.5, PIXEL * 5, PIXEL * 3.5, 5.1)
       drawBlobPatch(PIXEL * 5, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 3, 7.4)
       drawBlobPatch(PIXEL * 13, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.8, 9.2)
       // Medium patches (touching the big ones)
       drawBlobPatch(PIXEL * 7.5, PIXEL * 4.5, PIXEL * 2.2, PIXEL * 1.6, 3.7)
-      drawBlobPatch(PIXEL * 10, PIXEL * 3, PIXEL * 1.8, PIXEL * 1.4, 2.3)
+      drawBlobPatch(PIXEL * 10, PIXEL * 3.6, PIXEL * 1.8, PIXEL * 1.4, 2.3)
       drawBlobPatch(PIXEL * 18.5, PIXEL * 8, PIXEL * 2, PIXEL * 2.5, 11.5)
       // Small patches scattered
       drawBlobPatch(PIXEL * 1, PIXEL * 7, PIXEL * 1.3, PIXEL * 1, 13.1)
@@ -1558,7 +1567,7 @@ export default function ParkGame() {
       // Right-half patches (cols 20..40) added when the map was doubled.
       drawBlobPatch(PIXEL * 22, PIXEL * 3.5, PIXEL * 4.4, PIXEL * 3.1, 21.4)
       drawBlobPatch(PIXEL * 28, PIXEL * 4, PIXEL * 5, PIXEL * 3.4, 23.7)
-      drawBlobPatch(PIXEL * 35, PIXEL * 3, PIXEL * 4.6, PIXEL * 3.3, 26.2)
+      drawBlobPatch(PIXEL * 35, PIXEL * 3.6, PIXEL * 4.6, PIXEL * 3.3, 26.2)
       drawBlobPatch(PIXEL * 25, PIXEL * 9.5, PIXEL * 4.2, PIXEL * 2.9, 29.1)
       drawBlobPatch(PIXEL * 33, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 31.6)
       drawBlobPatch(PIXEL * 37.5, PIXEL * 8.5, PIXEL * 3.6, PIXEL * 2.6, 34.8)
@@ -1569,20 +1578,27 @@ export default function ParkGame() {
       // A few more left-half patches to match the added scenery.
       drawBlobPatch(PIXEL * 0.6, PIXEL * 4.4, PIXEL * 2.2, PIXEL * 1.4, 45.7)
       drawBlobPatch(PIXEL * 4.2, PIXEL * 6.2, PIXEL * 2, PIXEL * 1.3, 47.9)
-      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 49.3)
+      drawBlobPatch(PIXEL * 13, PIXEL * 3.2, PIXEL * 2.4, PIXEL * 1.5, 49.3)
       drawBlobPatch(PIXEL * 18.2, PIXEL * 7.5, PIXEL * 1.9, PIXEL * 1.4, 51.6)
       ctx.restore()
       // New-left grass patches (cols 0..17) — final coords, drawn untranslated.
       drawBlobPatch(PIXEL * 2, PIXEL * 4, PIXEL * 4.4, PIXEL * 3.1, 60.2)
       drawBlobPatch(PIXEL * 8, PIXEL * 3.6, PIXEL * 4.8, PIXEL * 3.3, 62.5)
-      drawBlobPatch(PIXEL * 14.5, PIXEL * 3.2, PIXEL * 4.6, PIXEL * 3.2, 64.8)
+      drawBlobPatch(PIXEL * 14.5, PIXEL * 3.8, PIXEL * 4.6, PIXEL * 3.2, 64.8)
       drawBlobPatch(PIXEL * 4.5, PIXEL * 9.4, PIXEL * 4.2, PIXEL * 2.9, 67.1)
       drawBlobPatch(PIXEL * 11.5, PIXEL * 10, PIXEL * 4.8, PIXEL * 2.7, 69.4)
       drawBlobPatch(PIXEL * 16.5, PIXEL * 8.3, PIXEL * 3.5, PIXEL * 2.6, 71.9)
       drawBlobPatch(PIXEL * 6.5, PIXEL * 5.1, PIXEL * 2.1, PIXEL * 1.5, 74.3)
       drawBlobPatch(PIXEL * 10, PIXEL * 7, PIXEL * 1.9, PIXEL * 1.4, 76.6)
       drawBlobPatch(PIXEL * 0.7, PIXEL * 4.3, PIXEL * 2.2, PIXEL * 1.4, 78.8)
-      drawBlobPatch(PIXEL * 13, PIXEL * 2.6, PIXEL * 2.4, PIXEL * 1.5, 81.2)
+      drawBlobPatch(PIXEL * 13, PIXEL * 3.2, PIXEL * 2.4, PIXEL * 1.5, 81.2)
+      // A few sparse patches in the extra bottom row — kept small + spaced so the
+      // sand shows through and the bottom doesn't read as solid green.
+      drawBlobPatch(PIXEL * 6, PIXEL * 12.6, PIXEL * 2.6, PIXEL * 1.6, 84.1)
+      drawBlobPatch(PIXEL * 19, PIXEL * 12.9, PIXEL * 2.4, PIXEL * 1.5, 88.9)
+      drawBlobPatch(PIXEL * 33, PIXEL * 12.5, PIXEL * 2.8, PIXEL * 1.6, 93.7)
+      drawBlobPatch(PIXEL * 46, PIXEL * 12.9, PIXEL * 2.5, PIXEL * 1.5, 98.4)
+      drawBlobPatch(PIXEL * 54, PIXEL * 12.6, PIXEL * 2, PIXEL * 1.3, 103.2)
     }
 
     function drawStars() {
@@ -1698,8 +1714,9 @@ export default function ParkGame() {
       // Keep the moon in the upper-center sky so it's visible the moment the
       // page opens: after the LEFT_PAD shift the cat spawns near the hub (center
       // col 29) and the camera centers the view on it, so the moon must sit in
-      // that load-time centered band. PIXEL*29 sits in clear sky by the hub/spawn.
-      const moonX = PIXEL * 29
+      // that load-time centered band (~cols 19–39). PIXEL*32.5 sits in clear sky
+      // to the right of the hub/spawn, still inside the load view.
+      const moonX = PIXEL * 32.5
       const moonY = WORLD_OFFSET + PIXEL * 0.1
       const moonR = PIXEL * 0.38
       // Soft halo.
@@ -1878,44 +1895,124 @@ export default function ParkGame() {
       }
     }
 
+    // Visible slice of the map in logical-x (thin wrapper over the pure
+    // visibleRange so both the object cull and the reflection pass share it). The
+    // camera pans the canvas via a CSS transform, so only this slice is on screen.
+    const visibleX = () => visibleRange(g.hudShift, viewportW, displayW)
+
+    // Draw one object's art at its own position (no slap-shake wrapper). Shared by
+    // the main object pass and the pond reflection pass.
+    function drawObjectArt(o: GameObject, now: number, playing: boolean) {
+      // All ponds — base or shop-placed — use the reflective drawPond; a placed
+      // one keeps its pop-in/blink via withPlacedFlourish. (sprites.ts's own
+      // drawPond stays non-reflective, for the DOM-less shop previews.)
+      if (o.type === 'pond') {
+        withPlacedFlourish(ctx!, o, now, reducedMotion, () => drawPond(o))
+        return
+      }
+      if (o.placedAt != null) {
+        drawShopSprite(ctx!, o, g.frameCount, {
+          now,
+          reducedMotion,
+          night: true,
+          playing,
+        })
+        return
+      }
+      switch (o.type) {
+        case 'tree':
+          drawTree(o)
+          break
+        case 'bench':
+          drawBench(o)
+          break
+        case 'flowers':
+          drawFlowers(o)
+          break
+        case 'ball':
+          drawBall(o)
+          break
+        case 'stone':
+          drawStone(o)
+          break
+        case 'social':
+          drawSocialSign(o)
+          break
+        case 'photo':
+          drawPhoto(o)
+          break
+      }
+    }
+
     function drawPond(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      const wobble = Math.sin(g.frameCount * 0.03) * 2
-      ctx.fillStyle = night('#4C90E4') // slightly cobalt-leaning pond
+      const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
+      // Still water body.
+      ctx.fillStyle = night('#5A97DB')
       ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 1.5,
-        y + PIXEL + wobble * 0.1,
-        PIXEL * 1.4,
-        PIXEL * 0.8,
-        0,
-        0,
-        Math.PI * 2,
-      )
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = night('#84B2F0') // cobalt highlight
+      // Reflections, clipped to the water so nothing spills past the rim. They're
+      // drawn OPAQUE (a translucent multi-shape cat would show its own overlaps),
+      // then a single translucent water wash at the end fades the whole layer
+      // uniformly so it reads as a reflection.
+      ctx.save()
       ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 1.2,
-        y + PIXEL * 0.8,
-        PIXEL * 0.4,
-        PIXEL * 0.2,
-        -0.3,
-        0,
-        Math.PI * 2,
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      ctx.clip()
+      // Baked environment reflection: the mirrored static background (sky/hills/
+      // grass) above the pond never changes, so it's baked once per pond (see
+      // getPondReflection) and just blitted here.
+      const refl = getPondReflection(bgCanvas, obj.x, obj.y)
+      if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
+      // Object reflections: nearby scenery above the pond, mirrored into the water
+      // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
+      // wash below submerges them.
+      // Date.now() (wall-clock) — drawShopSprite compares it against placedAt for
+      // the pop-in; performance.now() would make the scale collapse to 0 (items
+      // vanish from the reflection).
+      reflectObjects(ctx, obj.x, obj.y, g.objects, visibleX(), (o) =>
+        drawObjectArt(o, Date.now(), false),
       )
-      ctx.fill()
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2
-        const sx = x + PIXEL * 1.5 + Math.cos(angle) * PIXEL * 1.3
-        const sy = y + PIXEL + Math.sin(angle) * PIXEL * 0.7
-        ctx.fillStyle = i % 2 === 0 ? NIGHT.stone : NIGHT.stoneDark
-        ctx.beginPath()
-        ctx.arc(sx, sy, SCALE * 2, 0, Math.PI * 2)
-        ctx.fill()
+      // Cat reflections: mirror each koala across its feet-line. Skip the local
+      // koala while she's airborne; interacting:false so the "hearts" popping over
+      // her head aren't reflected.
+      const airborne =
+        g.jumpAt !== -Infinity && jumpLiftTiles(g.jumpAt, performance.now()) > 0
+      if (!airborne) {
+        reflectCat(ctx, obj.x, obj.y, g.cat.x, g.cat.y, () =>
+          drawCat({ ...g.cat, interacting: false }, undefined, 0, 0),
+        )
       }
+      if (mp) {
+        for (const p of mp.players.values()) {
+          reflectCat(ctx, obj.x, obj.y, p.rx, p.ry, () =>
+            drawCat(
+              {
+                x: p.rx,
+                y: p.ry,
+                dir: p.dir,
+                idle: false,
+                interacting: false,
+                idleFrames: 0,
+                state: p.pose,
+              },
+              undefined,
+              0,
+              0,
+            ),
+          )
+        }
+      }
+      // Water wash — one translucent layer over everything so the reflections read
+      // as submerged (and uniformly faded, avoiding per-shape transparency seams).
+      ctx.globalAlpha = 0.5
+      ctx.fillStyle = night('#5A97DB')
+      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
+      ctx.globalAlpha = 1
+      ctx.restore()
+      // Rim stones: seeded per pond, clustered and size-varied (see pondStones).
+      drawPondStones(ctx, obj.x, obj.y)
     }
 
     function drawBall(obj: GameObject) {
@@ -2615,7 +2712,15 @@ export default function ParkGame() {
       const catX = g.cat.x + 0.5
       const catY = g.cat.y + 0.5
       let radioPlaying = false
+      let radioTrack = 0
+      // Off-screen cull: skip any object whose footprint — plus a pad for canopy/
+      // rim overhang — falls entirely outside the visible slice (see visibleX).
+      const vis = visibleX()
+      const cullPad = PIXEL * 2
       sorted.forEach((obj) => {
+        const oLeft = obj.x * PIXEL
+        const oRight = (obj.x + obj.w) * PIXEL
+        if (!isVisibleX(oLeft, oRight, vis, cullPad)) return
         // A freshly-slapped object jitters briefly (wrap its whole draw).
         const shake = obj.hitAt
           ? slapShake(obj.hitAt, performance.now(), PIXEL)
@@ -2624,57 +2729,28 @@ export default function ParkGame() {
           ctx!.save()
           ctx!.translate(shake, 0)
         }
-        // Shop-placed decorations render via the shared sprite module (with
-        // pop-in / pre-expiry blink); base objects use their own art below.
+        // Shop-placed radios play (pulses + notes + sound) while Koala is near —
+        // but only once she's walked, and only in an "on" slap state (even cycle).
+        let playing = false
         if (obj.placedAt != null) {
-          // A radio plays (pulses + notes + sound) while Koala is near it — but
-          // only once she's walked, and not if she slapped it off.
-          const playing =
+          const cyc = obj.radioCycle ?? 0
+          playing =
             hasWalked &&
             obj.type === 'radio' &&
-            !obj.mutedByTap &&
+            cyc % 2 === 0 &&
             Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
               RADIO_REACH
-          if (playing) radioPlaying = true
-          drawShopSprite(ctx!, obj, g.frameCount, {
-            now,
-            reducedMotion,
-            night: true,
-            playing,
-          })
-        } else {
-          switch (obj.type) {
-            case 'tree':
-              drawTree(obj)
-              break
-            case 'bench':
-              drawBench(obj)
-              break
-            case 'flowers':
-              drawFlowers(obj)
-              break
-            case 'pond':
-              drawPond(obj)
-              break
-            case 'ball':
-              drawBall(obj)
-              break
-            case 'stone':
-              drawStone(obj)
-              break
-            case 'social':
-              // Billboards render with the objects (before the cat) so the cat
-              // walks in front of them. They stay bright (no wash to escape now).
-              drawSocialSign(obj)
-              break
-            case 'photo':
-              drawPhoto(obj)
-              break
+          if (playing) {
+            radioPlaying = true
+            radioTrack = cyc === 2 ? 1 : 0 // state 2 = track B, state 0 = track A
           }
         }
+        drawObjectArt(obj, now, playing)
         if (shake) ctx!.restore()
       })
-      // Fade the radio jingle in/out with proximity (idempotent per frame).
+      // Fade the radio jingle in/out with proximity (idempotent per frame); when
+      // a near radio is playing, its slap state also selects which track.
+      if (radioPlaying) radio.setTrack(radioTrack)
       radio.setNear(radioPlaying)
     }
 
@@ -3260,9 +3336,11 @@ export default function ParkGame() {
     function updateCat(dt: number) {
       const cat = g.cat
       // Time-based speed so the cat walks at the same real-world pace regardless
-      // of frame rate (mobile often runs below 60fps). 0.0021 tiles/ms ≈ the old
-      // 0.035 tiles/frame at 60fps.
-      const speed = 0.0021 * dt
+      // of frame rate (mobile often runs below 60fps). MOVE_SPEED_TILES_PER_MS
+      // (≈ the old 0.035 tiles/frame at 60fps) is shared with the server, which
+      // caps position changes to it — keeping them in lockstep so honest walking
+      // is never clamped.
+      const speed = MOVE_SPEED_TILES_PER_MS * dt
       let moving = false
       let newX = cat.x
       let newY = cat.y
@@ -3486,6 +3564,135 @@ export default function ParkGame() {
       }
     }
 
+    // ---- developer overlays (query-param gated; see devPrefs.ts) ----
+
+    // A one-tile grid over the playable park, in world space so it lines up with
+    // (and pans with) every game tile. Coordinates here ARE game tiles — the cat's
+    // g.cat.x/y live in this same 0..MAP_COLS space — so the highlighted cell is
+    // literally the tile the cat occupies. Caller has already translated by
+    // WORLD_OFFSET, so (0,0) is the top-left of the ground.
+    function drawTileGrid() {
+      if (!ctx) return
+      ctx.save()
+      // Grid lines.
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)'
+      ctx.beginPath()
+      for (let c = 0; c <= MAP_COLS; c++) {
+        const x = c * PIXEL
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, GROUND_HEIGHT)
+      }
+      for (let r = 0; r <= GROUND_ROWS; r++) {
+        const y = r * PIXEL
+        ctx.moveTo(0, y)
+        ctx.lineTo(CANVAS_WIDTH, y)
+      }
+      ctx.stroke()
+      // Highlight the cat's current tile.
+      const tx = Math.floor(g.cat.x)
+      const ty = Math.floor(g.cat.y)
+      ctx.fillStyle = 'rgba(120,200,255,0.28)'
+      ctx.fillRect(tx * PIXEL, ty * PIXEL, PIXEL, PIXEL)
+      // Sparse axis labels (every 5 cols / 2 rows) so it stays readable.
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      ctx.font = `${Math.round(PIXEL * 0.28)}px ui-monospace, monospace`
+      ctx.textBaseline = 'top'
+      for (let c = 0; c < MAP_COLS; c += 5)
+        ctx.fillText(String(c), c * PIXEL + 2, 2)
+      for (let r = 0; r < GROUND_ROWS; r += 2)
+        ctx.fillText(String(r), 2, r * PIXEL + 2)
+      ctx.restore()
+    }
+
+    // A "loupe" that subdivides just the cat's current tile into its 16×16 base
+    // pixels (PIXEL = 16 authoring units × SCALE). Scoped to one tile on purpose:
+    // a map-wide version would be ~928 lines and moiré into mush at this zoom. Each
+    // sub-cell is SCALE logical px — the atom the pixel-art is drawn in.
+    function drawPixelGrid() {
+      if (!ctx) return
+      const tx = Math.floor(g.cat.x)
+      const ty = Math.floor(g.cat.y)
+      const ox = tx * PIXEL
+      const oy = ty * PIXEL
+      const UNIT = PIXEL / 16 // === SCALE; logical px per base pixel
+      ctx.save()
+      // The 16×16 lattice inside the cell.
+      ctx.lineWidth = 1
+      ctx.strokeStyle = 'rgba(255,180,120,0.25)'
+      ctx.beginPath()
+      for (let i = 1; i < 16; i++) {
+        const x = ox + i * UNIT
+        const y = oy + i * UNIT
+        ctx.moveTo(x, oy)
+        ctx.lineTo(x, oy + PIXEL)
+        ctx.moveTo(ox, y)
+        ctx.lineTo(ox + PIXEL, y)
+      }
+      ctx.stroke()
+      // The cell border + a label, so it reads as "one tile = 16×16 px".
+      ctx.lineWidth = 1.5
+      ctx.strokeStyle = 'rgba(255,180,120,0.65)'
+      ctx.strokeRect(ox, oy, PIXEL, PIXEL)
+      ctx.fillStyle = 'rgba(255,205,150,0.95)'
+      ctx.font = `${Math.round(PIXEL * 0.22)}px ui-monospace, monospace`
+      ctx.textBaseline = 'bottom'
+      ctx.fillText('16×16 px', ox + 1, oy - 2)
+      ctx.restore()
+    }
+
+    // A compact FPS + info readout, pinned to the viewport's top-left. hudShift/
+    // hudShiftY counter the camera's CSS pan (both in logical px) so it stays put
+    // while the world scrolls behind it. Shows the frame rate plus the concepts
+    // this overlay exists to expose: the cat's tile, the zoom (visible/total
+    // columns), the tile size in px, and the retina backing scale.
+    function drawDevHud(fps: number, showFps: boolean, showCoords: boolean) {
+      if (!ctx || !canvas) return
+      const lines: string[] = []
+      if (showFps) {
+        lines.push(`FPS ${Math.round(fps)}${reducedFps ? ' (cap 30)' : ''}`)
+      }
+      if (showCoords) {
+        // The same point, in all four unit systems, so the conversion pipeline is
+        // visible rather than implied. logical = tile × PIXEL (y also shifted down
+        // by the sky rows, WORLD_OFFSET); device = logical × RS; screen is mapped
+        // through the canvas's on-page box, which already bakes in the CSS zoom +
+        // camera pan. Walk around and watch each stage update.
+        const lx = g.cat.x * PIXEL
+        const ly = WORLD_OFFSET + g.cat.y * PIXEL
+        const rect = canvas.getBoundingClientRect()
+        const sx = rect.left + (lx / CANVAS_WIDTH) * rect.width
+        const sy = rect.top + (ly / CANVAS_HEIGHT) * rect.height
+        lines.push(
+          `tile    ${g.cat.x.toFixed(2)}, ${g.cat.y.toFixed(2)}`,
+          `logical ${Math.round(lx)}, ${Math.round(ly)}  (× ${PIXEL})`,
+          `device  ${Math.round(lx * RS)}, ${Math.round(ly * RS)}  (× RS ${RS.toFixed(2)})`,
+          `screen  ${Math.round(sx)}, ${Math.round(sy)}  (+ zoom/pan)`,
+        )
+      } else if (showFps) {
+        // FPS-only keeps a compact context line (coords supersedes it when on).
+        lines.push(
+          `tile ${g.cat.x.toFixed(2)}, ${g.cat.y.toFixed(2)}`,
+          `zoom ${VIEW_COLS}/${MAP_COLS} cols · px ${PIXEL} · RS ${RS.toFixed(2)}`,
+        )
+      }
+      if (!lines.length) return
+      ctx.save()
+      const pad = Math.round(PIXEL * 0.35)
+      const x = g.hudShift + pad
+      const y = g.hudShiftY + pad
+      const lh = Math.round(PIXEL * 0.42)
+      ctx.font = `${Math.round(PIXEL * 0.3)}px ui-monospace, monospace`
+      ctx.textBaseline = 'top'
+      const boxW =
+        Math.max(...lines.map((t) => ctx!.measureText(t).width)) + pad * 2
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.fillRect(x - pad, y - pad, boxW, lh * lines.length + pad)
+      ctx.fillStyle = 'rgba(170,240,170,0.95)'
+      lines.forEach((t, i) => ctx!.fillText(t, x, y + i * lh))
+      ctx.restore()
+    }
+
     // Bake the fully static sky + ground into the offscreen canvas once.
     // A single pressed-grass paw print (pad + 4 toe beans), baked into the bg.
     function drawPawStamp(px: number, py: number, angle: number, s: number) {
@@ -3548,14 +3755,14 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge(night('#3D9C4E'), 0.75, 0.4, 2.1, 5) // furthest ridge — tree-canopy green
+      ridge(night('#2E7D48'), 0.75, 0.4, 2.1, 5) // furthest ridge — deep blue-green (matches imprint)
       ridge(NIGHT.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
     }
 
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
-      const horizon = WORLD_OFFSET + PIXEL * 1.8
+      const horizon = HORIZON
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
       skyGrad.addColorStop(0, COLORS.sky)
       skyGrad.addColorStop(0.6, COLORS.skyLight)
@@ -3598,6 +3805,14 @@ export default function ParkGame() {
     const unsubscribePerf = perfPrefs.subscribe(() => {
       reducedFps = perfPrefs.isReducedFps()
     })
+    // Developer overlays (query-param gated: tile grid + FPS HUD). Same ref-kept-
+    // in-sync pattern so the loop reads them without a React re-render. `fpsEma` is
+    // a smoothed frames-per-second estimate for the HUD readout.
+    let devFlags = devPrefs.getFlags()
+    const unsubscribeDev = devPrefs.subscribe(() => {
+      devFlags = devPrefs.getFlags()
+    })
+    let fpsEma = 60
     // Timestamp (rAF clock) of the last frame we actually drew — used to throttle
     // to ~30fps when reducedFps is on.
     let lastDrawTs = 0
@@ -3616,6 +3831,9 @@ export default function ParkGame() {
       // the cat teleport. First frame assumes ~60fps.
       const dt = lastNow ? Math.min(now - lastNow, 100) : 1000 / 60
       lastNow = now
+      // Smooth the instantaneous FPS for a steady dev readout (only kept current
+      // when the HUD is on).
+      if (devFlags.fps && dt > 0) fpsEma += (1000 / dt - fpsEma) * 0.1
       // Elapsed time in 60fps-frame units. Scales every animation (the
       // frameCount clock below + per-frame integrations like butterflies/popups/
       // idle) so they run at the same pace regardless of frame rate.
@@ -3747,6 +3965,23 @@ export default function ParkGame() {
       ctx!.restore()
 
       updateCamera()
+      // Developer overlays (query-param gated), drawn last so they sit on top.
+      // The tile grid lives in world space (pans with the map); the FPS/info HUD
+      // is pinned to the viewport via hudShift (refreshed by updateCamera above).
+      if (devFlags.tiles) {
+        ctx!.save()
+        ctx!.translate(0, WORLD_OFFSET)
+        drawTileGrid()
+        ctx!.restore()
+      }
+      if (devFlags.pixels) {
+        ctx!.save()
+        ctx!.translate(0, WORLD_OFFSET)
+        drawPixelGrid()
+        ctx!.restore()
+      }
+      if (devFlags.fps || devFlags.coords)
+        drawDevHud(fpsEma, devFlags.fps, devFlags.coords)
       // (The score/likes HUD + the presence roster now live in the DOM
       // BottomBar / Settings menu, not on the canvas.)
 
@@ -3854,6 +4089,7 @@ export default function ParkGame() {
       window.removeEventListener('orientationchange', handleOrientation)
       ro?.disconnect()
       unsubscribePerf()
+      unsubscribeDev()
       radio.dispose()
       document.body.classList.remove('kcc-dragging')
       mp?.close()
@@ -3879,10 +4115,10 @@ export default function ParkGame() {
         // computing a true "cover" from the parent's real client box so it always
         // fills the screen (no letterbox / black gap) and stays correct across
         // orientation changes (iOS doesn't reliably recompute lvh on rotate).
-        // Full canvas is MAP_COLS×MAP_ROWS = 40/15 but only VIEW_COLS=20 show at a
-        // time (zoom = MAP_COLS/VIEW_COLS = 40/20), the camera pans the rest. Keep
+        // Full canvas is MAP_COLS×MAP_ROWS = 58/16 but only VIEW_COLS=20 show at a
+        // time (zoom = MAP_COLS/VIEW_COLS = 58/20), the camera pans the rest. Keep
         // these literals in sync with constants.
-        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)] aspect-[40/15] h-auto w-[max(calc(100%*40/20),calc(100lvh*40/15))]"
+        className="block cursor-pointer select-none shadow-[0_20px_60px_rgba(0,0,0,0.55)] aspect-[58/16] h-auto w-[max(calc(100%*58/20),calc(100lvh*58/16))]"
         style={{
           // Canvas is rendered near device resolution (see sizeBacking), so let
           // the browser scale it smoothly — no nearest-neighbor pixelation.

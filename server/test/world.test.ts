@@ -1,15 +1,43 @@
-import { SELF } from 'cloudflare:test'
-import { afterEach, describe, expect, it } from 'vitest'
+import { env, runInDurableObject, SELF } from 'cloudflare:test'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_BALLS,
   MAX_BALL_SPEED,
   MAX_INBOUND_MSGS_PER_SEC,
+  MOVE_SPEED_TILES_PER_MS,
   NAME_MAX,
   PLACED_PERMANENT,
   WORLD,
 } from '@koala/shared'
+import type { GameWorld } from '../src/GameWorld'
 
 const ORIGIN = 'http://localhost:5173'
+
+// The one shared world every connection routes to (worker.ts ROOM).
+const ROOM = 'world-main'
+
+// The real movement-speed cap. Movement-heavy tests that only need to POSITION
+// the cat (to collect food, buy, etc.) run with an effectively-uncapped speed so
+// a single state update reaches any tile — otherwise the server would clamp the
+// jump and the setup would have to crawl at walking pace. The anti-teleport
+// tests below re-pin this to the REAL cap so they exercise the true production
+// clamp. Set in-place on the (single, shared) DO instance via runInDurableObject
+// — the test runner shares workerd's isolate with the DO, so this reaches it.
+const REAL_SPEED = MOVE_SPEED_TILES_PER_MS
+const UNCAPPED_SPEED = 1000
+
+async function setMoveSpeed(v: number): Promise<void> {
+  const stub = env.GAME_WORLD.get(
+    env.GAME_WORLD.idFromName(ROOM),
+  ) as DurableObjectStub<GameWorld>
+  await runInDurableObject(stub, (instance) => {
+    ;(instance as unknown as { moveSpeed: number }).moveSpeed = v
+  })
+}
+
+// Default every test to the uncapped speed; the anti-teleport describe overrides
+// back to REAL_SPEED in a nested beforeEach (which runs after this one).
+beforeEach(() => setMoveSpeed(UNCAPPED_SPEED))
 
 // Track sockets so we always tidy up between tests.
 const open: WebSocket[] = []
@@ -110,6 +138,55 @@ describe('GameWorld multiplayer', () => {
     expect(welcome.self.id).toBe(b.id)
     // A is already in the park, so B's roster should include A.
     expect(welcome.players.some((p: any) => p.id === a.id)).toBe(true)
+  })
+
+  it('marks a brand-new session as not resumed', async () => {
+    const a = await session()
+    const { msgs } = await connect(a.cookie)
+    await wait(50)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(false)
+  })
+
+  it('tells a second connection of a live session to resume its position', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    // Move the first socket somewhere the server records as this session's spot.
+    sendState(first.ws, 20, 8)
+    await wait(80)
+    // A second connection with the SAME cookie, while the first is still open,
+    // is a rejoin: welcome must flag `resumed` and carry the live position so the
+    // client snaps to it instead of getting speed-clamped from a fresh spawn.
+    const second = await connect(a.cookie)
+    await wait(80)
+    const w = second.msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(true)
+    // (relies on the file-wide UNCAPPED_SPEED default so the (20,8) move sticks
+    // verbatim; under the real cap it would read a clamped value.)
+    expect(w.self.x).toBeCloseTo(20, 5)
+    expect(w.self.y).toBeCloseTo(8, 5)
+  })
+
+  it('does NOT resume after a clean disconnect (blip): fresh baseline, no yank', async () => {
+    const a = await session()
+    const first = await connect(a.cookie)
+    await wait(50)
+    sendState(first.ws, 22, 9) // move away from spawn
+    await wait(80)
+    // Fully close the only socket and let webSocketClose -> dropped() run, which
+    // clears the session's position + speed baseline.
+    first.ws.close()
+    await wait(150)
+    // Reconnecting now is NOT a rejoin: the server forgot us, so it must not flag
+    // resumed (the client keeps its own position -> no yank to spawn) and self is
+    // back at SPAWN. This is the network-blip case the design worried about.
+    const second = await connect(a.cookie)
+    await wait(80)
+    const w = second.msgs.find((m) => m.t === 'welcome')
+    expect(w.resumed).toBe(false)
+    expect(w.self.x).toBeCloseTo(WORLD.cols / 2, 5)
+    expect(w.self.y).toBeCloseTo(WORLD.groundRows / 2, 5)
   })
 
   it('relays movement and join/leave to other players', async () => {
@@ -232,6 +309,35 @@ const sendState = (ws: WebSocket, x: number, y: number) =>
   )
 const sendCollect = (ws: WebSocket, id: string) =>
   ws.send(JSON.stringify({ t: 'collect', id }))
+
+// Walk from `from` to `to` at the REAL cap, one in-budget step at a time, so the
+// server accepts each move (used only by the production-cap end-to-end test; the
+// uncapped suites just teleport). Each step is safely under the server budget:
+// server budget = REAL_SPEED * dt * SLACK with dt >= the ~120ms wait floor, and
+// we step REAL_SPEED * 120 * 1.4 < that. Bounded loop guards against overshoot.
+async function walkRealSpeed(
+  ws: WebSocket,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): Promise<void> {
+  const stepMs = 120
+  const budget = REAL_SPEED * stepMs * 1.4
+  let { x, y } = from
+  for (let guard = 0; guard < 4000; guard++) {
+    const dx = to.x - x
+    const dy = to.y - y
+    const dist = Math.hypot(dx, dy)
+    if (dist <= budget) {
+      sendState(ws, to.x, to.y)
+      await wait(stepMs)
+      return
+    }
+    x += (dx / dist) * budget
+    y += (dy / dist) * budget
+    sendState(ws, x, y)
+    await wait(stepMs)
+  }
+}
 
 // The DO auto-spawns food lazily; grab whatever is currently live (ground or
 // airborne). Callers that collect it on-target jump first, so it works for
@@ -862,4 +968,98 @@ describe('GameWorld airborne food', () => {
     expect(got).toBeTruthy()
     expect(got.points).toBe(air.points)
   }, 25000)
+})
+
+describe('GameWorld movement speed (anti-teleport)', () => {
+  // Unlike every other suite, these assert the REAL cap, so pin it back here
+  // (this nested beforeEach runs after the file-level uncapped default).
+  beforeEach(() => setMoveSpeed(REAL_SPEED))
+
+  // The last position B relayed to A — A observes the server-clamped value.
+  const lastStateOf = (msgs: any[], id: string) =>
+    msgs.filter((m) => m.t === 'state' && m.id === id).at(-1)
+
+  it('clamps a teleport to walking distance from the last position', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    // First update seeds the baseline (accepted as-is).
+    sendState(wsB, 5, 5)
+    await wait(80)
+    // Then a big jump across the map — must be pulled back near (5,5).
+    sendState(wsB, 40, 10)
+    await wait(80)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    // The real per-update budget is a fraction of a tile, so the clamped point
+    // sits just past (5,5). Assert it barely moved (within ~1 tile) rather than
+    // a loose x<7 — this catches a silently-inflated slack, not just a teleport.
+    expect(relayed.s.x).toBeGreaterThan(5) // did move toward the target
+    expect(relayed.s.x).toBeLessThan(6) // but nowhere near the claimed x=40
+    expect(relayed.s.y).toBeLessThan(6) // nor the claimed y=10
+  })
+
+  it('lets honest walking-speed movement through unchanged', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    sendState(wsB, 5, 5)
+    // 120ms gives the honest step ~3x budget headroom over the min dt it needs,
+    // so scheduler jitter can't compress dt enough to clamp it.
+    await wait(120)
+    // A small step well within the per-update walk budget passes untouched.
+    sendState(wsB, 5.15, 5)
+    await wait(120)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(5.15, 5)
+  })
+
+  it('lets a real-speed walk accumulate across many steps to reach its target', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    // Walk 7 tiles at the REAL cap, one in-budget step at a time. Every step must
+    // be accepted so the position accumulates and actually reaches (12,5) — this
+    // guards the walk->clamp pipeline at production speed: an over-tight cap (or a
+    // budget measured from a stale origin instead of the last accepted position)
+    // would stall honest traversal and the cat would never arrive. Collection
+    // itself is speed-independent (it only checks proximity to the arrival tile,
+    // covered by the 'likes' suite), so reaching the tile is the property at risk.
+    await walkRealSpeed(wsB, { x: 5, y: 5 }, { x: 12, y: 5 })
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(12, 1) // arrived, not clamped short
+  }, 20000)
+
+  it('allows a dash burst beyond the walk budget', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(50)
+
+    sendState(wsB, 5, 5)
+    await wait(80)
+    // A dash grants a one-off DASH_TILES allowance, so a 3-tile jump sticks.
+    sendAction(wsB, 'dash')
+    sendState(wsB, 8, 5)
+    await wait(80)
+
+    const relayed = lastStateOf(msgsA, b.id)
+    expect(relayed).toBeTruthy()
+    expect(relayed.s.x).toBeCloseTo(8, 5)
+  })
 })
