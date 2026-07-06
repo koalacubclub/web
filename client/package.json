@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@koala/shared": "workspace:*",
+    "@vercel/analytics": "^2.0.1",
     "framer-motion": "^12.42.2",
     "lucide-react": "^0.453.0",
     "react": "^19.2.7",
