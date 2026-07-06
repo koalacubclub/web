@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -55,9 +56,46 @@ ${memberItems}
   }
 }
 
+// The Koala photo's single source of truth is src/assets/hero.webp (alongside
+// the reel sources), so vite-imagetools can generate the small in-game variants
+// from it (see src/data/heroPhoto.ts). But the social-share tags (og:image /
+// twitter:image in index.html) and the in-game lightbox need it at a STABLE,
+// unhashed public URL — /hero.webp. This plugin emits that copy verbatim from
+// the same source at build and serves it in dev, so there's exactly ONE file to
+// maintain (no hand-synced public/ duplicate).
+function heroOgImage(): Plugin {
+  const src = fileURLToPath(new URL('./src/assets/hero.webp', import.meta.url))
+  return {
+    name: 'emit-hero-og-image',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (req.url === '/hero.webp') {
+          res.setHeader('Content-Type', 'image/webp')
+          res.end(readFileSync(src))
+          return
+        }
+        next()
+      })
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'hero.webp',
+        source: readFileSync(src),
+      })
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), imagetools(), crawlableContent()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    imagetools(),
+    crawlableContent(),
+    heroOgImage(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -3,11 +3,13 @@
 // the canvas, and its hover preview. vite-imagetools emits optimized WebP from
 // the pristine source in src/assets/hero.webp; the raw source is never shipped.
 //
-// The full-res *lightbox* image is intentionally NOT generated here — it stays
-// the static public /hero.webp (see ParkGame's HERO_PHOTO const) so it doubles
-// as the stable og:image / twitter:image URL and avoids a second lossy transcode
-// of an already-lossy source. NOTE: if the photo is ever updated, re-sync BOTH
-// public/hero.webp (OG + lightbox master) and src/assets/hero.webp (this source).
+// The full-res *lightbox* image is intentionally NOT generated here — it's
+// served verbatim at the stable public URL /hero.webp (see ParkGame's
+// HERO_PHOTO const), which also doubles as the og:image / twitter:image URL and
+// avoids a second lossy transcode of an already-lossy source. That /hero.webp is
+// emitted from THIS SAME source (src/assets/hero.webp) by the heroOgImage()
+// plugin in vite.config.ts — so this file is the single source of truth for the
+// photo; there is no public/ duplicate to keep in sync.
 //
 // Mirrors src/data/reelPosters.ts: we use import.meta.glob with an explicit cast
 // rather than a static `import x from './f.webp?query'`, because the query suffix
