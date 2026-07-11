@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { imagetools } from 'vite-imagetools'
 import { IG_PROFILE, REELS, reelUrl, type Reel } from './src/data/reels.ts'
-import { FOLLOWERS, followerUrl } from './src/data/followers.ts'
+import { FOLLOWERS, followerUrl, type Member } from './src/data/followers.ts'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -24,8 +24,8 @@ function crawlableContent(): Plugin {
           `        <li><a href="${reelUrl(r.code)}">${esc(r.caption)}</a></li>`,
       ).join('\n')
       const memberItems = FOLLOWERS.map(
-        (username: string) =>
-          `        <li><a href="${followerUrl(username)}">@${esc(username)}</a></li>`,
+        (member: Member) =>
+          `        <li><a href="${followerUrl(member)}">@${esc(member.handle)}</a></li>`,
       ).join('\n')
       const noscript = `    <noscript>
       <h1>Koala Cub Club</h1>

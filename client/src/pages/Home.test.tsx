@@ -47,20 +47,33 @@ describe('Home', () => {
       screen.getByRole('heading', { name: /meet the cubs/i }),
     ).toBeInTheDocument()
 
-    // First page of members, each linking out to their Instagram profile
+    // First page of members, each linking out to their profile on the platform
+    // they follow from (Instagram or TikTok)
     const memberLinks = container.querySelectorAll(
-      'a[aria-label$="on Instagram"]',
+      'a[aria-label$="on Instagram"], a[aria-label$="on TikTok"]',
     )
     expect(memberLinks.length).toBeGreaterThan(0)
     expect(memberLinks.length).toBeLessThanOrEqual(20)
-    expect(memberLinks[0]).toHaveAttribute(
-      'href',
-      expect.stringMatching(/^https:\/\/www\.instagram\.com\/[^/]+\/$/),
-    )
-    expect(memberLinks[0]).toHaveAttribute('target', '_blank')
-    expect(memberLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
+    for (const link of memberLinks) {
+      expect(link).toHaveAttribute(
+        'href',
+        expect.stringMatching(
+          /^https:\/\/www\.(instagram\.com\/[^/]+\/|tiktok\.com\/@[^/]+)$/,
+        ),
+      )
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    }
 
-    // Pagination is present as clickable dots (32 members across pages of 20)
+    // The club spans both platforms — the TikTok member links out to TikTok
+    expect(
+      container.querySelector('a[aria-label$="on TikTok"]'),
+    ).toHaveAttribute(
+      'href',
+      expect.stringMatching(/^https:\/\/www\.tiktok\.com\/@[^/]+$/),
+    )
+
+    // Pagination is present as clickable dots (33 members across pages of 20)
     expect(
       screen.getByRole('button', { name: /go to page 1/i }),
     ).toBeInTheDocument()
