@@ -13,7 +13,7 @@ test('landing page renders hero, reel feed and social links', async ({
 
   // Reel feed: poster cards that link out to Instagram reels
   const reelLinks = page.locator('a[href*="instagram.com/reel/"]')
-  await expect(reelLinks).toHaveCount(12)
+  await expect(reelLinks).toHaveCount(14)
   await expect(reelLinks.first()).toHaveAttribute('target', '_blank')
 
   // The profile link, named exactly "Instagram" — reel cards are also named
