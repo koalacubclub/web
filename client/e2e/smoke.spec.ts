@@ -26,7 +26,9 @@ test('landing page renders hero, reel feed and social links', async ({
   await expect(
     page.getByRole('heading', { name: /meet the cubs/i }),
   ).toBeVisible()
-  const memberLinks = page.locator('a[aria-label$="on Instagram"]')
+  const memberLinks = page.locator(
+    'a[aria-label$="on Instagram"], a[aria-label$="on TikTok"]',
+  )
   await expect(memberLinks.first()).toBeVisible()
   await expect(memberLinks.first()).toHaveAttribute('target', '_blank')
   await expect(

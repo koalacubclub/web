@@ -22,8 +22,10 @@ import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
   FOLLOWERS,
   MEMBERS_PER_PAGE,
+  type Member,
   followerAvatar,
   followerUrl,
+  platformLabel,
 } from '@/data/followers'
 
 // Playful paw SVG
@@ -144,26 +146,21 @@ function ReelCard({
 }
 
 // Member avatar — circular profile picture that links out to the follower's
-// Instagram. Falls back to a monogram if the avatar image is missing/broken.
-function MemberAvatar({
-  username,
-  index,
-}: {
-  username: string
-  index: number
-}) {
+// profile on the platform they follow from (Instagram or TikTok). Falls back to
+// a monogram if the avatar image is missing/broken.
+function MemberAvatar({ member, index }: { member: Member; index: number }) {
   const [failed, setFailed] = useState(false)
-  const initial = username
+  const initial = member.handle
     .replace(/[^a-z0-9]/gi, '')
     .charAt(0)
     .toUpperCase()
 
   return (
     <motion.a
-      href={followerUrl(username)}
+      href={followerUrl(member)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`@${username} on Instagram`}
+      aria-label={`@${member.handle} on ${platformLabel[member.platform]}`}
       className="group flex flex-col items-center gap-2"
       initial={{ opacity: 0, scale: 0.85 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -183,7 +180,7 @@ function MemberAvatar({
           </div>
         ) : (
           <img
-            src={followerAvatar(username)}
+            src={followerAvatar(member)}
             alt=""
             loading="lazy"
             onError={() => setFailed(true)}
@@ -192,16 +189,16 @@ function MemberAvatar({
         )}
       </div>
       <span className="max-w-[4.5rem] sm:max-w-[5rem] truncate text-[10px] sm:text-[11px] font-light text-white/40 transition-colors duration-300 group-hover:text-white/70">
-        @{username}
+        @{member.handle}
       </span>
     </motion.a>
   )
 }
 
 // ─── THE CLUB (followers) ───────────────────────────────────────────────────
-// A wall of the account's Instagram followers — "the cubs" who make up the club.
-// Newest members first, paginated so the whole list is browsable without an
-// endless scroll.
+// A wall of the accounts' Instagram + TikTok followers — "the cubs" who make up
+// the club. Newest members first, paginated so the whole list is browsable
+// without an endless scroll.
 function ClubSection() {
   const [page, setPage] = useState(0)
   const pageCount = Math.ceil(FOLLOWERS.length / MEMBERS_PER_PAGE)
@@ -245,8 +242,12 @@ function ClubSection() {
             transition={{ duration: 0.3 }}
             className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-x-3 gap-y-6 sm:gap-y-7"
           >
-            {members.map((username, index) => (
-              <MemberAvatar key={username} username={username} index={index} />
+            {members.map((member, index) => (
+              <MemberAvatar
+                key={`${member.platform}-${member.handle}`}
+                member={member}
+                index={index}
+              />
             ))}
           </motion.div>
         </AnimatePresence>
