@@ -17,10 +17,9 @@ export const MEMBERS_PER_PAGE = 20
 export const FOLLOWERS: string[] = [
   'stelmacha49',
   'odniddis',
-  'nadini9104',
+  'mom______nandini',
   'vaniuvanev',
   'mcsb65',
-  'irubennnnnn',
   'nar.eshsori',
   'niteenbehera',
   'urban_jalalabad',

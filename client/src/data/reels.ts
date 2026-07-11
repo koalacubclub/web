@@ -14,6 +14,8 @@ export interface Reel {
 }
 
 export const REELS: Reel[] = [
+  { code: 'DaqALgvR25X', caption: 'Koala’s home school, ep. 1' },
+  { code: 'DaYw6x9RuMz', caption: 'Second day touching grass' },
   { code: 'DaGvXqFRQmV', caption: 'Brushing Koala’s teeth' },
   { code: 'DZ0zua6RSu7', caption: 'First time touching grass' },
   { code: 'DZisOcxxiGj', caption: 'Would your cat love this?' },

@@ -26,12 +26,12 @@ describe('Home', () => {
     const reelLinks = container.querySelectorAll(
       'a[href*="instagram.com/reel/"]',
     )
-    expect(reelLinks).toHaveLength(12)
+    expect(reelLinks).toHaveLength(14)
 
     const posters = container.querySelectorAll(
       'a[href*="instagram.com/reel/"] img',
     )
-    expect(posters).toHaveLength(12)
+    expect(posters).toHaveLength(14)
     expect(posters[0]).toHaveAttribute('loading', 'lazy')
 
     // Cards open in a new tab with safe rel
@@ -60,7 +60,7 @@ describe('Home', () => {
     expect(memberLinks[0]).toHaveAttribute('target', '_blank')
     expect(memberLinks[0]).toHaveAttribute('rel', 'noopener noreferrer')
 
-    // Pagination is present as clickable dots (33 members across pages of 20)
+    // Pagination is present as clickable dots (32 members across pages of 20)
     expect(
       screen.getByRole('button', { name: /go to page 1/i }),
     ).toBeInTheDocument()
