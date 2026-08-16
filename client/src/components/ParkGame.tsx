@@ -1795,8 +1795,7 @@ export default function ParkGame() {
       ctx.fillText('Zzz', bubbleX + s * 2, bubbleY)
     }
 
-    function drawTree(obj: GameObject) {
-      if (!ctx) return
+    function drawTree(obj: GameObject, ctx: CanvasRenderingContext2D) {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       // Keep the original clean 3-blob canopy, but nudge scale + blob offsets a
@@ -1844,8 +1843,7 @@ export default function ParkGame() {
       ctx.fill()
     }
 
-    function drawBench(obj: GameObject) {
-      if (!ctx) return
+    function drawBench(obj: GameObject, ctx: CanvasRenderingContext2D) {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       ctx.fillStyle = NIGHT.bench
@@ -1858,8 +1856,14 @@ export default function ParkGame() {
       ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
     }
 
-    function drawFlowers(obj: GameObject) {
-      if (!ctx) return
+    // `bob` is the cluster's vertical sway. It's a RIGID offset (every bloom and
+    // stem shares it), so the baked path draws the patch still and rides the sway
+    // as a blit offset instead — see drawObjectArt.
+    function drawFlowers(
+      obj: GameObject,
+      ctx: CanvasRenderingContext2D,
+      bobOffset: number,
+    ) {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       // Per-patch randomness (seeded by tile position) so each flower cluster has
@@ -1873,7 +1877,6 @@ export default function ParkGame() {
         COLORS.butterfly,
       ]
       const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-      const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
       const count = 3 + Math.floor(rng() * 2) // 3–4 blooms
       let fx = x + PIXEL * 0.08
       for (let i = 0; i < count; i++) {
@@ -1900,6 +1903,72 @@ export default function ParkGame() {
     // camera pans the canvas via a CSS transform, so only this slice is on screen.
     const visibleX = () => visibleRange(g.hudShift, viewportW, displayW)
 
+    // ─── Baked static-object art ────────────────────────────────────────────
+    // Trees, benches, stones and social signs never change: their shape is seeded
+    // by tile position (see the makeRng calls) and nothing about them animates.
+    // Re-running their path ops every frame — twice over, since the pond
+    // reflection pass draws them again — is pure waste, so each is rasterised
+    // ONCE into its own small canvas and blitted with a single drawImage after
+    // that. Flower patches bake too: their sway is a rigid offset, so the patch
+    // is baked still and the sway rides along as a blit offset.
+    //
+    // Not baked: ponds (live reflections), balls (roll + bounce + wobble), the
+    // photo polaroid (its image decodes async, so a bake could capture the
+    // placeholder), and shop-placed items (pop-in flourish, radio pulses).
+    type Baked = {
+      img: HTMLCanvasElement
+      left: number
+      top: number
+      w: number
+      h: number
+    }
+    const artCache = new Map<string, Baked>()
+    // Art overhangs the declared w×h footprint — tree canopies reach ~0.5 tile
+    // above the trunk row, sign halos bleed past the badge, flower stems hang
+    // below. A ¾-tile margin clears the worst of them (the canopy) with room over.
+    const BAKE_PAD = PIXEL * 0.75
+
+    // Rasterise one object's art at the current render scale and memoise it.
+    // Keyed by type+tile: position seeds every one of these, so it pins the art.
+    function bakedArt(
+      o: GameObject,
+      draw: (c: CanvasRenderingContext2D) => void,
+    ): Baked {
+      const key = `${o.type}:${o.x}:${o.y}`
+      const hit = artCache.get(key)
+      if (hit) return hit
+      const left = o.x * PIXEL - BAKE_PAD
+      const top = o.y * PIXEL - BAKE_PAD
+      const w = o.w * PIXEL + BAKE_PAD * 2
+      const h = o.h * PIXEL + BAKE_PAD * 2
+      const c = document.createElement('canvas')
+      // Bake at RS (the live backing scale) so blits land pixel-for-pixel on the
+      // high-res backing rather than being upscaled twice. sizeBacking() drops
+      // the whole cache when RS changes.
+      c.width = Math.ceil(w * RS)
+      c.height = Math.ceil(h * RS)
+      const cc = c.getContext('2d')!
+      cc.imageSmoothingEnabled = true
+      // The draw fns address absolute world coords, so shift the origin to this
+      // object's padded top-left and let them draw where they normally would.
+      cc.setTransform(RS, 0, 0, RS, -left * RS, -top * RS)
+      draw(cc)
+      const baked = { img: c, left, top, w, h }
+      artCache.set(key, baked)
+      return baked
+    }
+
+    // Static art by type. Every one takes (obj, ctx) and is position-deterministic.
+    const STATIC_ART: Record<
+      string,
+      (o: GameObject, c: CanvasRenderingContext2D) => void
+    > = {
+      tree: drawTree,
+      bench: drawBench,
+      stone: drawStone,
+      social: drawSocialSign,
+    }
+
     // Draw one object's art at its own position (no slap-shake wrapper). Shared by
     // the main object pass and the pond reflection pass.
     function drawObjectArt(o: GameObject, now: number, playing: boolean) {
@@ -1919,24 +1988,23 @@ export default function ParkGame() {
         })
         return
       }
+      // Baked art: one drawImage instead of the object's whole path program.
+      const staticArt = STATIC_ART[o.type]
+      if (staticArt) {
+        const b = bakedArt(o, (c) => staticArt(o, c))
+        ctx!.drawImage(b.img, b.left, b.top, b.w, b.h)
+        return
+      }
+      if (o.type === 'flowers') {
+        // Baked still, then swayed — the whole patch shares one vertical offset.
+        const b = bakedArt(o, (c) => drawFlowers(o, c, 0))
+        const bob = Math.sin(g.frameCount * 0.05 + o.x) * 2
+        ctx!.drawImage(b.img, b.left, b.top + bob, b.w, b.h)
+        return
+      }
       switch (o.type) {
-        case 'tree':
-          drawTree(o)
-          break
-        case 'bench':
-          drawBench(o)
-          break
-        case 'flowers':
-          drawFlowers(o)
-          break
         case 'ball':
           drawBall(o)
-          break
-        case 'stone':
-          drawStone(o)
-          break
-        case 'social':
-          drawSocialSign(o)
           break
         case 'photo':
           drawPhoto(o)
@@ -2048,8 +2116,7 @@ export default function ParkGame() {
       ctx.fill()
     }
 
-    function drawStone(obj: GameObject) {
-      if (!ctx) return
+    function drawStone(obj: GameObject, ctx: CanvasRenderingContext2D) {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       ctx.fillStyle = NIGHT.stone
@@ -2068,8 +2135,7 @@ export default function ParkGame() {
 
     // Interactive social sign on the grass: a short post + a rounded badge with a
     // simple procedural glyph (IG or TikTok). Hover/click handled by hit-testing.
-    function drawSocialSign(obj: GameObject) {
-      if (!ctx) return
+    function drawSocialSign(obj: GameObject, ctx: CanvasRenderingContext2D) {
       const x = obj.x * PIXEL
       const y = obj.y * PIXEL
       const cx = x + PIXEL * 0.5
@@ -3527,7 +3593,10 @@ export default function ParkGame() {
       if (!canvas || !ctx) return
       const dpr = window.devicePixelRatio || 1
       const cssW = canvas.clientWidth || CANVAS_WIDTH
-      RS = Math.max(1, Math.min(2, (cssW * dpr) / CANVAS_WIDTH))
+      const next = Math.max(1, Math.min(2, (cssW * dpr) / CANVAS_WIDTH))
+      // Baked object art is rasterised at RS, so a scale change stales the lot.
+      if (next !== RS) artCache.clear()
+      RS = next
       canvas.width = Math.round(CANVAS_WIDTH * RS)
       canvas.height = Math.round(CANVAS_HEIGHT * RS)
       ctx.imageSmoothingEnabled = true
