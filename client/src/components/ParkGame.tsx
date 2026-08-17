@@ -180,9 +180,6 @@ const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
 
 const GRASS_TOP = '#2C6551' // representative green, for the front ridge
 const GRASS_BOTTOM = '#245342' // darkest, for flower stems
-// Blade flecks scattered inside a patch — the warm and cool accents.
-const GRASS_OLIVE = '#5A793D'
-const GRASS_PALE = '#65967E'
 
 // The far ridge along the skyline — darker and cooler than the grass underfoot,
 // so the hills read as distance rather than more lawn.
@@ -1705,19 +1702,6 @@ export default function ParkGame() {
         }
         ctx.closePath()
         ctx.fill()
-
-        // Blade flecks scattered inside. Kept sparse and small — they're a hint of
-        // texture, and at any more they read as literal squares scattered on the
-        // lawn. Dial BLADES / the fillRect size together to taste.
-        const BLADES = 6
-        for (let j = 0; j < BLADES; j++) {
-          const angle = (j / BLADES) * Math.PI * 2 + seed
-          const dist = 0.4 + ((j * 0.07) % 0.4)
-          const gx = cx + Math.cos(angle) * radiusX * dist
-          const gy = cy + Math.sin(angle) * radiusY * dist
-          ctx.fillStyle = j % 3 === 0 ? GRASS_OLIVE : GRASS_PALE
-          ctx.fillRect(gx, gy, SCALE * 1.2, SCALE * 1.8)
-        }
       }
 
       // Existing baked grass texture is draw-only (no game logic), so instead of
