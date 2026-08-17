@@ -146,22 +146,24 @@ const SKY_HORIZON = '#7493A9'
 // Ground — palest just under the horizon, settling darker underfoot.
 //
 // The hue deliberately SHIFTS WITH LIGHTNESS: shadows sit at ~231° (navy) and ramp
-// round to ~285° (plum) in the highlights, richer in the dark end (30% saturation)
-// than the light (20%) so the navy actually reads. That split is the point — it's
-// what stops the dirt looking like one colour dimmed, and it's why these can't be
-// derived by scaling R/B channels or by locking a single hue. Keep the lightness
-// order below intact when retuning: hue is a function of it.
-// SPECKLE_* are the texture dots, either side of the ramp.
-const GROUND_TOP = '#4D3E66' // L 32% — plum end
-const GROUND_BOTTOM = '#3A365F' // L 29%
-const GROUND_SPECKLE_DARK = '#303658' // L 27% — navy end
-const GROUND_SPECKLE_LIGHT = '#65496F' // L 36% — plum end
+// round to ~285° (plum) in the highlights. Saturation rides the same ramp but the
+// OTHER way — 19% at the dark end, 11% at the light — since plum goes lurid at the
+// strength navy needs. Both are kept low: the hue SHIFT is what gives the ground its
+// life, so the colours themselves can stay muted and let the props read against them.
+// That split is the point — it's what stops the dirt looking like one colour dimmed,
+// and it's why these can't be derived by scaling R/B channels or by locking a single
+// hue. Keep the lightness order below intact when retuning: hue and saturation are
+// both functions of it. SPECKLE_* are the texture dots, either side of the ramp.
+const GROUND_TOP = '#4F465E' // L 32% — plum end
+const GROUND_BOTTOM = '#413E57' // L 29%
+const GROUND_SPECKLE_DARK = '#373B51' // L 27% — navy end
+const GROUND_SPECKLE_LIGHT = '#615266' // L 36% — plum end
 // Blotch tones scattered over the ramp — the p2/p25/p90/p98 lightness points of the
 // study's dirt, each hue-mapped off its own lightness (see dirtBlotch).
-const GROUND_BLOTCH_DEEP = '#32355A' // L 27% — navy
-const GROUND_BLOTCH_DARK = '#35345D' // L 28%
-const GROUND_BLOTCH_LIGHT = '#554169' // L 33%
-const GROUND_BLOTCH_PALE = '#62486D' // L 35% — plum
+const GROUND_BLOTCH_DEEP = '#393B53' // L 27% — navy
+const GROUND_BLOTCH_DARK = '#3D3C55' // L 28%
+const GROUND_BLOTCH_LIGHT = '#554A60' // L 33%
+const GROUND_BLOTCH_PALE = '#5E5065' // L 35% — plum
 
 // Grass — THREE distinct shades, clustered out of the colour study along with the
 // proportions it uses them in: deep sage dominates, a lighter cooler green covers
