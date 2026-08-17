@@ -57,78 +57,48 @@ export const COLORS = {
   charcoal: '#4A4A4A',
 }
 
-// Night grade. Each below-wash object carries its own night colour via `night(c)`,
-// so there is NO global purple wash drawn on top of the scene — the grade lives in
-// the colours themselves. Three parts, tuned to keep the park's cohesive dusky-purple
-// mood while letting bright/white things read bright:
+// The park palette — what the below-wash world (ground/objects/cat/decor) actually
+// draws with. Above-wash draws (moon, stars, food, billboards, HUD) keep the bright
+// COLORS above so they glow against it.
 //
-//   1. MULTIPLY by NIGHT_F — a flat per-channel darken (green knocked down more than
-//      red, blue kept highest). Because it's a multiply it PRESERVES each colour's
-//      own hue, so grass stays dusky sage and sand stays mauve (a hue-rotation here
-//      turned everything magenta — rejected).
-//   2. SHADOW VIOLET (NIGHT_AMB) — added in proportion to darkness (weight (1−L)^2.2,
-//      so it's concentrated in the deep shadows and ~0 by the mid-tones): +R, −G, +B
-//      pushes darks toward violet and lifts true black off pure #000, without making
-//      mid/bright surfaces milky.
-//   3. WHITENESS RECOVERY — near-WHITE (high lightness AND low saturation) blends back
-//      toward its original colour, so white reads white. Keyed on saturation, not
-//      plain luminance, so bright *coloured* surfaces (sand, grass) don't snap back
-//      to daylight — only true whites/greys recover.
-//
-// Tune: NIGHT_F (overall darkness/hue lean), NIGHT_AMB (how violet the shadows get),
-// or the whiteness-gate bounds. Non-hex inputs (oklch sky, rgba shadows) pass through
-// unchanged. Memoised (runs once per unique colour).
-const NIGHT_F = [0.79, 0.7, 0.93] // dusky multiply, leaning more blue-purple
-const NIGHT_AMB = [18, -12, 48] // saturated shadow violet: +R −G +B, deep shadows only
-function grade(r: number, g: number, b: number): [number, number, number] {
-  const rn = r / 255,
-    gn = g / 255,
-    bn = b / 255
-  const max = Math.max(rn, gn, bn),
-    min = Math.min(rn, gn, bn)
-  const L = (max + min) / 2
-  const S = max - min === 0 ? 0 : (max - min) / (1 - Math.abs(2 * L - 1))
-
-  // Whiteness gate: high L AND low S only → near-white recovers to original.
-  const w = Math.min(
-    1,
-    Math.max(0, (L - 0.8) / 0.2) * Math.max(0, (0.2 - S) / 0.2),
-  )
-  const amb = Math.pow(1 - L, 2.2) // tightly concentrated in the deep shadows
-
-  let rr = NIGHT_F[0] * r + NIGHT_AMB[0] * amb
-  let gg = NIGHT_F[1] * g + NIGHT_AMB[1] * amb
-  let bb = NIGHT_F[2] * b + NIGHT_AMB[2] * amb
-
-  // Recover near-white toward the ORIGINAL colour.
-  rr = rr * (1 - w) + r * w
-  gg = gg * (1 - w) + g * w
-  bb = bb * (1 - w) + b * w
-
-  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
-  return [c(rr), c(gg), c(bb)]
+// These are HAND-PICKED literals, one per surface. There is deliberately no grading
+// function: colours used to be derived by running COLORS through a night() filter,
+// which meant every surface inherited whatever hue that filter leaned toward and no
+// single colour could be adjusted on its own. Pick and tune each entry directly.
+// Keys mirror COLORS so the two are swappable (see sprites.ts's PAL).
+export const NIGHT: typeof COLORS = {
+  // Sky tones are already dark and are shared verbatim with COLORS — the old grade
+  // passed non-hex (oklch) values straight through, so they never differed.
+  sky: 'oklch(0.1 0.008 60)',
+  skyLight: 'oklch(0.11 0.008 60)',
+  grass: '#7BAC6E',
+  grassDark: '#549650',
+  grassLight: '#8EBA82',
+  dirt: '#AF8661',
+  dirtLight: '#BFA184',
+  treeTrunk: '#795B17',
+  treeLeaves: '#429045',
+  treeLeavesLight: '#569859',
+  flower1: '#D25782',
+  flower2: '#D3B034',
+  flower3: '#A58ED1',
+  bench: '#785C55',
+  benchLight: '#876F6B',
+  water: '#5392CB',
+  waterLight: '#77A2CD',
+  catLight: '#A2886C',
+  catOrange: '#876446',
+  catDark: '#775137',
+  catStripe: '#61442A',
+  catEar: '#D1A1B2',
+  white: '#FFFFFF',
+  heart: '#D25782',
+  fishBowl: '#D3B034',
+  butterfly: '#A58ED1',
+  stone: '#838083',
+  stoneDark: '#646264',
+  charcoal: '#444344',
 }
-
-const _nightCache = new Map<string, string>()
-export function night(color: string): string {
-  if (color[0] !== '#' || (color.length !== 7 && color.length !== 4))
-    return color
-  const hit = _nightCache.get(color)
-  if (hit) return hit
-  let h = color.slice(1)
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
-  const n = parseInt(h, 16)
-  const [r, g, b] = grade((n >> 16) & 255, (n >> 8) & 255, n & 255)
-  const res = `rgb(${r}, ${g}, ${b})`
-  _nightCache.set(color, res)
-  return res
-}
-
-// Night-baked clone of COLORS for below-wash draws (ground/objects/cat/decor).
-// Above-wash draws (moon, stars, food, billboards, HUD) keep bright COLORS.
-export const NIGHT = Object.fromEntries(
-  Object.entries(COLORS).map(([k, v]) => [k, night(v)]),
-) as typeof COLORS
 
 // Tiny deterministic PRNG (mulberry32) so procedural art can vary per instance
 // (seeded by tile position) yet stay identical frame-to-frame — no flicker.

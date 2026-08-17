@@ -44,7 +44,7 @@ import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
-import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
+import { NIGHT, makeRng, HORIZON } from '@/game/constants'
 import {
   getPondReflection,
   drawPondStones,
@@ -129,6 +129,27 @@ const COLORS = {
   stoneDark: '#757575',
   charcoal: '#4A4A4A',
 }
+
+// ─── Big-surface colours ────────────────────────────────────────────────────
+// The ground, grass and pond cover most of the screen, so they're pinned here
+// rather than living in the shared NIGHT palette — they get tuned on their own,
+// by eye, without dragging every prop along with them.
+
+// Ground sand. DARK/LIGHT are the texture speckles, sitting either side of the base.
+const GROUND_SAND = '#B9959E'
+const GROUND_SAND_DARK = '#B08B92'
+const GROUND_SAND_LIGHT = '#BF9EAC'
+
+// Grass. GRASS is the patch body; DARK/LIGHT are the blade flecks inside it. Also
+// used for the horizon ridge and flower stems, so distant hills and stems stay the
+// same green as the patches underfoot rather than drifting off on their own.
+const GRASS = '#76947F'
+const GRASS_DARK = '#517F60'
+const GRASS_LIGHT = '#89A295'
+
+// Pond water. The shop's pond sprite matches it via PARK_INK['#5A97DB'] in
+// sprites.ts — change both together or they'll drift apart.
+const POND_WATER = '#27366A'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1480,15 +1501,15 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Sand base (night-graded, like every other below-wash colour)
-      ctx.fillStyle = night('#E8D5A8')
+      // Sand base — a hand-picked mauve (see GROUND_SAND).
+      ctx.fillStyle = GROUND_SAND
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
-      // Sand texture dots
+      // Sand texture dots, either side of the base tone.
       for (let i = 0; i < 40; i++) {
         const sx = ((i * 73 + 17) % MAP_COLS) * PIXEL + ((i * 31) % PIXEL)
         const sy = PIXEL * 1.5 + ((i * 47 + 11) % (CANVAS_HEIGHT - PIXEL * 2))
-        ctx.fillStyle = i % 2 === 0 ? night('#DCC89A') : night('#F0E2B8')
+        ctx.fillStyle = i % 2 === 0 ? GROUND_SAND_DARK : GROUND_SAND_LIGHT
         ctx.fillRect(sx, sy, SCALE, SCALE)
       }
 
@@ -1502,7 +1523,7 @@ export default function ParkGame() {
       ) {
         if (!ctx) return
         const points = 10
-        ctx.fillStyle = NIGHT.grass
+        ctx.fillStyle = GRASS
         ctx.beginPath()
         for (let i = 0; i <= points; i++) {
           const angle = (i / points) * Math.PI * 2
@@ -1538,7 +1559,7 @@ export default function ParkGame() {
           const dist = 0.4 + ((j * 0.07) % 0.4)
           const gx = cx + Math.cos(angle) * radiusX * dist
           const gy = cy + Math.sin(angle) * radiusY * dist
-          ctx.fillStyle = j % 3 === 0 ? NIGHT.grassDark : NIGHT.grassLight
+          ctx.fillStyle = j % 3 === 0 ? GRASS_DARK : GRASS_LIGHT
           ctx.fillRect(gx, gy, SCALE * 2, SCALE * 3)
         }
       }
@@ -1811,7 +1832,7 @@ export default function ParkGame() {
       ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
 
       // Main (darker) canopy blob — a darker, green base leaf tone.
-      ctx.fillStyle = night('#3D9C4E')
+      ctx.fillStyle = '#378245'
       ctx.beginPath()
       ctx.arc(
         x + PIXEL + jx,
@@ -1881,7 +1902,7 @@ export default function ParkGame() {
         const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
         const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
         const stemH = SCALE * 4
-        ctx.fillStyle = NIGHT.grassDark
+        ctx.fillStyle = GRASS_DARK
         ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
         ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
@@ -1948,7 +1969,7 @@ export default function ParkGame() {
       if (!ctx) return
       const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
       // Still water body.
-      ctx.fillStyle = night('#5A97DB')
+      ctx.fillStyle = POND_WATER
       ctx.beginPath()
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -2007,7 +2028,7 @@ export default function ParkGame() {
       // Water wash — one translucent layer over everything so the reflections read
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
-      ctx.fillStyle = night('#5A97DB')
+      ctx.fillStyle = POND_WATER
       ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
       ctx.globalAlpha = 1
       ctx.restore()
@@ -2032,7 +2053,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = night('#FF6B6B')
+      ctx.fillStyle = '#D25759'
       ctx.beginPath()
       ctx.arc(
         x + PIXEL * 0.5,
@@ -2172,7 +2193,7 @@ export default function ParkGame() {
       ctx.ellipse(0, h * 0.5, w * 0.5, PIXEL * 0.08, 0, 0, Math.PI * 2)
       ctx.fill()
       // Polaroid frame.
-      ctx.fillStyle = night('#FBFBF7')
+      ctx.fillStyle = '#CEC9CB'
       ctx.beginPath()
       ctx.roundRect(-w / 2, -h / 2, w, h, SCALE)
       ctx.fill()
@@ -2196,7 +2217,7 @@ export default function ParkGame() {
         ctx.drawImage(heroImg, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh)
         ctx.restore()
       } else {
-        ctx.fillStyle = night('#DDD7C8')
+        ctx.fillStyle = '#B6ACA4'
         ctx.fillRect(ix, iy, iw, ih)
       }
       ctx.restore()
@@ -2337,7 +2358,7 @@ export default function ParkGame() {
           ctx.stroke()
         } else {
           // Half-closed eyes
-          ctx.fillStyle = night('#8B9B2A')
+          ctx.fillStyle = '#778128'
           ctx.beginPath()
           ctx.ellipse(s * 4, s * 1.5, s * 0.6, s * 0.3, 0, 0, Math.PI * 2)
           ctx.fill()
@@ -2493,7 +2514,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Pupils
-      ctx.fillStyle = night('#8B9B2A')
+      ctx.fillStyle = '#778128'
       ctx.beginPath()
       ctx.arc(s * 3.2, -s * 0.4, s * 0.7, 0, Math.PI * 2)
       ctx.fill()
@@ -2520,7 +2541,7 @@ export default function ParkGame() {
 
       // Little open mouth while airborne (with a tiny pink tongue).
       if (airborne) {
-        ctx.fillStyle = night('#5A2A2A')
+        ctx.fillStyle = '#522A2B'
         ctx.beginPath()
         ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
         ctx.fill()
@@ -3766,8 +3787,8 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge(night('#2E7D48'), 0.75, 0.4, 2.1, 5) // furthest ridge — deep blue-green (matches imprint)
-      ridge(NIGHT.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
+      ridge('#2C6B42', 0.75, 0.4, 2.1, 5) // furthest ridge — deep green (matches imprint)
+      ridge(GRASS, 0.4, 0.42, 0.0, 7) // lighter front ridge
     }
 
     function renderStaticBackground() {
@@ -3787,13 +3808,14 @@ export default function ParkGame() {
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
-      // Same night grade as every object: the imprint tints its own colours via
-      // night() (bright colours/whites still pop), so no global wash is needed.
-      // These baked decorations are draw-only, so shift them right by LEFT_PAD
-      // with a translate rather than editing their internal coordinates.
+      // The imprint draws from the same park palette as every object, so it needs
+      // no wash of its own. These baked decorations are draw-only, so shift them
+      // right by LEFT_PAD with a translate rather than editing their coordinates.
       ctx!.save()
       ctx!.translate(LEFT_PAD * PIXEL, 0)
-      drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS, night)
+      // Park palette straight in — no tint fn needed now that NIGHT holds the
+      // final colours (the default tint is identity).
+      drawKoalaImprint(ctx!, PIXEL, SCALE, NIGHT)
       drawPawTrail()
       ctx!.restore()
       ctx!.restore()
