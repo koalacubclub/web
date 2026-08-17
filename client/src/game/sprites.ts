@@ -21,7 +21,7 @@ const PARK_INK: Record<string, string> = {
   '#3A2E2C': '#392F2E',
   '#3D9C4E': '#378245',
   '#4A4A4A': '#444344',
-  '#5A97DB': '#27366A', // pond water
+  '#5A97DB': '#3D979C', // pond water — keep in sync with POND_WATER in ParkGame
   '#6E6E6E': '#5F5D5F',
   '#767A80': '#65656D',
   '#84B2F0': '#6D8FC6',

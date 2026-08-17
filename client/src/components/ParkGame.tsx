@@ -131,25 +131,65 @@ const COLORS = {
 }
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
-// The ground, grass and pond cover most of the screen, so they're pinned here
-// rather than living in the shared NIGHT palette — they get tuned on their own,
-// by eye, without dragging every prop along with them.
+// The sky, ground, grass and pond cover most of the screen, so they're pinned here
+// rather than living in the shared NIGHT palette — they get tuned on their own, by
+// eye, without dragging every prop along with them.
+//
+// Values sampled from the painted colour study: each of these surfaces carries a
+// GRADIENT rather than one flat fill, which is what stops the park reading as
+// stacked cut-out shapes. Every pair below is (top, bottom) of a vertical ramp.
 
-// Ground sand. DARK/LIGHT are the texture speckles, sitting either side of the base.
-const GROUND_SAND = '#B9959E'
-const GROUND_SAND_DARK = '#B08B92'
-const GROUND_SAND_LIGHT = '#BF9EAC'
+// Sky — lightens as it approaches the horizon.
+const SKY_TOP = '#698092'
+const SKY_HORIZON = '#7493A9'
 
-// Grass. GRASS is the patch body; DARK/LIGHT are the blade flecks inside it. Also
-// used for the horizon ridge and flower stems, so distant hills and stems stay the
-// same green as the patches underfoot rather than drifting off on their own.
-const GRASS = '#76947F'
-const GRASS_DARK = '#517F60'
-const GRASS_LIGHT = '#89A295'
+// Ground — palest just under the horizon, settling darker underfoot.
+//
+// The hue deliberately SHIFTS WITH LIGHTNESS: shadows sit at ~231° (navy) and ramp
+// round to ~285° (plum) in the highlights, richer in the dark end (30% saturation)
+// than the light (20%) so the navy actually reads. That split is the point — it's
+// what stops the dirt looking like one colour dimmed, and it's why these can't be
+// derived by scaling R/B channels or by locking a single hue. Keep the lightness
+// order below intact when retuning: hue is a function of it.
+// SPECKLE_* are the texture dots, either side of the ramp.
+const GROUND_TOP = '#4D3E66' // L 32% — plum end
+const GROUND_BOTTOM = '#3A365F' // L 29%
+const GROUND_SPECKLE_DARK = '#303658' // L 27% — navy end
+const GROUND_SPECKLE_LIGHT = '#65496F' // L 36% — plum end
+// Blotch tones scattered over the ramp — the p2/p25/p90/p98 lightness points of the
+// study's dirt, each hue-mapped off its own lightness (see dirtBlotch).
+const GROUND_BLOTCH_DEEP = '#32355A' // L 27% — navy
+const GROUND_BLOTCH_DARK = '#35345D' // L 28%
+const GROUND_BLOTCH_LIGHT = '#554169' // L 33%
+const GROUND_BLOTCH_PALE = '#62486D' // L 35% — plum
+
+// Grass — THREE distinct shades, clustered out of the colour study along with the
+// proportions it uses them in: deep sage dominates, a lighter cooler green covers
+// most of the rest, and a warm olive turns up as an occasional accent. Each patch
+// picks ONE shade and runs its own top→bottom ramp within it, so neighbouring blobs
+// read as different greens instead of one flat lawn. Each entry is (top, bottom).
+const GRASS_SHADES: readonly (readonly [string, string])[] = [
+  ['#2C6551', '#245342'], // deep sage — 55% of the study's grass
+  ['#397C6B', '#2F6658'], // lighter, cooler — 39%
+  ['#557742', '#466236'], // warm olive accent — 6%
+] as const
+// Cumulative weights matching those shares; see pickGrassShade.
+const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
+
+const GRASS_TOP = '#2C6551' // representative green, for the front ridge
+const GRASS_BOTTOM = '#245342' // darkest, for flower stems
+// Blade flecks scattered inside a patch — the warm and cool accents.
+const GRASS_OLIVE = '#5A793D'
+const GRASS_PALE = '#65967E'
+
+// The far ridge along the skyline — darker and cooler than the grass underfoot,
+// so the hills read as distance rather than more lawn.
+const RIDGE_FAR = '#305A51'
 
 // Pond water. The shop's pond sprite matches it via PARK_INK['#5A97DB'] in
 // sprites.ts — change both together or they'll drift apart.
-const POND_WATER = '#27366A'
+const POND_WATER = '#3D979C'
+const POND_DEEP = '#2F7C86'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1501,15 +1541,109 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Sand base — a hand-picked mauve (see GROUND_SAND).
-      ctx.fillStyle = GROUND_SAND
+      // Ground base — a vertical plum ramp, palest just under the horizon and
+      // deepening underfoot, so the dirt recedes instead of reading as one slab.
+      const groundGrad = ctx.createLinearGradient(0, PIXEL, 0, CANVAS_HEIGHT)
+      groundGrad.addColorStop(0, GROUND_TOP)
+      groundGrad.addColorStop(1, GROUND_BOTTOM)
+      ctx.fillStyle = groundGrad
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
-      // Sand texture dots, either side of the base tone.
+      // Broad tonal blotches over the base ramp. In the colour study the dirt swings
+      // ~25 points of luminance (#413A52 → #635065) but barely shifts hue, so these
+      // vary TONE only — adding hue here turns the ground muddy. Soft-edged and
+      // translucent so they read as weathering in the dirt, not as objects on it.
+      // Drawn before the grass, so patches still sit cleanly on top.
+      function dirtBlotch(
+        cx: number,
+        cy: number,
+        radiusX: number,
+        radiusY: number,
+        seed: number,
+        fill: string,
+      ) {
+        if (!ctx) return
+        const points = 11
+        ctx.fillStyle = fill
+        ctx.beginPath()
+        for (let i = 0; i <= points; i++) {
+          const angle = (i / points) * Math.PI * 2
+          // Two harmonics rather than one: a single sine gives every blob the same
+          // lobed silhouette, which the eye picks up as a repeated stamp once there
+          // are dozens on screen. The second, faster term breaks that up.
+          const wob =
+            0.66 +
+            0.22 * Math.sin(seed * 2.9 + i * 2.4) +
+            0.14 * Math.cos(seed * 1.3 + i * 5.1)
+          const px = cx + Math.cos(angle) * radiusX * wob
+          const py = cy + Math.sin(angle) * radiusY * wob
+          if (i === 0) {
+            ctx.moveTo(px, py)
+          } else {
+            const pa = ((i - 0.5) / points) * Math.PI * 2
+            const pw = 0.78 + 0.22 * Math.cos(seed * 1.7 + (i - 0.5) * 3.3)
+            ctx.quadraticCurveTo(
+              cx + Math.cos(pa) * radiusX * pw * 1.12,
+              cy + Math.sin(pa) * radiusY * pw * 1.08,
+              px,
+              py,
+            )
+          }
+        }
+        ctx.closePath()
+        ctx.fill()
+      }
+
+      const blotchTones = [
+        GROUND_BLOTCH_PALE,
+        GROUND_BLOTCH_DEEP,
+        GROUND_BLOTCH_LIGHT,
+        GROUND_BLOTCH_DARK,
+      ]
+      // Three passes, coarse → fine: a broad tonal wash, mid-size patches, then
+      // small accents. The layering is what sells it as weathered ground — a single
+      // pass at one size reads as scattered discs no matter how many you draw, since
+      // nothing overlaps at a different scale. Each pass is more opaque than the one
+      // under it, so fine detail stays legible on top of the broad wash.
+      const blotchLayers = [
+        { count: 16, alpha: 0.3, rx: [4, 9], ry: [2, 4.5] },
+        { count: 28, alpha: 0.4, rx: [2, 5], ry: [1, 2.6] },
+        { count: 26, alpha: 0.5, rx: [0.8, 2.2], ry: [0.5, 1.3] },
+      ]
+      const brng = makeRng(4242)
+      let blotchSeed = 100
+      ctx.save()
+      // Clip to the ground rect. The broad first pass reaches 4.5 tiles of radius,
+      // so any blob seeded near the top edge would otherwise spill up over the
+      // horizon and smear into the sky. Clipping (rather than insetting where they
+      // may be placed) keeps blobs meeting the skyline cut off cleanly there, which
+      // is what makes the ground read as continuing behind the horizon.
+      ctx.beginPath()
+      ctx.rect(0, PIXEL, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL)
+      ctx.clip()
+      for (const layer of blotchLayers) {
+        ctx.globalAlpha = layer.alpha
+        for (let i = 0; i < layer.count; i++) {
+          const bx = brng() * CANVAS_WIDTH
+          const byy = PIXEL * 1.4 + brng() * (CANVAS_HEIGHT - PIXEL * 2.4)
+          const brx =
+            PIXEL * (layer.rx[0] + brng() * (layer.rx[1] - layer.rx[0]))
+          const bry =
+            PIXEL * (layer.ry[0] + brng() * (layer.ry[1] - layer.ry[0]))
+          // Tone drawn at random rather than round-robin, so runs of the same
+          // shade can clump the way they do in the study.
+          const tone = blotchTones[Math.floor(brng() * blotchTones.length)]
+          blotchSeed += 7.3
+          dirtBlotch(bx, byy, brx, bry, blotchSeed, tone)
+        }
+      }
+      ctx.restore()
+
+      // Texture dots, either side of the ramp.
       for (let i = 0; i < 40; i++) {
         const sx = ((i * 73 + 17) % MAP_COLS) * PIXEL + ((i * 31) % PIXEL)
         const sy = PIXEL * 1.5 + ((i * 47 + 11) % (CANVAS_HEIGHT - PIXEL * 2))
-        ctx.fillStyle = i % 2 === 0 ? GROUND_SAND_DARK : GROUND_SAND_LIGHT
+        ctx.fillStyle = i % 2 === 0 ? GROUND_SPECKLE_DARK : GROUND_SPECKLE_LIGHT
         ctx.fillRect(sx, sy, SCALE, SCALE)
       }
 
@@ -1523,7 +1657,24 @@ export default function ParkGame() {
       ) {
         if (!ctx) return
         const points = 10
-        ctx.fillStyle = GRASS
+        // Pick this patch's shade from the three, in the study's proportions. Seeded
+        // by the patch's own seed, so a given blob is always the same green (no
+        // flicker) but its neighbours usually aren't — that variety between patches
+        // is what gives the lawn contrast. Then ramp top→bottom within that shade
+        // for internal depth, so it doesn't read as a flat cut-out.
+        const pick = makeRng(Math.round(seed * 977) + 1)()
+        const shadeIdx = GRASS_SHADE_WEIGHTS.findIndex((wgt) => pick < wgt)
+        const [shadeTop, shadeBottom] =
+          GRASS_SHADES[shadeIdx === -1 ? 0 : shadeIdx]
+        const blobGrad = ctx.createLinearGradient(
+          0,
+          cy - radiusY,
+          0,
+          cy + radiusY,
+        )
+        blobGrad.addColorStop(0, shadeTop)
+        blobGrad.addColorStop(1, shadeBottom)
+        ctx.fillStyle = blobGrad
         ctx.beginPath()
         for (let i = 0; i <= points; i++) {
           const angle = (i / points) * Math.PI * 2
@@ -1553,14 +1704,17 @@ export default function ParkGame() {
         ctx.closePath()
         ctx.fill()
 
-        // Grass blade details scattered inside
-        for (let j = 0; j < 10; j++) {
-          const angle = (j / 10) * Math.PI * 2 + seed
+        // Blade flecks scattered inside. Kept sparse and small — they're a hint of
+        // texture, and at any more they read as literal squares scattered on the
+        // lawn. Dial BLADES / the fillRect size together to taste.
+        const BLADES = 6
+        for (let j = 0; j < BLADES; j++) {
+          const angle = (j / BLADES) * Math.PI * 2 + seed
           const dist = 0.4 + ((j * 0.07) % 0.4)
           const gx = cx + Math.cos(angle) * radiusX * dist
           const gy = cy + Math.sin(angle) * radiusY * dist
-          ctx.fillStyle = j % 3 === 0 ? GRASS_DARK : GRASS_LIGHT
-          ctx.fillRect(gx, gy, SCALE * 2, SCALE * 3)
+          ctx.fillStyle = j % 3 === 0 ? GRASS_OLIVE : GRASS_PALE
+          ctx.fillRect(gx, gy, SCALE * 1.2, SCALE * 1.8)
         }
       }
 
@@ -1902,7 +2056,7 @@ export default function ParkGame() {
         const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
         const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
         const stemH = SCALE * 4
-        ctx.fillStyle = GRASS_DARK
+        ctx.fillStyle = GRASS_BOTTOM
         ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
         ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
@@ -1968,8 +2122,11 @@ export default function ParkGame() {
     function drawPond(obj: GameObject) {
       if (!ctx) return
       const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
-      // Still water body.
-      ctx.fillStyle = POND_WATER
+      // Still water body — deeper at the far edge, shallower toward the near rim.
+      const waterGrad = ctx.createLinearGradient(0, cy - ry, 0, cy + ry)
+      waterGrad.addColorStop(0, POND_DEEP)
+      waterGrad.addColorStop(1, POND_WATER)
+      ctx.fillStyle = waterGrad
       ctx.beginPath()
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -3787,8 +3944,8 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge('#2C6B42', 0.75, 0.4, 2.1, 5) // furthest ridge — deep green (matches imprint)
-      ridge(GRASS, 0.4, 0.42, 0.0, 7) // lighter front ridge
+      ridge(RIDGE_FAR, 0.75, 0.4, 2.1, 5) // furthest ridge — cool, reads as distance
+      ridge(GRASS_TOP, 0.4, 0.42, 0.0, 7) // front ridge — meets the grass underfoot
     }
 
     function renderStaticBackground() {
@@ -3796,9 +3953,8 @@ export default function ParkGame() {
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       const horizon = HORIZON
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
-      skyGrad.addColorStop(0, COLORS.sky)
-      skyGrad.addColorStop(0.6, COLORS.skyLight)
-      skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
+      skyGrad.addColorStop(0, SKY_TOP)
+      skyGrad.addColorStop(1, SKY_HORIZON)
       ctx!.fillStyle = skyGrad
       ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
       // Ridge on the sky, so the textured grass patches drawn by drawGround()
