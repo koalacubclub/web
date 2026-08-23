@@ -162,6 +162,23 @@ so the React UI and the imperative canvas never fight.
   art so a bought tree looks like a park tree. The shop renders the **real item
   art at real relative size** via `client/src/components/ItemPreview.tsx` (a
   `<canvas>`), not emoji.
+- **`client/src/game/trees/`** — the tree species art, one file per species
+  (`broadleaf` / `pine` / `crabapple` / `maple` / `willow`) plus `index.ts`
+  (registry + per-tile species and form rolls), `variance.ts` (the per-tree
+  jitter) and `types.ts`. A tree is **(species, form, jitter)**: the species and
+  its **two builds** (upright/tall vs spreading/short) are rolled from the tile
+  via `makeRng` on separate salts, then each individual gets its own size and
+  aspect — crowns run ~0.72×–1.62×, so the biggest neighbour is about twice the
+  smallest across and several times its volume, and three maples in a row are
+  three different maples. Trunks take only **35%** of that roll (`trunkScale`),
+  so the contrast lands in the canopy where it reads; everything is measured up
+  from the trunk's foot, so a tree scales as one thing and always stands on the
+  ground. A tile draws the same tree on every frame and every reload. Weighted so the
+  broadleaf stays the park's backbone. Colours pass through an `ink` fn (`night`
+  in the park, identity for bright previews). **Not wired into the scene yet** —
+  `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with
+  `pnpm dev` at `/src/game/trees/catalog.html` (dev only; the catalog imports the
+  real draw functions, so it can't drift from the art).
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered
