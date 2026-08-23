@@ -206,8 +206,10 @@ so the React UI and the imperative canvas never fight.
   filtered scatter of vertices — a filtered set wraps around and self-intersects,
   which renders as broken glass. Granite sits in the `NIGHT.stone` family and
   sandstone is its warm sibling; tests pin granite near-neutral and sandstone
-  warm, because a lilac stone is exactly what a computed grade produces. **Not
-  wired into the scene yet.** Preview at `/src/game/rocks/catalog.html`.
+  warm, because a lilac stone is exactly what a computed grade produces. **Drawn
+  by the park** — `ParkGame` and `sprites.ts` both route through it, replacing the
+  flat ellipse the `stone` objects used to be, and the pond's rim already used
+  `facetedStone` from here. Preview at `/src/game/rocks/catalog.html`.
 - **`client/src/game/props/`** — the built props, **drawn by the park**: the
   **pond** in two builds (`pool`, one broad basin with stones all round; `inlet`,
   two overlapping lobes with a pebble shore at the open end) and the **bench**.

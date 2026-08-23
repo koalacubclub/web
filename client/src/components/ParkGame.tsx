@@ -43,6 +43,7 @@ import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { drawNightTree as drawSpeciesTree } from '@/game/trees'
 import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
+import { drawNightRock as drawSpeciesRock } from '@/game/rocks'
 import {
   drawParkBench,
   drawPondSurface,
@@ -2095,22 +2096,13 @@ export default function ParkGame() {
       ctx.fill()
     }
 
+    // The park's stones are the faceted art in game/rocks — a boulder, a cairn,
+    // a cluster or a slab, each with a lit top plane and a shaded flank instead
+    // of the flat ellipse this used to be. The arrangement is a function of the
+    // tile, so a given stone is always the same stone and neighbours differ.
     function drawStone(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      ctx.fillStyle = NIGHT.stone
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.6,
-        PIXEL * 0.4,
-        PIXEL * 0.25,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      drawSpeciesRock(ctx, { x: obj.x, y: obj.y })
     }
 
     // Interactive social sign on the grass: a short post + a rounded badge with a

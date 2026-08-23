@@ -10,6 +10,7 @@
 import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
 import { drawNightTree, drawTree as drawSpeciesTree } from './trees'
 import { drawFlowers as drawSpeciesFlowers, drawNightFlowers } from './flowers'
+import { drawNightRock, drawRock as drawSpeciesRock } from './rocks'
 import {
   drawBench as drawPropBench,
   drawParkBench,
@@ -156,20 +157,12 @@ function drawBall(ctx: Ctx, obj: SpriteObject, frameCount: number) {
 }
 
 function drawStone(ctx: Ctx, obj: SpriteObject) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  ctx.fillStyle = PAL.stone
-  ctx.beginPath()
-  ctx.ellipse(
-    x + PIXEL * 0.5,
-    y + PIXEL * 0.6,
-    PIXEL * 0.4,
-    PIXEL * 0.25,
-    0,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
+  const tile = { x: obj.x, y: obj.y }
+  if (IS_PARK) {
+    drawNightRock(ctx, tile)
+  } else {
+    drawSpeciesRock(ctx, tile)
+  }
 }
 
 function drawMushroom(ctx: Ctx, obj: SpriteObject) {
