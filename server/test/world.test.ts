@@ -1,4 +1,4 @@
-import { env, runInDurableObject, SELF } from 'cloudflare:test'
+import { env, reset, runInDurableObject, SELF } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_BALLS,
@@ -34,6 +34,11 @@ async function setMoveSpeed(v: number): Promise<void> {
     ;(instance as unknown as { moveSpeed: number }).moveSpeed = v
   })
 }
+
+// vitest-pool-workers isolates storage per TEST FILE, not per test, so every
+// test must explicitly roll Durable Object / KV / D1 storage back to its
+// seeded state itself. Must run before the uncapped-speed beforeEach below.
+beforeEach(() => reset())
 
 // Default every test to the uncapped speed; the anti-teleport describe overrides
 // back to REAL_SPEED in a nested beforeEach (which runs after this one).
