@@ -179,6 +179,18 @@ so the React UI and the imperative canvas never fight.
   `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with
   `pnpm dev` at `/src/game/trees/catalog.html` (dev only; the catalog imports the
   real draw functions, so it can't drift from the art).
+- **`client/src/game/flowers/`** — the same treatment for flower patches, one
+  file per species (`daisy` / `tulip` / `poppy` / `lavender` / `bluebell`) plus
+  `index.ts`, `variance.ts`, `types.ts` and its own `parkInk.ts`. A patch is one
+  tile and is **(species, form, jitter)** like a tree, but its contrast comes
+  from **how many stems** it puts up and how tall they stand rather than from
+  bloom size — a giant daisy reads as a mistake, so blooms vary only ±13%.
+  **Stems and foliage are re-inked for the park; petals are not** — `parkInk`
+  deliberately has no bloom entries, so they fall through bright, matching how
+  `drawFlowers` already treats blooms (vivid accents against the dark). Blooms
+  keep the park's `frameCount` bob. Daisies are the common wildflower, tulips
+  the rarest (a bed of them reads as planted). **Not wired into the scene yet.**
+  Preview with `pnpm dev` at `/src/game/flowers/catalog.html`.
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered
