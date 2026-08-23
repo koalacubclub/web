@@ -11,8 +11,8 @@
 
 import { useRef, useState, useEffect, type ReactNode } from 'react'
 import { motion, AnimatePresence, useInView, MotionConfig } from 'framer-motion'
-import { Instagram, Mail, ChevronDown, Github, Play } from 'lucide-react'
-import { TikTokIcon } from '@/components/TikTokIcon'
+import { Mail, ChevronDown, Github, Play } from 'lucide-react'
+import { SiInstagram, SiTiktok } from 'react-icons/si'
 import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
 import GamerControls from '@/components/GamerControls'
@@ -125,28 +125,29 @@ function ReelCard({
         {/* Legibility gradient */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
 
-        {/* Instagram glyph, top-right */}
-        <Instagram className="absolute top-2.5 right-2.5 w-4 h-4 text-white/80 drop-shadow" />
-
-        {/* TikTok mirror, top-left — only when this clip also exists there */}
-        {tiktok && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              window.open(
-                tiktokReelUrl(tiktok),
-                '_blank',
-                'noopener,noreferrer',
-              )
-            }}
-            aria-label={`Also watch on TikTok: ${caption}`}
-            className="absolute top-2 left-2 z-10 w-6 h-6 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white/80 transition-all hover:scale-110 hover:text-white hover:bg-black/60"
-          >
-            <TikTokIcon className="w-3 h-3" />
-          </button>
-        )}
+        {/* Platform glyphs, top-right — Instagram always, TikTok mirror only
+            when this clip also exists there */}
+        <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+          <SiInstagram className="w-4 h-4 text-white/90 drop-shadow-sm" />
+          {tiktok && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                window.open(
+                  tiktokReelUrl(tiktok),
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }}
+              aria-label={`Also watch on TikTok: ${caption}`}
+              className="text-white/90 drop-shadow-sm transition-transform hover:scale-110 hover:text-white"
+            >
+              <SiTiktok className="w-4 h-4" />
+            </button>
+          )}
+        </div>
 
         {/* Play affordance */}
         <div className="absolute inset-0 flex items-center justify-center">
@@ -401,7 +402,7 @@ function HeroControls() {
           className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
           aria-label="Instagram"
         >
-          <Instagram className="w-4 h-4" />
+          <SiInstagram className="w-4 h-4" />
         </a>
         <a
           href="https://tiktok.com/@koalacubclub"
@@ -410,7 +411,7 @@ function HeroControls() {
           className="w-8 h-8 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/20 hover:scale-110 transition-all duration-300"
           aria-label="TikTok"
         >
-          <TikTokIcon className="w-4 h-4" />
+          <SiTiktok className="w-4 h-4" />
         </a>
       </div>
 
@@ -620,12 +621,12 @@ function ContentPanel() {
           <Reveal className="container mt-10 sm:mt-14 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
             <SocialPill
               href={IG_PROFILE}
-              icon={<Instagram className="w-4 h-4" />}
+              icon={<SiInstagram className="w-4 h-4" />}
               label="Instagram"
             />
             <SocialPill
               href="https://tiktok.com/@koalacubclub"
-              icon={<TikTokIcon className="w-4 h-4" />}
+              icon={<SiTiktok className="w-4 h-4" />}
               label="TikTok"
             />
           </Reveal>
@@ -662,7 +663,7 @@ function ContentPanel() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white/80 hover:border-white/15 hover:bg-white/[0.07] transition-all duration-400 text-xs font-light"
                   >
-                    <Instagram className="w-3.5 h-3.5" />
+                    <SiInstagram className="w-3.5 h-3.5" />
                     <span>Instagram</span>
                   </a>
                   <a
@@ -671,7 +672,7 @@ function ContentPanel() {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white/80 hover:border-white/15 hover:bg-white/[0.07] transition-all duration-400 text-xs font-light"
                   >
-                    <TikTokIcon className="w-3.5 h-3.5" />
+                    <SiTiktok className="w-3.5 h-3.5" />
                     <span>TikTok</span>
                   </a>
                   <a
