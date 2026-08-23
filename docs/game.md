@@ -306,7 +306,7 @@ mushrooms, etc.), give the placement rhythm — do NOT line things up:
   (clamped to 100ms so a tab-resume can't teleport anything): the cat moves at
   `0.0021 tiles/ms × dt`, `frameCount` advances as a real-time clock
   (`+= dt × 0.06`, i.e. 60fps-frame units) so every `sin(frameCount·k)` animation
-  keeps pace, and per-frame integrations (butterflies, popups, the idle timer)
+  keeps pace, and per-frame integrations (popups, the idle timer)
   scale by the same factor.
 
 See [perf-main-thread-plan.md](./perf-main-thread-plan.md) for the broader
