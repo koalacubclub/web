@@ -209,18 +209,20 @@ function lilyPad(
   }
 }
 
-export function drawPond(
+/**
+ * Everything below the waterline: the bank, the water itself and its shallow
+ * shelf. Returns the outline so the caller can keep using it — ParkGame clips
+ * reflections to exactly this path before drawing the surface pass over them.
+ */
+export function drawPondWater(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, shapeSeed, form, ink }: PondDrawArgs,
-): void {
+  { shapeSeed, form, ink }: Omit<PondDrawArgs, 'rng'>,
+): Pt[][] {
   const t = POND_TONES
-  // Planting and glints roll off `rng`; the basin's shape rolls off its own
-  // seed, so the outline is a function of tile and form alone and can be rebuilt
-  // by anything that needs to trace the same water later.
-  const j = jitter(rng)
-  const lobes = pondLobes(px, py, form, jitter(makeRng(shapeSeed)))
+  const shape = jitter(makeRng(shapeSeed))
+  const lobes = pondLobes(px, py, form, shape)
   const rings = pondRings(px, py, form, makeRng(shapeSeed))
   // The bank is the water's OWN ring pushed outward, not a second roll — give it
   // its own wobble and it reads as a puddle sitting inside another puddle.
@@ -242,8 +244,7 @@ export function drawPond(
   pondPath(ctx, rings)
   ctx.fill()
 
-  // Everything inside the water is clipped to it — the shallow shelf runs right
-  // up to the rim, and clipping is what keeps it from spilling over.
+  // The shallow shelf runs right up to the rim, so it is clipped to the water.
   ctx.save()
   pondPath(ctx, rings)
   ctx.clip()
@@ -253,7 +254,32 @@ export function drawPond(
     ctx.ellipse(l.cx, l.cy + l.ry * 0.72, l.rx * 0.86, l.ry * 0.42, 0, 0, TAU)
     ctx.fill()
   }
-  // Surface glints: a couple of flat strokes catching the light.
+  ctx.restore()
+
+  return rings
+}
+
+/**
+ * Everything at and above the waterline: surface glints, the stone rim, the
+ * pebble shore and the planting. Drawn after any reflections, so a reflected
+ * koala passes behind the reeds rather than over them.
+ */
+export function drawPondSurface(
+  ctx: Ctx,
+  px: number,
+  py: number,
+  { rng, shapeSeed, form, ink }: PondDrawArgs,
+): void {
+  const t = POND_TONES
+  const j = jitter(rng)
+  const shape = jitter(makeRng(shapeSeed))
+  const lobes = pondLobes(px, py, form, shape)
+  const rings = pondRings(px, py, form, makeRng(shapeSeed))
+
+  // Glints sit ON the water, so they clip to it.
+  ctx.save()
+  pondPath(ctx, rings)
+  ctx.clip()
   ctx.strokeStyle = ink(t.glint)
   ctx.lineCap = 'round'
   ctx.lineWidth = SCALE * 0.7
@@ -277,7 +303,6 @@ export function drawPond(
   const stones = form === 0 ? 7 + Math.round(j.d * 3) : 4 + Math.round(j.d * 2)
   const step = ring.length / stones
   for (let i = 0; i < stones; i++) {
-    // Uneven steps around the ring, so stones bunch and gap.
     const idx = Math.floor((i + rng() * 0.8) * step) % ring.length
     const src = form === 1 && idx > ring.length / 2 ? far : ring
     const p = src[idx % src.length]
@@ -338,4 +363,19 @@ export function drawPond(
       ink,
     )
   }
+}
+
+/**
+ * The whole pond in one call — water then surface, with nothing between. The
+ * park draws the two passes itself so it can slide reflections in; the catalog
+ * and the shop preview, which have nothing to reflect, use this.
+ */
+export function drawPond(
+  ctx: Ctx,
+  px: number,
+  py: number,
+  args: PondDrawArgs,
+): void {
+  drawPondWater(ctx, px, py, args)
+  drawPondSurface(ctx, px, py, args)
 }

@@ -14,7 +14,12 @@
 import { PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
 import { drawBench as drawBenchArt } from './bench'
-import { drawPond as drawPondArt, pondRings } from './pond'
+import {
+  drawPond as drawPondArt,
+  drawPondSurface as drawPondSurfaceArt,
+  drawPondWater as drawPondWaterArt,
+  pondRings,
+} from './pond'
 import type { Ctx, Ink, PondForm, PropTile } from './types'
 
 export type { Ctx, Ink, Lobe, PondForm, PropTile } from './types'
@@ -91,6 +96,57 @@ export function drawBench(
     rng: seedAt(tile.x, tile.y, SEED_ART),
     ink: opts.ink ?? ((c) => c),
   })
+}
+
+/**
+ * The pond in two passes, for a caller that needs to put something BETWEEN them
+ * — which in practice means ParkGame sliding reflections into the water before
+ * the glints, stones and planting go over the top. `drawPondWater` returns the
+ * outline it filled, so the reflections can be clipped to exactly that shape.
+ *
+ * Anything with nothing to reflect (the catalog, the shop preview) should call
+ * `drawPond` instead and not think about passes at all.
+ */
+export function drawPondWater(
+  ctx: Ctx,
+  tile: PropTile,
+  opts: DrawPondOptions = {},
+) {
+  return drawPondWaterArt(ctx, tile.x * PIXEL, tile.y * PIXEL, {
+    shapeSeed: shapeSeedFor(tile),
+    form: opts.form ?? pondFormAt(tile.x, tile.y),
+    ink: opts.ink ?? ((c) => c),
+  })
+}
+
+export function drawPondSurface(
+  ctx: Ctx,
+  tile: PropTile,
+  opts: DrawPondOptions = {},
+): void {
+  drawPondSurfaceArt(ctx, tile.x * PIXEL, tile.y * PIXEL, {
+    rng: seedAt(tile.x, tile.y, SEED_ART),
+    shapeSeed: shapeSeedFor(tile),
+    form: opts.form ?? pondFormAt(tile.x, tile.y),
+    ink: opts.ink ?? ((c) => c),
+  })
+}
+
+/**
+ * Bounding box of the pond's outline, in logical px. The park needs it to size
+ * the baked sky reflection and the water wash — both of which used to be sized
+ * off a fixed ellipse, and now have to follow whatever shape the tile rolled.
+ */
+export function pondBounds(tile: PropTile, form?: PondForm) {
+  const pts = pondOutline(tile, form).flat()
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  return {
+    left: Math.min(...xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    bottom: Math.max(...ys),
+  }
 }
 
 /** Convenience for the park itself: the same draws, park-inked. */

@@ -1,12 +1,13 @@
-// Procedural pond art for ParkGame: geometry, the baked static-environment
-// reflection sprite (cached per pond), and the irregular rim stones. Extracted
-// from ParkGame so the pure parts (geometry + stone layout) can be unit-tested
-// and reused. The reflection *compositing* (mirroring cats/objects + the water
-// wash) stays in ParkGame since it needs live game state.
-import { PIXEL, SCALE, HORIZON, NIGHT, makeRng } from './constants'
+// The pond's REFLECTION machinery: which objects reflect, where a cat mirrors
+// to, and the baked static-environment sprite (cached per pond). The pond's own
+// art — water, bank, rim stones, planting — lives in game/props; this file is
+// only what needs live game state or the background canvas.
+//
+// `pondGeom` stays as the reflection's frame of reference: the mirror line and
+// the gating are about where the water SITS, which is still the tile's centre,
+// while the water's outline is now a wobbled shape the props module owns.
+import { PIXEL, HORIZON } from './constants'
 import { isVisibleX, type VisibleRange } from './culling'
-
-const TAU = Math.PI * 2
 
 export interface PondGeom {
   cx: number
@@ -22,65 +23,6 @@ export function pondGeom(x: number, y: number): PondGeom {
     cy: y * PIXEL + PIXEL,
     rx: PIXEL * 1.4,
     ry: PIXEL * 0.8,
-  }
-}
-
-export interface RimStone {
-  x: number
-  y: number
-  rx: number
-  ry: number
-  dark: boolean
-}
-
-/**
- * Deterministic rim-stone layout for a pond at tile (x, y). Seeded by tile
- * position so it's stable frame-to-frame. 8–11 stones walked around the rim in
- * uneven angular steps (squared random → mostly tight gaps that bunch into
- * clusters, with the occasional wide gap), each a jittered size/aspect so no two
- * neighbours match, hugging the waterline.
- */
-export function pondStones(x: number, y: number): RimStone[] {
-  const { cx, cy, rx, ry } = pondGeom(x, y)
-  const rng = makeRng(x * 73856093 + y * 19349663 + 7)
-  const count = 8 + Math.floor(rng() * 4) // 8–11 stones
-  const gaps: number[] = []
-  let gapTotal = 0
-  for (let i = 0; i < count; i++) {
-    const gp = 0.2 + rng() ** 2 * 2
-    gaps.push(gp)
-    gapTotal += gp
-  }
-  const base = rng() * TAU // rotate the whole ring per pond
-  const stones: RimStone[] = []
-  let acc = 0
-  for (let i = 0; i < count; i++) {
-    acc += gaps[i]
-    const angle = base + (acc / gapTotal) * TAU
-    const spread = 0.82 + rng() * 0.16 // sit right on/just inside the rim
-    const r = SCALE * (1.3 + rng() * 1.7) // mix of small + chunky stones
-    stones.push({
-      x: cx + Math.cos(angle) * rx * spread,
-      y: cy + Math.sin(angle) * ry * spread,
-      rx: r,
-      ry: r * (0.75 + rng() * 0.35),
-      dark: rng() < 0.5,
-    })
-  }
-  return stones
-}
-
-/** Draw the rim stones for a pond at tile (x, y). */
-export function drawPondStones(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-): void {
-  for (const s of pondStones(x, y)) {
-    ctx.fillStyle = s.dark ? NIGHT.stoneDark : NIGHT.stone
-    ctx.beginPath()
-    ctx.ellipse(s.x, s.y, s.rx, s.ry, 0, 0, TAU)
-    ctx.fill()
   }
 }
 

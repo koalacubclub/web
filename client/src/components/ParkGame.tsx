@@ -42,17 +42,18 @@ import { IG_PROFILE } from '@/data/reels'
 import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { drawNightTree as drawSpeciesTree } from '@/game/trees'
+import {
+  drawParkBench,
+  drawPondSurface,
+  drawPondWater,
+  pondBounds,
+  pondPath,
+} from '@/game/props'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, makeRng, HORIZON } from '@/game/constants'
-import {
-  getPondReflection,
-  drawPondStones,
-  pondGeom,
-  reflectObjects,
-  reflectCat,
-} from '@/game/pond'
+import { getPondReflection, reflectObjects, reflectCat } from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -198,19 +199,16 @@ const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
 // rather than as an unrelated green.
 const RIDGE_FAR = '#2C5357'
 
-// Pond water — deep periwinkle blue, carrying a vertical ramp (POND_DEEP at the far
-// edge, POND_WATER at the near rim) rather than one flat fill.
+// Pond water. The water's own ramp (deep at the far edge, shallower at the near
+// rim) now lives with the art in game/props — POND_TONES there, mapped to these
+// same periwinkles by that module's parkInk. What stays here is the WASH: the
+// 0.5-alpha layer laid over the reflections to submerge them.
 //
-// The ramp is centred on #4968D2, the single flat blue this pond used to be: the two
-// endpoints sit ±4.1 okL either side of it, so in OKLab they average back to exactly
-// that colour and the pond only gains depth. Keep them symmetric about it if you
-// retune — POND_WATER is ALSO the 0.5-alpha wash laid over the reflections, so
-// pulling it far off #4968D2 shifts how submerged everything in the water reads.
-// The shop's pond sprite matches this via PARK_INK['#5A97DB'] in sprites.ts, which
-// maps to #4968D2 (the mean, not either endpoint, since that sprite is a flat fill)
-// — change both together or they'll drift apart.
+// It is deliberately the near-rim blue, and the ramp is centred on #4968D2 — the
+// single flat blue this pond used to be — so the two endpoints average back to
+// exactly that colour. Pulling this far off it shifts how submerged everything in
+// the water reads, so retune it against props/parkInk.ts rather than alone.
 const POND_WATER = '#4F75E3'
-const POND_DEEP = '#435BC2'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1916,18 +1914,13 @@ export default function ParkGame() {
       drawSpeciesTree(ctx, { x: obj.x, y: obj.y })
     }
 
+    // The park's bench is the art in game/props — a slatted seat and back on a
+    // dark frame, armrests, legs with a stretcher, and a contact shadow. No
+    // variance by design: benches are municipal, and a row of them differing
+    // from each other reads as a mistake rather than as variety.
     function drawBench(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      ctx.fillStyle = NIGHT.bench
-      ctx.fillRect(x + SCALE * 3, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-      ctx.fillRect(x + PIXEL * 1.5, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-      ctx.fillStyle = NIGHT.benchLight
-      ctx.fillRect(x, y + PIXEL * 0.3, PIXEL * 2, SCALE * 4)
-      ctx.fillStyle = NIGHT.bench
-      ctx.fillRect(x, y + PIXEL * 0.2, PIXEL * 2, SCALE * 2)
-      ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
+      drawParkBench(ctx, { x: obj.x, y: obj.y })
     }
 
     function drawFlowers(obj: GameObject) {
@@ -2016,30 +2009,30 @@ export default function ParkGame() {
       }
     }
 
+    // The park's pond is the art in game/props, drawn in its two passes so the
+    // reflections can sit between them: water first, reflections clipped to the
+    // water's own outline, the wash, then the surface — glints, stone rim and
+    // planting — over the top. A reflected koala therefore passes BEHIND the
+    // reeds, which is what sells them as growing out of the water.
+    //
+    // The outline is a wobbled shape now, not an ellipse, so the clip and the
+    // wash both take it from the module rather than assuming a radius.
     function drawPond(obj: GameObject) {
       if (!ctx) return
-      const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
-      // Still water body — deeper at the far edge, shallower toward the near rim.
-      const waterGrad = ctx.createLinearGradient(0, cy - ry, 0, cy + ry)
-      waterGrad.addColorStop(0, POND_DEEP)
-      waterGrad.addColorStop(1, POND_WATER)
-      ctx.fillStyle = waterGrad
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-      ctx.fill()
-      // Reflections, clipped to the water so nothing spills past the rim. They're
-      // drawn OPAQUE (a translucent multi-shape cat would show its own overlaps),
-      // then a single translucent water wash at the end fades the whole layer
-      // uniformly so it reads as a reflection.
+      const tile = { x: obj.x, y: obj.y }
+      const rings = drawPondWater(ctx, tile)
+      const bx = pondBounds(tile)
+      const w = bx.right - bx.left
+      const h = bx.bottom - bx.top
+
       ctx.save()
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      pondPath(ctx, rings)
       ctx.clip()
       // Baked environment reflection: the mirrored static background (sky/hills/
       // grass) above the pond never changes, so it's baked once per pond (see
       // getPondReflection) and just blitted here.
       const refl = getPondReflection(bgCanvas, obj.x, obj.y)
-      if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
+      if (refl) ctx.drawImage(refl, bx.left, bx.top, w, h)
       // Object reflections: nearby scenery above the pond, mirrored into the water
       // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
       // wash below submerges them.
@@ -2083,11 +2076,11 @@ export default function ParkGame() {
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
       ctx.fillStyle = POND_WATER
-      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
+      ctx.fillRect(bx.left, bx.top, w, h)
       ctx.globalAlpha = 1
       ctx.restore()
-      // Rim stones: seeded per pond, clustered and size-varied (see pondStones).
-      drawPondStones(ctx, obj.x, obj.y)
+
+      drawPondSurface(ctx, tile)
     }
 
     function drawBall(obj: GameObject) {

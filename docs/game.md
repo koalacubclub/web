@@ -193,20 +193,20 @@ so the React UI and the imperative canvas never fight.
   sandstone is its warm sibling; tests pin granite near-neutral and sandstone
   warm, because a lilac stone is exactly what a computed grade produces. **Not
   wired into the scene yet.** Preview at `/src/game/rocks/catalog.html`.
-- **`client/src/game/props/`** — the built props: the **pond** in two builds
-  (`pool`, one broad basin with stones all round; `inlet`, two overlapping lobes
-  with a pebble shore at the open end) and the **bench**, rebuilt. The pond's rim
-  uses `facetedStone` from `../rocks`, so a pond's stones are the same stones as
-  the rest of the park, and `props/parkInk.ts` falls through to `../rocks/parkInk`
-  for them rather than duplicating those colours. `pondPath` traces the water's
-  outline for both the fill and the clip — wiring this in means clipping
-  reflections to the real shape, not to an ellipse that happens to be close (the
-  wired geometry and reflection cache still live in `../pond.ts`). The bench has
-  **no variance on purpose**: benches are municipal, and a row of them differing
-  reads as a mistake — a test pins that its shape is identical on every tile. It
-  gains a slatted seat and back on a dark frame, armrests, legs with a stretcher,
-  and a contact shadow. **Not wired into the scene yet.** Preview at
-  `/src/game/props/catalog.html`.
+- **`client/src/game/props/`** — the built props, **drawn by the park**: the
+  **pond** in two builds (`pool`, one broad basin with stones all round; `inlet`,
+  two overlapping lobes with a pebble shore at the open end) and the **bench**.
+  The pond's outline is a wobbled shape, not an ellipse — three low harmonics per
+  lobe, smoothed through the midpoints — and `pondOutline` rebuilds it from the
+  tile alone, which is what lets ParkGame clip reflections to the real water.
+  Its rim uses `facetedStone` from `../rocks`, and `props/parkInk.ts` falls
+  through to `../rocks/parkInk` for those colours rather than duplicating them.
+  **The pond draws in two passes** (`drawPondWater` → reflections + wash →
+  `drawPondSurface`) so a reflected koala passes _behind_ the reeds; anything with
+  nothing to reflect (the catalog, the shop preview) calls `drawPond` and ignores
+  the split. The bench has **no variance on purpose** — benches are municipal, and
+  a row of them differing reads as a mistake; a test pins its shape as identical on
+  every tile. Preview at `/src/game/props/catalog.html`.
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered

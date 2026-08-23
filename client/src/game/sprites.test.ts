@@ -28,6 +28,12 @@ function recorder() {
     translate: noop,
     scale: noop,
     clip: noop,
+    // The pond's water is a vertical ramp, so the stand-in has to hand back
+    // something with addColorStop — and the stops are colours like any other, so
+    // they get recorded too or a gradient-only sprite looks colourless here.
+    createLinearGradient: () => ({
+      addColorStop: (_stop: number, color: unknown) => push(color),
+    }),
     globalAlpha: 1,
     lineWidth: 1,
     lineCap: 'butt',
