@@ -8,6 +8,7 @@
 // caller sets up any world translate / device-resolution transform.
 
 import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
+import { drawNightTree, drawTree as drawSpeciesTree } from './trees'
 
 // Park-mode counterparts for the one-off colours the sprite art uses directly (the
 // ones not covered by the PAL palette). Hand-picked per entry, exactly like NIGHT —
@@ -19,7 +20,6 @@ const PARK_INK: Record<string, string> = {
   '#2E2E2E': '#302F30',
   '#2E5E3A': '#2D3C4E', // light-tree canopy, upper blobs — a step lighter/bluer
   '#3A2E2C': '#392F2E',
-  '#3D9C4E': '#366A57', // park tree canopy — matches drawTree's literal in ParkGame
   '#4A4A4A': '#444344',
   '#5A97DB': '#4968D2', // pond water — keep in sync with POND_WATER in ParkGame
   '#6E6E6E': '#5F5D5F',
@@ -46,6 +46,10 @@ const PARK_INK: Record<string, string> = {
 // helpers read these module-level values so their signatures stay unchanged.
 let PAL: typeof COLORS = COLORS
 let INK: (c: string) => string = (c) => c
+// Whether this draw is the in-park one. The tree art keeps its OWN bright->park
+// lookup (./trees/parkInk) covering the species palettes, which PARK_INK above
+// deliberately does not duplicate, so drawTree needs the mode rather than INK.
+let IS_PARK = false
 
 export interface SpriteObject {
   type: string
@@ -77,39 +81,16 @@ function makeRng(seed: number) {
   }
 }
 
+// Trees are the species art in ./trees — the same draw the park itself uses, so a
+// tree previewed in the shop is the tree you get when you place it. The species is
+// a function of the tile, so this needs no state of its own; it only has to pass
+// the right ink, since previews draw bright and the park draws in its own palette.
 function drawTree(ctx: Ctx, obj: SpriteObject) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 1)
-  const s = 0.9 + rng() * 0.22
-  const jx = (rng() - 0.5) * PIXEL * 0.16
-  const jy = (rng() - 0.5) * PIXEL * 0.12
-  ctx.fillStyle = PAL.treeTrunk
-  ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
-  // Match the base-map tree canopy (see drawTree in ParkGame).
-  ctx.fillStyle = INK('#3D9C4E')
-  ctx.beginPath()
-  ctx.arc(x + PIXEL + jx, y + PIXEL * 0.6 + jy, PIXEL * 0.9 * s, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = PAL.treeLeavesLight
-  ctx.beginPath()
-  ctx.arc(
-    x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
-    y + PIXEL * (0.5 + (rng() - 0.5) * 0.12),
-    PIXEL * 0.5 * s,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
-  ctx.beginPath()
-  ctx.arc(
-    x + PIXEL * (1.3 + (rng() - 0.5) * 0.16),
-    y + PIXEL * (0.4 + (rng() - 0.5) * 0.12),
-    PIXEL * 0.55 * s,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
+  if (IS_PARK) {
+    drawNightTree(ctx, { x: obj.x, y: obj.y })
+  } else {
+    drawSpeciesTree(ctx, { x: obj.x, y: obj.y })
+  }
 }
 
 function drawBench(ctx: Ctx, obj: SpriteObject) {
@@ -848,6 +829,7 @@ export function drawShopSprite(
   opts: DrawSpriteOptions = {},
 ) {
   const { now, reducedMotion } = opts
+  IS_PARK = !!opts.night
   PAL = opts.night ? NIGHT : COLORS
   INK = opts.night ? (c) => PARK_INK[c] ?? c : (c) => c
   withPlacedFlourish(ctx, obj, now, reducedMotion, () => {

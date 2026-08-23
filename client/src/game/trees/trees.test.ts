@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parkInk } from './parkInk'
 import {
+  PARK_SPECIES,
   SPECIES_WEIGHTS,
   TREE_SPECIES,
   drawTree,
@@ -64,20 +65,42 @@ function paint(
 }
 
 describe('species and form selection', () => {
-  it('is stable for a tile and independent of neighbours', () => {
+  it('is stable for a tile, and grows only the park species', () => {
     expect(treeSpeciesAt(7, 3)).toBe(treeSpeciesAt(7, 3))
     expect(treeFormAt(7, 3)).toBe(treeFormAt(7, 3))
-    // Over a patch of map, every species and both forms show up.
+    // Over a patch of map every PARK species shows up, and nothing else does —
+    // the maple and crabapple are drawable art the park does not grow.
     const seen = new Set<string>()
     const forms = new Set<number>()
-    for (let x = 0; x < 30; x++) {
-      for (let y = 0; y < 6; y++) {
+    for (let x = 0; x < 60; x++) {
+      for (let y = 0; y < 10; y++) {
         seen.add(treeSpeciesAt(x, y))
         forms.add(treeFormAt(x, y))
       }
     }
-    expect(seen).toEqual(new Set(TREE_SPECIES))
+    expect(seen).toEqual(new Set(PARK_SPECIES))
     expect(forms).toEqual(new Set([0, 1]))
+  })
+
+  it('grows neighbours as the same species, but varies their form', () => {
+    // Species clusters into groves so trees standing together match in kind.
+    // Whatever that grove size is, tiles sharing a corner must agree far more
+    // often than chance (3 species => ~44% agreement if rolled independently).
+    let same = 0
+    let total = 0
+    for (let x = 0; x < 60; x++) {
+      for (let y = 0; y < 10; y++) {
+        if (treeSpeciesAt(x, y) === treeSpeciesAt(x + 1, y)) same++
+        total++
+      }
+    }
+    expect(same / total).toBeGreaterThan(0.75)
+
+    // ...but the trees themselves must not be clones: within one grove, form
+    // still varies per tile, which is what keeps a stand from looking stamped.
+    const formsInGrove = new Set<number>()
+    for (let x = 0; x < 6; x++) formsInGrove.add(treeFormAt(x, 2))
+    expect(formsInGrove.size).toBe(2)
   })
 
   it('keeps the broadleaf the most common tree', () => {
@@ -90,10 +113,10 @@ describe('species and form selection', () => {
     }
     const ranked = Object.entries(counts).sort((a, b) => b[1] - a[1])
     expect(ranked[0][0]).toBe('broadleaf')
-    // Weights are a distribution, not decoration: they must sum to something
-    // every species draws from.
+    // Weights are a distribution, not decoration: every park species must draw
+    // from them, and only park species should appear in them.
     expect(Object.keys(SPECIES_WEIGHTS).sort()).toEqual(
-      [...TREE_SPECIES].sort(),
+      [...PARK_SPECIES].sort(),
     )
   })
 })

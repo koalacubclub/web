@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { drawShopSprite } from './sprites'
 import { COLORS, NIGHT } from './constants'
 import { SHOP_ITEMS } from './shopItems'
+import { parkInk } from './trees/parkInk'
 
 // A minimal CanvasRenderingContext2D stand-in that records every colour assigned
 // to fillStyle / strokeStyle (and no-ops the actual drawing) so we can assert how
@@ -58,16 +59,21 @@ describe('drawShopSprite night tinting', () => {
   })
 
   it('tints tree foliage for placed decor', () => {
-    // The canopy uses a fixed leaf tone (matched to the base-map trees), swapped for
-    // its park tone in-game and left bright for the preview. Both are hand-picked
-    // literals (see PARK_INK in sprites.ts), so they're pinned here on purpose.
-    const CANOPY = '#3D9C4E'
-    const CANOPY_PARK = '#366A57'
+    // Trees are the species art in ./trees, which owns its own bright->park lookup
+    // (parkInk) rather than sprites' PARK_INK. Which species tile (2, 2) grows is a
+    // property of that module, so pinning one species' canopy hex here would make
+    // this test fail the day the species weights are retuned. Assert the mapping
+    // itself instead: every bright colour parkInk knows about is gone from the park
+    // render, and its park counterpart is there in its place.
     const dark = paint('tree', 2, 2, true)
-    expect(dark).toContain(CANOPY_PARK)
-    expect(dark).not.toContain(CANOPY)
     const bright = paint('tree', 2, 2)
-    expect(bright).toContain(CANOPY)
+    expect(bright.length).toBeGreaterThan(0)
+    const remapped = bright.filter((c) => parkInk(c) !== c)
+    expect(remapped.length).toBeGreaterThan(0)
+    for (const c of remapped) {
+      expect(dark).not.toContain(c)
+      expect(dark).toContain(parkInk(c))
+    }
   })
 
   it('draws drifting music notes only when the radio is playing', () => {

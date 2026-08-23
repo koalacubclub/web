@@ -41,6 +41,7 @@ import {
 import { IG_PROFILE } from '@/data/reels'
 import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
+import { drawNightTree as drawSpeciesTree } from '@/game/trees'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
@@ -1902,55 +1903,17 @@ export default function ParkGame() {
       ctx.fillText('Zzz', bubbleX + s * 2, bubbleY)
     }
 
+    // The park's trees are the species art in game/trees — broadleaf, pine,
+    // crabapple, maple and willow, each in two builds and jittered per tree. The
+    // species is a function of the tile, so a given tree is always the same tree
+    // and neighbours differ; nothing needs storing on the object.
+    //
+    // A tree occupies the 2x2 footprint at (obj.x, obj.y), which is what every
+    // tree object in the map already declares (w: 2, h: 2). Canopies overhang
+    // that footprint, exactly as the old three-blob art did.
     function drawTree(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      // Keep the original clean 3-blob canopy, but nudge scale + blob offsets a
-      // little per tree (seeded by tile position) so they aren't all identical.
-      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 1)
-      const s = 0.9 + rng() * 0.22 // overall canopy scale
-      const jx = (rng() - 0.5) * PIXEL * 0.16 // main-blob jitter
-      const jy = (rng() - 0.5) * PIXEL * 0.12
-
-      // Trunk (original fixed shape).
-      ctx.fillStyle = NIGHT.treeTrunk
-      ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
-
-      // Main (darker) canopy blob — the deep blue-green base leaf tone, darker than
-      // NIGHT.treeLeavesLight below so the two blob layers stay distinct. The shop's
-      // tree sprite matches it via PARK_INK['#3D9C4E'] in sprites.ts.
-      ctx.fillStyle = '#366A57'
-      ctx.beginPath()
-      ctx.arc(
-        x + PIXEL + jx,
-        y + PIXEL * 0.6 + jy,
-        PIXEL * 0.9 * s,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-
-      // Two lighter blobs (upper-left + upper-right), each slightly jittered.
-      ctx.fillStyle = NIGHT.treeLeavesLight
-      ctx.beginPath()
-      ctx.arc(
-        x + PIXEL * (0.7 + (rng() - 0.5) * 0.16),
-        y + PIXEL * (0.5 + (rng() - 0.5) * 0.12),
-        PIXEL * 0.5 * s,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(
-        x + PIXEL * (1.3 + (rng() - 0.5) * 0.16),
-        y + PIXEL * (0.4 + (rng() - 0.5) * 0.12),
-        PIXEL * 0.55 * s,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      drawSpeciesTree(ctx, { x: obj.x, y: obj.y })
     }
 
     function drawBench(obj: GameObject) {
