@@ -42,17 +42,20 @@ import { IG_PROFILE } from '@/data/reels'
 import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { drawNightTree as drawSpeciesTree } from '@/game/trees'
+import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
+import { drawNightRock as drawSpeciesRock } from '@/game/rocks'
+import {
+  drawParkBench,
+  drawPondSurface,
+  drawPondWater,
+  pondBounds,
+  pondPath,
+} from '@/game/props'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, makeRng, HORIZON } from '@/game/constants'
-import {
-  getPondReflection,
-  drawPondStones,
-  pondGeom,
-  reflectObjects,
-  reflectCat,
-} from '@/game/pond'
+import { getPondReflection, reflectObjects, reflectCat } from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -190,7 +193,6 @@ const GRASS_SHADES: readonly (readonly [string, string])[] = [
 const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
 
 const GRASS_TOP = '#76947F' // the sage itself, flat, for the front ridge
-const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
 
 // The far ridge along the skyline. It's the same cooling-with-darkness line the
 // patches run down, carried out to okL 41.5: at H 204° it lands right where the
@@ -198,19 +200,16 @@ const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
 // rather than as an unrelated green.
 const RIDGE_FAR = '#2C5357'
 
-// Pond water — deep periwinkle blue, carrying a vertical ramp (POND_DEEP at the far
-// edge, POND_WATER at the near rim) rather than one flat fill.
+// Pond water. The water's own ramp (deep at the far edge, shallower at the near
+// rim) now lives with the art in game/props — POND_TONES there, mapped to these
+// same periwinkles by that module's parkInk. What stays here is the WASH: the
+// 0.5-alpha layer laid over the reflections to submerge them.
 //
-// The ramp is centred on #4968D2, the single flat blue this pond used to be: the two
-// endpoints sit ±4.1 okL either side of it, so in OKLab they average back to exactly
-// that colour and the pond only gains depth. Keep them symmetric about it if you
-// retune — POND_WATER is ALSO the 0.5-alpha wash laid over the reflections, so
-// pulling it far off #4968D2 shifts how submerged everything in the water reads.
-// The shop's pond sprite matches this via PARK_INK['#5A97DB'] in sprites.ts, which
-// maps to #4968D2 (the mean, not either endpoint, since that sprite is a flat fill)
-// — change both together or they'll drift apart.
+// It is deliberately the near-rim blue, and the ramp is centred on #4968D2 — the
+// single flat blue this pond used to be — so the two endpoints average back to
+// exactly that colour. Pulling this far off it shifts how submerged everything in
+// the water reads, so retune it against props/parkInk.ts rather than alone.
 const POND_WATER = '#4F75E3'
-const POND_DEEP = '#435BC2'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1916,55 +1915,29 @@ export default function ParkGame() {
       drawSpeciesTree(ctx, { x: obj.x, y: obj.y })
     }
 
+    // The park's bench is the art in game/props — a slatted seat and back on a
+    // dark frame, armrests, legs with a stretcher, and a contact shadow. No
+    // variance by design: benches are municipal, and a row of them differing
+    // from each other reads as a mistake rather than as variety.
     function drawBench(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      ctx.fillStyle = NIGHT.bench
-      ctx.fillRect(x + SCALE * 3, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-      ctx.fillRect(x + PIXEL * 1.5, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-      ctx.fillStyle = NIGHT.benchLight
-      ctx.fillRect(x, y + PIXEL * 0.3, PIXEL * 2, SCALE * 4)
-      ctx.fillStyle = NIGHT.bench
-      ctx.fillRect(x, y + PIXEL * 0.2, PIXEL * 2, SCALE * 2)
-      ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
+      drawParkBench(ctx, { x: obj.x, y: obj.y })
     }
 
+    // The park's flowers are the species art in game/flowers — daisy, tulip,
+    // poppy, lavender and bluebell, each in two builds and jittered per patch.
+    // Like the trees, the species is a function of the tile, so a patch is always
+    // the same patch and neighbours differ.
+    //
+    // frameCount drives the bob the blooms have always had; the species art keeps
+    // it, phase-shifted per stem rather than moving the whole patch as one.
     function drawFlowers(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      // Per-patch randomness (seeded by tile position) so each flower cluster has
-      // its own count / colours / sizes / scatter instead of all looking alike.
-      // Bright (un-graded) petals so the blooms pop as vivid accents at night.
-      const palette = [
-        COLORS.flower1,
-        COLORS.flower2,
-        COLORS.flower3,
-        COLORS.heart,
-        COLORS.butterfly,
-      ]
-      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-      const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
-      const count = 3 + Math.floor(rng() * 2) // 3–4 blooms
-      let fx = x + PIXEL * 0.08
-      for (let i = 0; i < count; i++) {
-        const cxp = fx + SCALE * 2.5
-        const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
-        const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
-        const stemH = SCALE * 4
-        ctx.fillStyle = GRASS_BOTTOM
-        ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
-        ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
-        ctx.beginPath()
-        ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = '#FFF07A' // brighter yellow flower center
-        ctx.beginPath()
-        ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
-        ctx.fill()
-        fx += SCALE * (3.6 + rng() * 1.8)
-      }
+      drawSpeciesFlowers(
+        ctx,
+        { x: obj.x, y: obj.y },
+        { frameCount: g.frameCount },
+      )
     }
 
     // Visible slice of the map in logical-x (thin wrapper over the pure
@@ -2016,30 +1989,30 @@ export default function ParkGame() {
       }
     }
 
+    // The park's pond is the art in game/props, drawn in its two passes so the
+    // reflections can sit between them: water first, reflections clipped to the
+    // water's own outline, the wash, then the surface — glints, stone rim and
+    // planting — over the top. A reflected koala therefore passes BEHIND the
+    // reeds, which is what sells them as growing out of the water.
+    //
+    // The outline is a wobbled shape now, not an ellipse, so the clip and the
+    // wash both take it from the module rather than assuming a radius.
     function drawPond(obj: GameObject) {
       if (!ctx) return
-      const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
-      // Still water body — deeper at the far edge, shallower toward the near rim.
-      const waterGrad = ctx.createLinearGradient(0, cy - ry, 0, cy + ry)
-      waterGrad.addColorStop(0, POND_DEEP)
-      waterGrad.addColorStop(1, POND_WATER)
-      ctx.fillStyle = waterGrad
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-      ctx.fill()
-      // Reflections, clipped to the water so nothing spills past the rim. They're
-      // drawn OPAQUE (a translucent multi-shape cat would show its own overlaps),
-      // then a single translucent water wash at the end fades the whole layer
-      // uniformly so it reads as a reflection.
+      const tile = { x: obj.x, y: obj.y }
+      const rings = drawPondWater(ctx, tile)
+      const bx = pondBounds(tile)
+      const w = bx.right - bx.left
+      const h = bx.bottom - bx.top
+
       ctx.save()
-      ctx.beginPath()
-      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      pondPath(ctx, rings)
       ctx.clip()
       // Baked environment reflection: the mirrored static background (sky/hills/
       // grass) above the pond never changes, so it's baked once per pond (see
       // getPondReflection) and just blitted here.
       const refl = getPondReflection(bgCanvas, obj.x, obj.y)
-      if (refl) ctx.drawImage(refl, cx - rx, cy - ry, rx * 2, ry * 2)
+      if (refl) ctx.drawImage(refl, bx.left, bx.top, w, h)
       // Object reflections: nearby scenery above the pond, mirrored into the water
       // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
       // wash below submerges them.
@@ -2083,11 +2056,11 @@ export default function ParkGame() {
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
       ctx.fillStyle = POND_WATER
-      ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
+      ctx.fillRect(bx.left, bx.top, w, h)
       ctx.globalAlpha = 1
       ctx.restore()
-      // Rim stones: seeded per pond, clustered and size-varied (see pondStones).
-      drawPondStones(ctx, obj.x, obj.y)
+
+      drawPondSurface(ctx, tile)
     }
 
     function drawBall(obj: GameObject) {
@@ -2123,22 +2096,13 @@ export default function ParkGame() {
       ctx.fill()
     }
 
+    // The park's stones are the faceted art in game/rocks — a boulder, a cairn,
+    // a cluster or a slab, each with a lit top plane and a shaded flank instead
+    // of the flat ellipse this used to be. The arrangement is a function of the
+    // tile, so a given stone is always the same stone and neighbours differ.
     function drawStone(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      ctx.fillStyle = NIGHT.stone
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.6,
-        PIXEL * 0.4,
-        PIXEL * 0.25,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
+      drawSpeciesRock(ctx, { x: obj.x, y: obj.y })
     }
 
     // Interactive social sign on the grass: a short post + a rounded badge with a

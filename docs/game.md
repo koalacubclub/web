@@ -174,9 +174,11 @@ so the React UI and the imperative canvas never fight.
   so the contrast lands in the canopy where it reads; everything is measured up
   from the trunk's foot, so a tree scales as one thing and always stands on the
   ground. A tile draws the same tree on every frame and every reload. Weighted so the
-  broadleaf stays the park's backbone. Colours pass through an `ink` fn (`night`
-  in the park, identity for bright previews). **Not wired into the scene yet** —
-  `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with
+  broadleaf stays the park's backbone. Colours pass through an `ink` fn — its own
+  `parkInk.ts` in the park, identity for bright previews. **Drawn by the park**
+  (`ParkGame` and `sprites.ts` both route through it, so a tree previewed in the
+  shop is the tree you place); only broadleaf, pine and willow grow out there,
+  with maple and crabapple reserved as feature trees. Preview every species with
   `pnpm dev` at `/src/game/trees/catalog.html` (dev only; the catalog imports the
   real draw functions, so it can't drift from the art).
 - **`client/src/game/flowers/`** — the same treatment for flower patches, one
@@ -189,8 +191,9 @@ so the React UI and the imperative canvas never fight.
   deliberately has no bloom entries, so they fall through bright, matching how
   `drawFlowers` already treats blooms (vivid accents against the dark). Blooms
   keep the park's `frameCount` bob. Daisies are the common wildflower, tulips
-  the rarest (a bed of them reads as planted). **Not wired into the scene yet.**
-  Preview with `pnpm dev` at `/src/game/flowers/catalog.html`.
+  the rarest (a bed of them reads as planted). **Drawn by the park** — `ParkGame`
+  and `sprites.ts` both route through it, so a patch previewed in the shop is the
+  patch you place. Preview with `pnpm dev` at `/src/game/flowers/catalog.html`.
 - **`client/src/game/rocks/`** — the same treatment for stones, one file per
   arrangement (`boulder` / `stack` / `cluster` / `slab`) over a shared
   `facet.ts`, plus its own `parkInk.ts`. Every stone is an **angular silhouette
@@ -203,22 +206,24 @@ so the React UI and the imperative canvas never fight.
   filtered scatter of vertices — a filtered set wraps around and self-intersects,
   which renders as broken glass. Granite sits in the `NIGHT.stone` family and
   sandstone is its warm sibling; tests pin granite near-neutral and sandstone
-  warm, because a lilac stone is exactly what a computed grade produces. **Not
-  wired into the scene yet.** Preview at `/src/game/rocks/catalog.html`.
-- **`client/src/game/props/`** — the built props: the **pond** in two builds
-  (`pool`, one broad basin with stones all round; `inlet`, two overlapping lobes
-  with a pebble shore at the open end) and the **bench**, rebuilt. The pond's rim
-  uses `facetedStone` from `../rocks`, so a pond's stones are the same stones as
-  the rest of the park, and `props/parkInk.ts` falls through to `../rocks/parkInk`
-  for them rather than duplicating those colours. `pondPath` traces the water's
-  outline for both the fill and the clip — wiring this in means clipping
-  reflections to the real shape, not to an ellipse that happens to be close (the
-  wired geometry and reflection cache still live in `../pond.ts`). The bench has
-  **no variance on purpose**: benches are municipal, and a row of them differing
-  reads as a mistake — a test pins that its shape is identical on every tile. It
-  gains a slatted seat and back on a dark frame, armrests, legs with a stretcher,
-  and a contact shadow. **Not wired into the scene yet.** Preview at
-  `/src/game/props/catalog.html`.
+  warm, because a lilac stone is exactly what a computed grade produces. **Drawn
+  by the park** — `ParkGame` and `sprites.ts` both route through it, replacing the
+  flat ellipse the `stone` objects used to be, and the pond's rim already used
+  `facetedStone` from here. Preview at `/src/game/rocks/catalog.html`.
+- **`client/src/game/props/`** — the built props, **drawn by the park**: the
+  **pond** in two builds (`pool`, one broad basin with stones all round; `inlet`,
+  two overlapping lobes with a pebble shore at the open end) and the **bench**.
+  The pond's outline is a wobbled shape, not an ellipse — three low harmonics per
+  lobe, smoothed through the midpoints — and `pondOutline` rebuilds it from the
+  tile alone, which is what lets ParkGame clip reflections to the real water.
+  Its rim uses `facetedStone` from `../rocks`, and `props/parkInk.ts` falls
+  through to `../rocks/parkInk` for those colours rather than duplicating them.
+  **The pond draws in two passes** (`drawPondWater` → reflections + wash →
+  `drawPondSurface`) so a reflected koala passes _behind_ the reeds; anything with
+  nothing to reflect (the catalog, the shop preview) calls `drawPond` and ignores
+  the split. The bench has **no variance on purpose** — benches are municipal, and
+  a row of them differing reads as a mistake; a test pins its shape as identical on
+  every tile. Preview at `/src/game/props/catalog.html`.
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered

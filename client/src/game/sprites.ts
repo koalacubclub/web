@@ -9,6 +9,14 @@
 
 import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
 import { drawNightTree, drawTree as drawSpeciesTree } from './trees'
+import { drawFlowers as drawSpeciesFlowers, drawNightFlowers } from './flowers'
+import { drawNightRock, drawRock as drawSpeciesRock } from './rocks'
+import {
+  drawBench as drawPropBench,
+  drawParkBench,
+  drawPond as drawPropPond,
+  drawParkPond,
+} from './props'
 
 // Park-mode counterparts for the one-off colours the sprite art uses directly (the
 // ones not covered by the PAL palette). Hand-picked per entry, exactly like NIGHT —
@@ -21,10 +29,8 @@ const PARK_INK: Record<string, string> = {
   '#2E5E3A': '#2D3C4E', // light-tree canopy, upper blobs — a step lighter/bluer
   '#3A2E2C': '#392F2E',
   '#4A4A4A': '#444344',
-  '#5A97DB': '#4968D2', // pond water — keep in sync with POND_WATER in ParkGame
   '#6E6E6E': '#5F5D5F',
   '#767A80': '#65656D',
-  '#84B2F0': '#697CE2', // pond highlight — same periwinkle, lighter and duller
   '#8C877E': '#766F6A',
   '#8C9096': '#75767E',
   '#8E3E37': '#7A3733',
@@ -94,91 +100,27 @@ function drawTree(ctx: Ctx, obj: SpriteObject) {
 }
 
 function drawBench(ctx: Ctx, obj: SpriteObject) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  ctx.fillStyle = PAL.bench
-  ctx.fillRect(x + SCALE * 3, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-  ctx.fillRect(x + PIXEL * 1.5, y + PIXEL * 0.5, SCALE * 3, PIXEL * 0.5)
-  ctx.fillStyle = PAL.benchLight
-  ctx.fillRect(x, y + PIXEL * 0.3, PIXEL * 2, SCALE * 4)
-  ctx.fillStyle = PAL.bench
-  ctx.fillRect(x, y + PIXEL * 0.2, PIXEL * 2, SCALE * 2)
-  ctx.fillRect(x, y, PIXEL * 2, SCALE * 3)
-}
-
-function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  // Bright (un-graded) petals so blooms pop as vivid accents (matches base-map).
-  const palette = [
-    COLORS.flower1,
-    COLORS.flower2,
-    COLORS.flower3,
-    COLORS.heart,
-    COLORS.butterfly,
-  ]
-  const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-  const bobOffset = Math.sin(frameCount * 0.05 + obj.x) * 2
-  const count = 3 + Math.floor(rng() * 2)
-  let fx = x + PIXEL * 0.08
-  for (let i = 0; i < count; i++) {
-    const cxp = fx + SCALE * 2.5
-    const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
-    const petalR = SCALE * 2.5
-    const stemH = SCALE * 4
-    ctx.fillStyle = PAL.grassDark
-    ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
-    ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
-    ctx.beginPath()
-    ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#FFF07A' // brighter yellow flower center
-    ctx.beginPath()
-    ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
-    ctx.fill()
-    fx += SCALE * (3.6 + rng() * 1.8)
+  if (IS_PARK) {
+    drawParkBench(ctx, { x: obj.x, y: obj.y })
+  } else {
+    drawPropBench(ctx, { x: obj.x, y: obj.y })
   }
 }
 
-function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  const wobble = Math.sin(frameCount * 0.03) * 2
-  // Match the base-map pond (see drawPond in ParkGame). This sprite is a flat fill,
-  // so in park mode PARK_INK maps it to the MEAN of that pond's periwinkle ramp
-  // rather than to either endpoint; in the shop preview it stays the bright blue.
-  ctx.fillStyle = INK('#5A97DB')
-  ctx.beginPath()
-  ctx.ellipse(
-    x + PIXEL * 1.5,
-    y + PIXEL + wobble * 0.1,
-    PIXEL * 1.4,
-    PIXEL * 0.8,
-    0,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
-  ctx.fillStyle = INK('#84B2F0')
-  ctx.beginPath()
-  ctx.ellipse(
-    x + PIXEL * 1.2,
-    y + PIXEL * 0.8,
-    PIXEL * 0.4,
-    PIXEL * 0.2,
-    -0.3,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * Math.PI * 2
-    const sx = x + PIXEL * 1.5 + Math.cos(angle) * PIXEL * 1.3
-    const sy = y + PIXEL + Math.sin(angle) * PIXEL * 0.7
-    ctx.fillStyle = i % 2 === 0 ? PAL.stone : PAL.stoneDark
-    ctx.beginPath()
-    ctx.arc(sx, sy, SCALE * 2, 0, Math.PI * 2)
-    ctx.fill()
+function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
+  const tile = { x: obj.x, y: obj.y }
+  if (IS_PARK) {
+    drawNightFlowers(ctx, tile, { frameCount })
+  } else {
+    drawSpeciesFlowers(ctx, tile, { frameCount })
+  }
+}
+
+function drawPond(ctx: Ctx, obj: SpriteObject) {
+  if (IS_PARK) {
+    drawParkPond(ctx, { x: obj.x, y: obj.y })
+  } else {
+    drawPropPond(ctx, { x: obj.x, y: obj.y })
   }
 }
 
@@ -215,20 +157,12 @@ function drawBall(ctx: Ctx, obj: SpriteObject, frameCount: number) {
 }
 
 function drawStone(ctx: Ctx, obj: SpriteObject) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  ctx.fillStyle = PAL.stone
-  ctx.beginPath()
-  ctx.ellipse(
-    x + PIXEL * 0.5,
-    y + PIXEL * 0.6,
-    PIXEL * 0.4,
-    PIXEL * 0.25,
-    0,
-    0,
-    Math.PI * 2,
-  )
-  ctx.fill()
+  const tile = { x: obj.x, y: obj.y }
+  if (IS_PARK) {
+    drawNightRock(ctx, tile)
+  } else {
+    drawSpeciesRock(ctx, tile)
+  }
 }
 
 function drawMushroom(ctx: Ctx, obj: SpriteObject) {
@@ -844,7 +778,7 @@ export function drawShopSprite(
         drawFlowers(ctx, obj, frameCount)
         break
       case 'pond':
-        drawPond(ctx, obj, frameCount)
+        drawPond(ctx, obj)
         break
       case 'ball':
         drawBall(ctx, obj, frameCount)
