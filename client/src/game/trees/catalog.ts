@@ -5,6 +5,7 @@
 import { COLORS, NIGHT, PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
 import {
+  PARK_SPECIES,
   SPECIES_WEIGHTS,
   TREE_SPECIES,
   drawTree,
@@ -115,19 +116,29 @@ function renderTreeline(): void {
 function renderGrid(): void {
   const host = document.getElementById('grid')!
   host.innerHTML = ''
-  const total = TREE_SPECIES.reduce((sum, k) => sum + SPECIES_WEIGHTS[k], 0)
+  // Only the park species carry a weight; the rest are drawable art the park
+  // does not currently grow (see PARK_SPECIES).
+  const parkShare = (species: TreeSpecies): number | null =>
+    (PARK_SPECIES as readonly TreeSpecies[]).includes(species)
+      ? SPECIES_WEIGHTS[species as (typeof PARK_SPECIES)[number]]
+      : null
+  const total = PARK_SPECIES.reduce((sum, k) => sum + SPECIES_WEIGHTS[k], 0)
 
   TREE_SPECIES.forEach((species, si) => {
     const card = document.createElement('article')
     card.className = 'card'
     const canvas = document.createElement('canvas')
     card.appendChild(canvas)
-    const share = Math.round((SPECIES_WEIGHTS[species] / total) * 100)
+    const weight = parkShare(species)
+    const share =
+      weight === null
+        ? 'not grown in the park'
+        : `${Math.round((weight / total) * 100)}% of trees`
     const body = document.createElement('div')
     body.className = 'card-body'
     body.innerHTML =
       `<h3>${species}</h3>` +
-      `<p class="meta">form 0 · form 1 · form 0 — ${share}% of trees</p>` +
+      `<p class="meta">form 0 · form 1 · form 0 — ${share}</p>` +
       `<p class="file">trees/${species === 'broadleaf' ? 'broadleaf' : species}.ts</p>`
     card.appendChild(body)
     host.appendChild(card)
