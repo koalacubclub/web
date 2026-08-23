@@ -17,7 +17,7 @@ import ParkGame from '@/components/ParkGame'
 import BottomBar from '@/components/BottomBar'
 import GamerControls from '@/components/GamerControls'
 import * as controls from '@/game/controlsStore'
-import { IG_PROFILE, REELS, reelUrl } from '@/data/reels'
+import { IG_PROFILE, REELS, reelUrl, tiktokReelUrl } from '@/data/reels'
 import { reelSrc, reelSrcSet } from '@/data/reelPosters'
 import {
   FOLLOWERS,
@@ -77,10 +77,12 @@ function Reveal({
 function ReelCard({
   code,
   caption,
+  tiktok,
   index,
 }: {
   code: string
   caption: string
+  tiktok?: string
   index: number
 }) {
   const ref = useRef(null)
@@ -125,6 +127,26 @@ function ReelCard({
 
         {/* Instagram glyph, top-right */}
         <Instagram className="absolute top-2.5 right-2.5 w-4 h-4 text-white/80 drop-shadow" />
+
+        {/* TikTok mirror, top-left — only when this clip also exists there */}
+        {tiktok && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              window.open(
+                tiktokReelUrl(tiktok),
+                '_blank',
+                'noopener,noreferrer',
+              )
+            }}
+            aria-label={`Also watch on TikTok: ${caption}`}
+            className="absolute top-2 left-2 z-10 w-6 h-6 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white/80 transition-all hover:scale-110 hover:text-white hover:bg-black/60"
+          >
+            <TikTokIcon className="w-3 h-3" />
+          </button>
+        )}
 
         {/* Play affordance */}
         <div className="absolute inset-0 flex items-center justify-center">
@@ -587,6 +609,7 @@ function ContentPanel() {
                   key={reel.code}
                   code={reel.code}
                   caption={reel.caption}
+                  tiktok={reel.tiktok}
                   index={index}
                 />
               ))}
