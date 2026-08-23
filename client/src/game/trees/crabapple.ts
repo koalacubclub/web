@@ -7,7 +7,7 @@
 //   form 1 — spreading: low and wide, five branches showing.
 
 import { PIXEL, SCALE } from '../constants'
-import { disc, jitter } from './variance'
+import { disc, jitter, trunkScale } from './variance'
 import type { Ctx, DrawArgs } from './types'
 
 export const CRABAPPLE_TONES = {
@@ -44,14 +44,15 @@ export function drawCrabapple(
   const foot = py + PIXEL * 2
   const cx = px + PIXEL + j.lean * 0.5
   const upright = form === 0
-  const crownY = py + PIXEL * (upright ? 0.66 : 0.88)
   const crx = PIXEL * (upright ? 0.7 : 0.92) * j.w
   const cry = PIXEL * (upright ? 0.68 : 0.54) * j.h
-  const trunkH = PIXEL * (upright ? 0.76 : 0.48)
+  const ts = trunkScale(j)
+  const trunkH = PIXEL * (upright ? 0.76 : 0.48) * ts
+  const crownY = foot - trunkH - cry * (upright ? 0.85 : 1.19)
 
   ctx.lineCap = 'round'
   ctx.strokeStyle = ink(t.trunk)
-  ctx.lineWidth = PIXEL * 0.17
+  ctx.lineWidth = PIXEL * 0.17 * ts
   ctx.beginPath()
   ctx.moveTo(cx - PIXEL * 0.04, foot)
   ctx.lineTo(cx, foot - trunkH)
@@ -60,7 +61,8 @@ export function drawCrabapple(
   ctx.strokeStyle = ink(t.branch)
   const limbs = upright ? LIMBS_UPRIGHT : LIMBS_SPREADING
   limbs.forEach(([dx, dy], i) => {
-    ctx.lineWidth = PIXEL * (i === 0 || i === limbs.length - 1 ? 0.075 : 0.095)
+    ctx.lineWidth =
+      PIXEL * (i === 0 || i === limbs.length - 1 ? 0.075 : 0.095) * ts
     ctx.beginPath()
     ctx.moveTo(cx, foot - trunkH * 0.94)
     ctx.quadraticCurveTo(

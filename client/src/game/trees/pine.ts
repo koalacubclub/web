@@ -6,7 +6,7 @@
 //   form 1 — full: shorter and broader, four tiers with a wide skirt.
 
 import { PIXEL } from '../constants'
-import { jitter } from './variance'
+import { jitter, trunkScale } from './variance'
 import type { Ctx, DrawArgs } from './types'
 
 export const PINE_TONES = {
@@ -28,13 +28,16 @@ export function drawPine(
   const spire = form === 0
   const tiers = spire ? 6 : 4
   const reach0 = PIXEL * (spire ? 0.8 : 1.04) * j.w
-  const topY = py - PIXEL * (spire ? 0.34 : 0.02) * j.h
-  const trunkH = PIXEL * (spire ? 0.42 : 0.58)
+  // The cone takes the roll; the bare trunk under it stays much the same.
+  const ts = trunkScale(j)
+  const trunkH = PIXEL * (spire ? 0.42 : 0.58) * ts
+  const coneH = PIXEL * (spire ? 1.92 : 1.44) * j.h
 
   ctx.fillStyle = ink(t.trunk)
-  ctx.fillRect(cx - PIXEL * 0.12, foot - trunkH, PIXEL * 0.24, trunkH)
+  ctx.fillRect(cx - PIXEL * 0.12 * ts, foot - trunkH, PIXEL * 0.24 * ts, trunkH)
 
   const baseY = foot - trunkH * 0.85
+  const topY = baseY - coneH
   let drift = 0
   for (let i = 0; i < tiers; i++) {
     const f = i / (tiers - 1) // 0 = bottom skirt, 1 = apex

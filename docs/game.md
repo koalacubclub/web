@@ -167,9 +167,13 @@ so the React UI and the imperative canvas never fight.
   (registry + per-tile species and form rolls), `variance.ts` (the per-tree
   jitter) and `types.ts`. A tree is **(species, form, jitter)**: the species and
   its **two builds** (upright/tall vs spreading/short) are rolled from the tile
-  via `makeRng` on separate salts, then each individual gets its own width,
-  height, density and lean — so three maples in a row are three different maples,
-  and a tile draws the same tree on every frame and every reload. Weighted so the
+  via `makeRng` on separate salts, then each individual gets its own size and
+  aspect — crowns run ~0.72×–1.62×, so the biggest neighbour is about twice the
+  smallest across and several times its volume, and three maples in a row are
+  three different maples. Trunks take only **35%** of that roll (`trunkScale`),
+  so the contrast lands in the canopy where it reads; everything is measured up
+  from the trunk's foot, so a tree scales as one thing and always stands on the
+  ground. A tile draws the same tree on every frame and every reload. Weighted so the
   broadleaf stays the park's backbone. Colours pass through an `ink` fn (`night`
   in the park, identity for bright previews). **Not wired into the scene yet** —
   `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with

@@ -6,7 +6,7 @@
 //   form 1 — broad crown: shorter, spreading instead of climbing.
 
 import { PIXEL, SCALE } from '../constants'
-import { disc, jitter } from './variance'
+import { disc, jitter, trunkScale } from './variance'
 import type { Ctx, DrawArgs } from './types'
 
 export const MAPLE_TONES = {
@@ -29,22 +29,25 @@ export function drawMaple(
   const cx = px + PIXEL + j.lean * 0.4
   const tall = form === 0
   const halfW = PIXEL * (tall ? 0.78 : 0.99) * j.w
-  const topY = py - PIXEL * (tall ? 0.5 : 0.14) * j.h
-  const botY = py + PIXEL * (tall ? 1.1 : 1.24)
+  // A near-constant clear trunk, with the crown's whole depth taking the roll —
+  // so two maples differ in canopy volume, not in leg length.
+  const ts = trunkScale(j)
+  const botY = foot - PIXEL * (tall ? 0.9 : 0.76) * ts
+  const topY = botY - PIXEL * (tall ? 1.6 : 1.38) * j.h
   const midY = (topY + botY) / 2
   const ryC = (botY - topY) / 2
 
   // Straight trunk, first limbs disappearing into the crown.
   ctx.fillStyle = ink(t.trunk)
   ctx.fillRect(
-    cx - PIXEL * 0.1,
+    cx - PIXEL * 0.1 * ts,
     botY - PIXEL * 0.15,
-    PIXEL * 0.2,
+    PIXEL * 0.2 * ts,
     foot - botY + PIXEL * 0.15,
   )
   ctx.strokeStyle = ink(t.trunk)
   ctx.lineCap = 'round'
-  ctx.lineWidth = PIXEL * 0.08
+  ctx.lineWidth = PIXEL * 0.08 * ts
   ctx.beginPath()
   ctx.moveTo(cx, botY)
   ctx.lineTo(cx - PIXEL * 0.26, botY - PIXEL * 0.3)

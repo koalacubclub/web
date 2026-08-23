@@ -91,14 +91,16 @@ function place(
 function renderTreeline(): void {
   const canvas = document.getElementById('treeline') as HTMLCanvasElement
   const cssW = 1080
-  const cssH = 330
+  // Headroom: at the top of the size range a crown climbs ~190px above its
+  // foot, so the canvas has to be taller than the ground band suggests.
+  const cssH = 400
   const ctx = setupCanvas(canvas, cssW, cssH)
-  drawGround(ctx, cssW, cssH, 196)
+  drawGround(ctx, cssW, cssH, 262)
 
   // Uneven X gaps and a staggered Y, per the park's own layout rules — trees in
   // a straight line at a constant pitch read as a fence, not a treeline.
   const xs = [-0.01, 0.115, 0.245, 0.355, 0.5, 0.63, 0.775, 0.885]
-  const ys = [118, 104, 126, 96, 122, 100, 128, 108]
+  const ys = [184, 170, 192, 162, 188, 166, 194, 174]
   xs.forEach((fx, i) => {
     const tile = { x: seed * 3 + i * 7, y: 2 + (i % 3) }
     place(ctx, fx * cssW, ys[i], tile)
@@ -125,13 +127,14 @@ function renderGrid(): void {
     card.appendChild(body)
     host.appendChild(card)
 
-    const cssW = 340
-    const cssH = 220
+    // Wide enough that a top-of-range crown's overhang stays inside the frame.
+    const cssW = 380
+    const cssH = 300
     const ctx = setupCanvas(canvas, cssW, cssH)
-    drawGround(ctx, cssW, cssH, 142)
+    drawGround(ctx, cssW, cssH, 222)
     ;([0, 1, 0] as TreeForm[]).forEach((form, i) => {
       const tile = { x: seed * 5 + si * 13 + i * 9, y: 3 + i }
-      place(ctx, 14 + i * 108, 56 + (i === 1 ? 4 : 0), tile, { species, form })
+      place(ctx, 30 + i * 110, 136 + (i === 1 ? 4 : 0), tile, { species, form })
     })
   })
 }

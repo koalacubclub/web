@@ -6,7 +6,7 @@
 //   form 1 — spreading: wider than tall, on a short trunk.
 
 import { PIXEL } from '../constants'
-import { disc, jitter } from './variance'
+import { disc, jitter, trunkScale } from './variance'
 import type { Ctx, DrawArgs } from './types'
 
 export const BROADLEAF_TONES = {
@@ -29,21 +29,24 @@ export function drawBroadleaf(
   const upright = form === 0
   const rx = PIXEL * (upright ? 0.84 : 1.04) * j.w
   const ry = PIXEL * (upright ? 0.86 : 0.64) * j.h
-  const cy = py + PIXEL * (upright ? 0.58 : 0.78)
-  const trunkH = PIXEL * (upright ? 1.06 : 0.8) * j.h
+  // Trunk barely varies; the crown takes the whole roll and sits on top of it,
+  // so a big canopy rides higher instead of swallowing the stem.
+  const ts = trunkScale(j)
+  const trunkH = PIXEL * (upright ? 1.06 : 0.8) * ts
+  const cy = foot - trunkH - ry * (upright ? 0.42 : 0.66)
 
   // Trunk: wider at the root, forking into the canopy.
   ctx.fillStyle = ink(t.trunk)
   ctx.beginPath()
-  ctx.moveTo(cx - PIXEL * 0.28, foot)
-  ctx.lineTo(cx - PIXEL * 0.14, foot - trunkH)
-  ctx.lineTo(cx + PIXEL * 0.14, foot - trunkH)
-  ctx.lineTo(cx + PIXEL * 0.28, foot)
+  ctx.moveTo(cx - PIXEL * 0.28 * ts, foot)
+  ctx.lineTo(cx - PIXEL * 0.14 * ts, foot - trunkH)
+  ctx.lineTo(cx + PIXEL * 0.14 * ts, foot - trunkH)
+  ctx.lineTo(cx + PIXEL * 0.28 * ts, foot)
   ctx.closePath()
   ctx.fill()
   ctx.strokeStyle = ink(t.trunk)
   ctx.lineCap = 'round'
-  ctx.lineWidth = PIXEL * 0.1
+  ctx.lineWidth = PIXEL * 0.1 * ts
   ctx.beginPath()
   ctx.moveTo(cx, foot - trunkH * 0.9)
   ctx.lineTo(cx - PIXEL * 0.3, foot - trunkH * 1.2)

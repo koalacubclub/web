@@ -7,7 +7,7 @@
 //   form 1 — young: narrower, crown held higher, far more trunk showing.
 
 import { PIXEL, SCALE } from '../constants'
-import { disc, jitter } from './variance'
+import { disc, jitter, trunkScale } from './variance'
 import type { Ctx, DrawArgs } from './types'
 
 export const WILLOW_TONES = {
@@ -32,10 +32,12 @@ export function drawWillow(
   const cx = px + PIXEL + j.lean * 0.4
   const great = form === 0
   const half = PIXEL * (great ? 1.0 : 0.74) * j.w
-  const crownY = py + PIXEL * (great ? 0.46 : 0.38) * j.h
-  const hemY = foot - PIXEL * (great ? 0.02 : 0.5)
-  const strands = great ? 26 : 18
-  const trunkH = PIXEL * (great ? 0.9 : 1.2)
+  const hemY = foot - PIXEL * (great ? 0.02 : 0.5) * j.h
+  // The curtain's depth is the roll; the trunk in the cave stays much the same.
+  const crownY = hemY - PIXEL * (great ? 1.52 : 1.12) * j.h
+  const strands = great ? 22 + Math.round(j.d * 8) : 15 + Math.round(j.d * 6)
+  const ts = trunkScale(j)
+  const trunkH = PIXEL * (great ? 0.9 : 1.2) * ts
 
   // Hem: deepest in the middle, drawing in at the rim, with a cave at the centre.
   const hem: { x: number; y: number }[] = []
@@ -51,6 +53,17 @@ export function drawWillow(
         rng() * PIXEL * 0.12,
     })
   }
+
+  // Trunk first: the cave in the hem leaves its lower half showing, and the
+  // curtain covers where it ends — a trunk painted on top reads as a cut stump.
+  ctx.fillStyle = ink(t.trunk)
+  ctx.beginPath()
+  ctx.moveTo(cx - PIXEL * 0.24 * ts, foot)
+  ctx.lineTo(cx - PIXEL * 0.12 * ts, foot - trunkH)
+  ctx.lineTo(cx + PIXEL * 0.12 * ts, foot - trunkH)
+  ctx.lineTo(cx + PIXEL * 0.24 * ts, foot)
+  ctx.closePath()
+  ctx.fill()
 
   ctx.fillStyle = ink(t.dark)
   ctx.beginPath()
@@ -85,16 +98,6 @@ export function drawWillow(
       b.y,
     )
   }
-  ctx.closePath()
-  ctx.fill()
-
-  // Trunk, standing in the cave the hem leaves open.
-  ctx.fillStyle = ink(t.trunk)
-  ctx.beginPath()
-  ctx.moveTo(cx - PIXEL * 0.24, foot)
-  ctx.lineTo(cx - PIXEL * 0.12, foot - trunkH)
-  ctx.lineTo(cx + PIXEL * 0.12, foot - trunkH)
-  ctx.lineTo(cx + PIXEL * 0.24, foot)
   ctx.closePath()
   ctx.fill()
 
