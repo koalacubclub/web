@@ -13,10 +13,10 @@
 // clips reflections to the water, and that clip has to be the pond's real shape,
 // not an ellipse that happens to be close.
 
-import { PIXEL, SCALE } from '../constants'
+import { PIXEL, SCALE, makeRng } from '../constants'
 import { GRANITE, SANDSTONE, facetedStone } from '../rocks'
 import { jitter } from './variance'
-import type { Ctx, Ink, Lobe, PondDrawArgs } from './types'
+import type { Ctx, Ink, Lobe, PondDrawArgs, Pt } from './types'
 
 const TAU = Math.PI * 2
 
@@ -65,25 +65,97 @@ export function pondLobes(
   ]
 }
 
+/** How many points each lobe's outline is sampled at before smoothing. */
+const RING_POINTS = 22
+
 /**
- * Trace the water's outline. Callers fill it, and — once this is wired in —
- * clip reflections to the same path.
+ * One lobe's outline as a ring of points — an ellipse pushed in and out by three
+ * low harmonics rather than random per-point noise. Harmonics are what make it
+ * read as a dug basin: they bulge and pinch over a long arc, where point noise
+ * would give a crinkled edge that looks like a bad circle rather than a pond.
  */
-export function pondPath(ctx: Ctx, lobes: Lobe[]): void {
+function ringFor(l: Lobe, rng: () => number, swell: number): Pt[] {
+  // Three waves round the rim: one big lopsided bulge, one gentler pinch, one
+  // fine ripple. Each gets its own phase so no two lobes wobble alike.
+  const a1 = 0.1 + rng() * 0.07
+  const a2 = 0.05 + rng() * 0.05
+  const a3 = 0.02 + rng() * 0.03
+  const p1 = rng() * TAU
+  const p2 = rng() * TAU
+  const p3 = rng() * TAU
+  const pts: Pt[] = []
+  for (let i = 0; i < RING_POINTS; i++) {
+    const a = (i / RING_POINTS) * TAU
+    const r =
+      1 +
+      swell *
+        (a1 * Math.sin(a + p1) +
+          a2 * Math.sin(2 * a + p2) +
+          a3 * Math.sin(3 * a + p3))
+    pts.push({
+      x: l.cx + Math.cos(a) * l.rx * r,
+      y: l.cy + Math.sin(a) * l.ry * r,
+    })
+  }
+  return pts
+}
+
+/**
+ * The pond's outline, one ring per lobe. Fully determined by the tile and form
+ * (its randomness comes from a dedicated shape rng, never from the rng that
+ * draws the planting), so a caller that needs the same shape later — ParkGame
+ * clipping reflections to the water — can rebuild it exactly.
+ */
+export function pondRings(
+  px: number,
+  py: number,
+  form: 0 | 1,
+  shapeRng: () => number,
+  swell = 1,
+): Pt[][] {
+  const j = jitter(shapeRng)
+  return pondLobes(px, py, form, j).map((l) => ringFor(l, shapeRng, swell))
+}
+
+/**
+ * Trace a set of rings as smooth closed curves — quadratic segments through the
+ * midpoints between neighbours, which turns the sampled points into a flowing
+ * edge instead of a polygon. Callers fill it, and — once this is wired in — clip
+ * reflections to the same path.
+ */
+export function pondPath(ctx: Ctx, rings: Pt[][]): void {
   ctx.beginPath()
-  for (const l of lobes) {
-    ctx.ellipse(l.cx, l.cy, l.rx, l.ry, 0, 0, TAU)
+  for (const pts of rings) {
+    const n = pts.length
+    const mid = (a: Pt, b: Pt) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+    let m = mid(pts[n - 1], pts[0])
+    ctx.moveTo(m.x, m.y)
+    for (let i = 0; i < n; i++) {
+      const next = mid(pts[i], pts[(i + 1) % n])
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, next.x, next.y)
+      m = next
+    }
+    ctx.closePath()
   }
 }
 
-/** Outer bounds of a set of lobes — used for the water's depth ramp. */
-function bounds(lobes: Lobe[]) {
-  return {
-    top: Math.min(...lobes.map((l) => l.cy - l.ry)),
-    bottom: Math.max(...lobes.map((l) => l.cy + l.ry)),
-    left: Math.min(...lobes.map((l) => l.cx - l.rx)),
-    right: Math.max(...lobes.map((l) => l.cx + l.rx)),
-  }
+/** Push a ring outward from its lobe's centre — the bank around the water. */
+function expandRings(rings: Pt[][], lobes: Lobe[], by: number): Pt[][] {
+  return rings.map((pts, i) => {
+    const l = lobes[Math.min(i, lobes.length - 1)]
+    return pts.map((p) => {
+      const dx = p.x - l.cx
+      const dy = p.y - l.cy
+      const d = Math.hypot(dx, dy) || 1
+      return { x: p.x + (dx / d) * by, y: p.y + (dy / d) * by * 0.8 }
+    })
+  })
+}
+
+/** Outer bounds of the outline — used for the water's depth ramp. */
+function bounds(rings: Pt[][]) {
+  const ys = rings.flat().map((p) => p.y)
+  return { top: Math.min(...ys), bottom: Math.max(...ys) }
 }
 
 /** A reed clump: a few blades fanning up out of the water's edge. */
@@ -141,21 +213,25 @@ export function drawPond(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink }: PondDrawArgs,
+  { rng, shapeSeed, form, ink }: PondDrawArgs,
 ): void {
   const t = POND_TONES
+  // Planting and glints roll off `rng`; the basin's shape rolls off its own
+  // seed, so the outline is a function of tile and form alone and can be rebuilt
+  // by anything that needs to trace the same water later.
   const j = jitter(rng)
-  const lobes = pondLobes(px, py, form, j)
-  const b = bounds(lobes)
+  const lobes = pondLobes(px, py, form, jitter(makeRng(shapeSeed)))
+  const rings = pondRings(px, py, form, makeRng(shapeSeed))
+  // The bank is the water's OWN ring pushed outward, not a second roll — give it
+  // its own wobble and it reads as a puddle sitting inside another puddle.
+  const bank = expandRings(rings, lobes, SCALE * 0.9)
+  const b = bounds(rings)
 
   // Wet earth just outside the waterline, so the pond sits IN the ground rather
   // than on top of it. Kept narrow — a thick ring reads as a plastic paddling
   // pool rather than as a bank.
   ctx.fillStyle = ink(t.bank)
-  ctx.beginPath()
-  for (const l of lobes) {
-    ctx.ellipse(l.cx, l.cy, l.rx + SCALE * 0.9, l.ry + SCALE * 0.7, 0, 0, TAU)
-  }
+  pondPath(ctx, bank)
   ctx.fill()
 
   // Water: deep at the far edge, shallower toward the near rim.
@@ -163,13 +239,13 @@ export function drawPond(
   grad.addColorStop(0, ink(t.deep))
   grad.addColorStop(1, ink(t.water))
   ctx.fillStyle = grad
-  pondPath(ctx, lobes)
+  pondPath(ctx, rings)
   ctx.fill()
 
   // Everything inside the water is clipped to it — the shallow shelf runs right
   // up to the rim, and clipping is what keeps it from spilling over.
   ctx.save()
-  pondPath(ctx, lobes)
+  pondPath(ctx, rings)
   ctx.clip()
   ctx.fillStyle = ink(t.shallow)
   for (const l of lobes) {
@@ -194,33 +270,23 @@ export function drawPond(
   }
   ctx.restore()
 
-  // Rim: the rocks module's own faceted stones, walked round the waterline at
-  // uneven angular steps so they bunch and gap the way a real rim does.
+  // Rim: the rocks module's own faceted stones, set ON the outline itself so
+  // they follow every bulge and pinch rather than sitting on a tidy ellipse.
+  const ring = rings[0]
+  const far = rings[rings.length - 1]
   const stones = form === 0 ? 7 + Math.round(j.d * 3) : 4 + Math.round(j.d * 2)
-  const base = rng() * TAU
-  const gaps: number[] = []
-  let gapTotal = 0
+  const step = ring.length / stones
   for (let i = 0; i < stones; i++) {
-    const gp = 0.25 + rng() ** 2 * 2
-    gaps.push(gp)
-    gapTotal += gp
-  }
-  let acc = 0
-  for (let i = 0; i < stones; i++) {
-    acc += gaps[i]
-    const a = base + (acc / gapTotal) * TAU
-    // The inlet keeps its stones off the right-hand lobe — that end is shore.
-    if (form === 1 && Math.cos(a) > 0.35) continue
-    const l = lobes[form === 1 && Math.cos(a) < 0 ? 0 : lobes.length - 1]
-    const spread = 0.96 + rng() * 0.12
-    const sx = l.cx + Math.cos(a) * l.rx * spread
-    const sy = l.cy + Math.sin(a) * l.ry * spread
-    // Big enough to read as a stone at the park's zoom: at PIXEL*0.15 they were
-    // gravel scattered on the bank.
+    // Uneven steps around the ring, so stones bunch and gap.
+    const idx = Math.floor((i + rng() * 0.8) * step) % ring.length
+    const src = form === 1 && idx > ring.length / 2 ? far : ring
+    const p = src[idx % src.length]
+    // Skip the inlet's open end — that side is shore, not stone rim.
+    if (form === 1 && p.x > lobes[1].cx + lobes[1].rx * 0.3) continue
     const size = 0.85 + rng() * 0.55
     facetedStone(ctx, {
-      cx: sx,
-      baseY: sy + SCALE * 1.6 * size,
+      cx: p.x,
+      baseY: p.y + SCALE * 1.6 * size,
       w: PIXEL * 0.23 * size,
       h: PIXEL * 0.17 * size,
       rng,

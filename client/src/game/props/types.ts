@@ -34,9 +34,23 @@ export interface DrawArgs {
 
 export interface PondDrawArgs extends DrawArgs {
   form: PondForm
+  /**
+   * Seeds the basin's proportions and its outline wobble, separately from the
+   * `rng` that scatters planting — so the shape is a function of tile and form
+   * alone. Passing a seed rather than a generator means it can be re-rolled from
+   * scratch whenever the same outline is needed again (the bank, and ParkGame
+   * clipping reflections to the water once this is wired in).
+   */
+  shapeSeed: number
 }
 
-/** Ellipse geometry (logical px) for one lobe of a pond. */
+/** A point on a pond's outline. */
+export interface Pt {
+  x: number
+  y: number
+}
+
+/** The base ellipse for one lobe of a pond, before its outline is wobbled. */
 export interface Lobe {
   cx: number
   cy: number

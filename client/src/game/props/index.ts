@@ -14,18 +14,19 @@
 import { PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
 import { drawBench as drawBenchArt } from './bench'
-import { drawPond as drawPondArt } from './pond'
+import { drawPond as drawPondArt, pondRings } from './pond'
 import type { Ctx, Ink, PondForm, PropTile } from './types'
 
 export type { Ctx, Ink, Lobe, PondForm, PropTile } from './types'
 export type { Jitter } from './variance'
 export { parkInk } from './parkInk'
 export { BENCH_TONES } from './bench'
-export { POND_TONES, pondLobes, pondPath } from './pond'
+export { POND_TONES, pondLobes, pondPath, pondRings } from './pond'
 
 // Distinct salts, so the pond's form roll and its art jitter are independent.
 const SEED_FORM = 811
 const SEED_ART = 13
+const SEED_SHAPE = 907
 
 const seedAt = (x: number, y: number, salt: number) =>
   makeRng(x * 73856093 + y * 19349663 + salt)
@@ -33,6 +34,23 @@ const seedAt = (x: number, y: number, salt: number) =>
 /** Which of the pond's two builds sits on tile (x, y). Stable for that tile. */
 export function pondFormAt(x: number, y: number): PondForm {
   return seedAt(x, y, SEED_FORM)() < 0.5 ? 0 : 1
+}
+
+const shapeSeedFor = (tile: PropTile) =>
+  tile.x * 73856093 + tile.y * 19349663 + SEED_SHAPE
+
+/**
+ * The pond's outline on `tile`, as one ring of points per lobe. Rebuildable from
+ * the tile alone, so whatever needs the same shape later — clipping reflections
+ * to the water — traces exactly what was drawn. Feed it to `pondPath`.
+ */
+export function pondOutline(tile: PropTile, form?: PondForm) {
+  return pondRings(
+    tile.x * PIXEL,
+    tile.y * PIXEL,
+    form ?? pondFormAt(tile.x, tile.y),
+    makeRng(shapeSeedFor(tile)),
+  )
 }
 
 export interface DrawPondOptions {
@@ -53,6 +71,7 @@ export function drawPond(
 ): void {
   drawPondArt(ctx, tile.x * PIXEL, tile.y * PIXEL, {
     rng: seedAt(tile.x, tile.y, SEED_ART),
+    shapeSeed: shapeSeedFor(tile),
     form: opts.form ?? pondFormAt(tile.x, tile.y),
     ink: opts.ink ?? ((c) => c),
   })

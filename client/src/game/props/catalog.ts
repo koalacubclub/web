@@ -92,7 +92,7 @@ function renderScatter(): void {
 
   // Two ponds and two benches along one bank, at uneven gaps.
   const items: Array<[number, number, 'pond' | 'bench', PondForm]> = [
-    [0.02, 118, 'pond', 0],
+    [0.03, 118, 'pond', 0],
     [0.28, 132, 'bench', 0],
     [0.42, 112, 'pond', 1],
     [0.72, 128, 'bench', 0],
@@ -125,7 +125,7 @@ function renderGrid(): void {
       draw: (ctx, cssW) => {
         ;[0, 1].forEach((n) => {
           const tile = { x: seed * 7 + n * 17, y: 4 + n }
-          place(ctx, 30 + n * (cssW / 2 - 20), 122, tile, (t) =>
+          place(ctx, 64 + n * (cssW / 2 - 40), 122, tile, (t) =>
             drawPond(ctx, t, { form: 0, ink }),
           )
         })
@@ -138,7 +138,7 @@ function renderGrid(): void {
       draw: (ctx, cssW) => {
         ;[0, 1].forEach((n) => {
           const tile = { x: seed * 11 + n * 23, y: 5 + n }
-          place(ctx, 30 + n * (cssW / 2 - 20), 122, tile, (t) =>
+          place(ctx, 64 + n * (cssW / 2 - 40), 122, tile, (t) =>
             drawPond(ctx, t, { form: 1, ink }),
           )
         })
