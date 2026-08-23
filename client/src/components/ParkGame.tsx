@@ -128,7 +128,6 @@ const COLORS = {
   white: '#FFFFFF',
   heart: '#FF6B9D',
   fishBowl: '#FFD93D',
-  butterfly: '#C9B1FF',
   stone: '#9E9E9E',
   stoneDark: '#757575',
   charcoal: '#4A4A4A',
@@ -327,15 +326,6 @@ interface GameObject {
   radioCycle?: number
 }
 
-interface Butterfly {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  timer: number
-  color: string
-}
-
 interface Popup {
   text: string
   x: number
@@ -436,7 +426,6 @@ export default function ParkGame() {
     // Tap/click target the cat walks toward (top-left tile coords), or null.
     target: null as { x: number; y: number } | null,
     objects: [] as GameObject[],
-    butterflies: [] as Butterfly[],
     popups: [] as Popup[],
     foods: [] as Food[],
     score: 0,
@@ -717,92 +706,6 @@ export default function ParkGame() {
         })
       }
     }
-    // Bright (un-graded) wings so the butterflies pop as vivid accents at night.
-    g.butterflies = [
-      { x: 100, y: 80, vx: 0.5, vy: 0.3, timer: 0, color: COLORS.butterfly },
-      {
-        x: 300,
-        y: 120,
-        vx: -0.3,
-        vy: 0.5,
-        timer: Math.PI,
-        color: COLORS.flower1,
-      },
-      {
-        x: 500,
-        y: 60,
-        vx: 0.4,
-        vy: -0.2,
-        timer: Math.PI / 2,
-        color: COLORS.fishBowl,
-      },
-      // Right-half butterflies added when the map was doubled.
-      {
-        x: 1080,
-        y: 75,
-        vx: 0.4,
-        vy: 0.4,
-        timer: 0.5 * Math.PI,
-        color: NIGHT.butterfly,
-      },
-      {
-        x: 1400,
-        y: 110,
-        vx: -0.35,
-        vy: 0.3,
-        timer: 1 * Math.PI,
-        color: NIGHT.flower1,
-      },
-      {
-        x: 1650,
-        y: 90,
-        vx: 0.5,
-        vy: -0.25,
-        timer: 1.5 * Math.PI,
-        color: NIGHT.fishBowl,
-      },
-      // A couple more left-half butterflies (x within the load-time view).
-      {
-        x: 180,
-        y: 95,
-        vx: 0.35,
-        vy: 0.4,
-        timer: 0.2 * Math.PI,
-        color: NIGHT.butterfly,
-      },
-      {
-        x: 640,
-        y: 110,
-        vx: -0.35,
-        vy: 0.3,
-        timer: 0.65 * Math.PI,
-        color: NIGHT.flower1,
-      },
-    ]
-    // Butterfly x is in raw px, so shift by LEFT_PAD * PIXEL to track the map
-    // content, then add new-left butterflies at final (already-padded) coords.
-    g.butterflies.forEach((b) => {
-      b.x += LEFT_PAD * PIXEL
-    })
-    g.butterflies.push(
-      { x: 150, y: 90, vx: 0.45, vy: 0.3, timer: 0, color: COLORS.butterfly },
-      {
-        x: 420,
-        y: 70,
-        vx: -0.35,
-        vy: 0.45,
-        timer: 0.5 * Math.PI,
-        color: COLORS.flower1,
-      },
-      {
-        x: 650,
-        y: 115,
-        vx: 0.4,
-        vy: -0.3,
-        timer: 0.25 * Math.PI,
-        color: COLORS.fishBowl,
-      },
-    )
   }, [])
 
   // Close the photo lightbox on Escape (only while it's open).
@@ -2239,29 +2142,6 @@ export default function ParkGame() {
         ctx.fillRect(ix, iy, iw, ih)
       }
       ctx.restore()
-    }
-
-    function drawButterflies(f: number) {
-      if (!ctx) return
-      g.butterflies.forEach((b) => {
-        b.timer += 0.05 * f
-        b.x += (b.vx + Math.sin(b.timer) * 0.5) * f
-        b.y += (b.vy + Math.cos(b.timer * 1.3) * 0.3) * f
-        if (b.x > CANVAS_WIDTH) b.x = -10
-        if (b.x < -10) b.x = CANVAS_WIDTH
-        if (b.y > GROUND_HEIGHT - PIXEL * 2) b.vy = -Math.abs(b.vy)
-        if (b.y < PIXEL * 2) b.vy = Math.abs(b.vy)
-        const wingFlap = Math.sin(g.frameCount * 0.3 + b.timer) * 3
-        ctx.fillStyle = b.color
-        ctx.beginPath()
-        ctx.ellipse(b.x - 3, b.y, 4, 3 + wingFlap, -0.3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.ellipse(b.x + 3, b.y, 4, 3 + wingFlap, 0.3, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = NIGHT.charcoal
-        ctx.fillRect(b.x - 1, b.y - 2, 2, 4)
-      })
     }
 
     // Draws a koala. Defaults to the local cat; pass a remote player's state
@@ -3886,8 +3766,8 @@ export default function ParkGame() {
         }
       }
       // Elapsed time in 60fps-frame units. Scales every animation (the
-      // frameCount clock below + per-frame integrations like butterflies/popups/
-      // idle) so they run at the same pace regardless of frame rate.
+      // frameCount clock below + per-frame integrations like popups/idle) so
+      // they run at the same pace regardless of frame rate.
       const f = dt * 0.06
       g.frameCount += f
       // Wall-clock time for placed-item pop-in / expiry (frameCount pauses with
@@ -3930,7 +3810,6 @@ export default function ParkGame() {
         }
       }
       drawObjects(wallNow)
-      drawButterflies(f)
       updateCat(dt)
       // Dash lunge: while active, ease the koala from dashFrom→dashTo, overriding
       // this frame's movement so the lunged position propagates + renders.
