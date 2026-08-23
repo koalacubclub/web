@@ -139,12 +139,6 @@ export interface DrawTreeOptions {
    * for bright shop previews.
    */
   ink?: Ink
-  /**
-   * Multiply this one tree's size roll. Defaults to 1. Use it to single out a
-   * specimen — the species and form still come from the tile, so the tree stays
-   * the kind that grows there, it just came out bigger. See `jitter`.
-   */
-  sizeBoost?: number
 }
 
 /**
@@ -162,7 +156,6 @@ export function drawTree(
     rng: seedAt(tile.x, tile.y, SEED_ART),
     form,
     ink: opts.ink ?? ((c) => c),
-    sizeBoost: opts.sizeBoost,
   })
 }
 

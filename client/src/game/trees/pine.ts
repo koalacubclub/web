@@ -23,10 +23,10 @@ export function drawPine(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, sizeBoost }: DrawArgs,
+  { rng, form, ink }: DrawArgs,
 ): void {
   const t = PINE_TONES
-  const j = jitter(rng, sizeBoost)
+  const j = jitter(rng)
   const foot = py + PIXEL * 2
   const cx = px + PIXEL + j.lean * 0.4
   const spire = form === 0

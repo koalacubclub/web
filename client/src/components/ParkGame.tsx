@@ -307,9 +307,6 @@ interface GameObject {
   h: number
   interactMsg?: string
   solid?: boolean
-  // 'tree' only: multiply this spawn's size roll, for a specimen tree that should
-  // stand out from its neighbours. Species and form still come from the tile.
-  treeSize?: number
   _shown?: boolean
   // Interactive hotspots (hover tooltip + click), hit-tested by pointer:
   href?: string // 'social' → opens this URL
@@ -490,17 +487,7 @@ export default function ParkGame() {
         h: 2,
         interactMsg: '♪ A bird chirps!',
       },
-      // The park's specimen tree: same species its tile grows, rolled bigger, so
-      // the stretch between the bench and the pond has something to anchor it.
-      {
-        type: 'tree',
-        x: 10,
-        y: 1.6,
-        w: 2,
-        h: 2,
-        treeSize: 1.45,
-        interactMsg: '♪ Shady spot!',
-      },
+      { type: 'tree', x: 10, y: 1.6, w: 2, h: 2, interactMsg: '♪ Shady spot!' },
       {
         type: 'bench',
         x: 6,
@@ -1926,7 +1913,7 @@ export default function ParkGame() {
     // that footprint, exactly as the old three-blob art did.
     function drawTree(obj: GameObject) {
       if (!ctx) return
-      drawSpeciesTree(ctx, { x: obj.x, y: obj.y }, { sizeBoost: obj.treeSize })
+      drawSpeciesTree(ctx, { x: obj.x, y: obj.y })
     }
 
     function drawBench(obj: GameObject) {

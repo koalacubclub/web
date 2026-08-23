@@ -32,16 +32,9 @@ export interface Jitter {
  * on the ground. The crown takes the full roll; the trunk takes `trunkScale`,
  * which is deliberately damped — a park's trunks are much of a muchness, and
  * it's the crown that makes two neighbours read as different trees.
- *
- * `sizeBoost` multiplies the size roll for ONE tree, for the odd specimen the map
- * wants noticeably bigger (or smaller) than whatever it happened to roll. It goes
- * through the same roll rather than scaling the finished drawing, so the boosted
- * tree keeps the damped trunk and the aspect bias it would have had — a big tree,
- * not a small tree zoomed. Prefer widening the range above if EVERY tree should
- * vary more; this is for singling one out.
  */
-export function jitter(rng: () => number, sizeBoost = 1): Jitter {
-  const size = (0.78 + rng() * 0.72) * sizeBoost
+export function jitter(rng: () => number): Jitter {
+  const size = 0.78 + rng() * 0.72
   const aspect = 0.92 + rng() * 0.16 // >1 leans wide, <1 leans tall
   return {
     w: size * aspect,

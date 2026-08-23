@@ -37,11 +37,6 @@ export interface DrawArgs {
   rng: () => number
   form: TreeForm
   ink: Ink
-  /**
-   * Multiplies this one tree's size roll (see `jitter`). Defaults to 1; the map
-   * raises it for a specimen tree it wants bigger than its roll came out.
-   */
-  sizeBoost?: number
 }
 
 /**
