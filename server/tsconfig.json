@@ -4,7 +4,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "lib": ["es2023"],
-    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types"
+    ],
     "skipLibCheck": true,
     "strict": true,
     "noUnusedLocals": true,
