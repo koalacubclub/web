@@ -174,9 +174,11 @@ so the React UI and the imperative canvas never fight.
   so the contrast lands in the canopy where it reads; everything is measured up
   from the trunk's foot, so a tree scales as one thing and always stands on the
   ground. A tile draws the same tree on every frame and every reload. Weighted so the
-  broadleaf stays the park's backbone. Colours pass through an `ink` fn (`night`
-  in the park, identity for bright previews). **Not wired into the scene yet** —
-  `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with
+  broadleaf stays the park's backbone. Colours pass through an `ink` fn — its own
+  `parkInk.ts` in the park, identity for bright previews. **Drawn by the park**
+  (`ParkGame` and `sprites.ts` both route through it, so a tree previewed in the
+  shop is the tree you place); only broadleaf, pine and willow grow out there,
+  with maple and crabapple reserved as feature trees. Preview every species with
   `pnpm dev` at `/src/game/trees/catalog.html` (dev only; the catalog imports the
   real draw functions, so it can't drift from the art).
 - **`client/src/game/flowers/`** — the same treatment for flower patches, one
@@ -189,8 +191,9 @@ so the React UI and the imperative canvas never fight.
   deliberately has no bloom entries, so they fall through bright, matching how
   `drawFlowers` already treats blooms (vivid accents against the dark). Blooms
   keep the park's `frameCount` bob. Daisies are the common wildflower, tulips
-  the rarest (a bed of them reads as planted). **Not wired into the scene yet.**
-  Preview with `pnpm dev` at `/src/game/flowers/catalog.html`.
+  the rarest (a bed of them reads as planted). **Drawn by the park** — `ParkGame`
+  and `sprites.ts` both route through it, so a patch previewed in the shop is the
+  patch you place. Preview with `pnpm dev` at `/src/game/flowers/catalog.html`.
 - **`client/src/game/rocks/`** — the same treatment for stones, one file per
   arrangement (`boulder` / `stack` / `cluster` / `slab`) over a shared
   `facet.ts`, plus its own `parkInk.ts`. Every stone is an **angular silhouette

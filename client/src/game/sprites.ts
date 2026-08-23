@@ -9,6 +9,7 @@
 
 import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
 import { drawNightTree, drawTree as drawSpeciesTree } from './trees'
+import { drawFlowers as drawSpeciesFlowers, drawNightFlowers } from './flowers'
 import {
   drawBench as drawPropBench,
   drawParkBench,
@@ -106,43 +107,14 @@ function drawBench(ctx: Ctx, obj: SpriteObject) {
 }
 
 function drawFlowers(ctx: Ctx, obj: SpriteObject, frameCount: number) {
-  const x = obj.x * PIXEL
-  const y = obj.y * PIXEL
-  // Bright (un-graded) petals so blooms pop as vivid accents (matches base-map).
-  const palette = [
-    COLORS.flower1,
-    COLORS.flower2,
-    COLORS.flower3,
-    COLORS.heart,
-    COLORS.butterfly,
-  ]
-  const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-  const bobOffset = Math.sin(frameCount * 0.05 + obj.x) * 2
-  const count = 3 + Math.floor(rng() * 2)
-  let fx = x + PIXEL * 0.08
-  for (let i = 0; i < count; i++) {
-    const cxp = fx + SCALE * 2.5
-    const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
-    const petalR = SCALE * 2.5
-    const stemH = SCALE * 4
-    ctx.fillStyle = PAL.grassDark
-    ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
-    ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
-    ctx.beginPath()
-    ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.fillStyle = '#FFF07A' // brighter yellow flower center
-    ctx.beginPath()
-    ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
-    ctx.fill()
-    fx += SCALE * (3.6 + rng() * 1.8)
+  const tile = { x: obj.x, y: obj.y }
+  if (IS_PARK) {
+    drawNightFlowers(ctx, tile, { frameCount })
+  } else {
+    drawSpeciesFlowers(ctx, tile, { frameCount })
   }
 }
 
-// A shop-placed pond is the same pond the park grows, minus the reflections —
-// those need live game state, so ParkGame draws its own two passes and this
-// stays the plain art (see the `pond` case in drawShopSprite's switch, which
-// ParkGame deliberately intercepts for base and placed ponds alike).
 function drawPond(ctx: Ctx, obj: SpriteObject) {
   if (IS_PARK) {
     drawParkPond(ctx, { x: obj.x, y: obj.y })

@@ -42,6 +42,7 @@ import { IG_PROFILE } from '@/data/reels'
 import { heroCanvasSrc, heroHoverSrc, heroHoverSrcSet } from '@/data/heroPhoto'
 import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { drawNightTree as drawSpeciesTree } from '@/game/trees'
+import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
 import {
   drawParkBench,
   drawPondSurface,
@@ -191,7 +192,6 @@ const GRASS_SHADES: readonly (readonly [string, string])[] = [
 const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
 
 const GRASS_TOP = '#76947F' // the sage itself, flat, for the front ridge
-const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
 
 // The far ridge along the skyline. It's the same cooling-with-darkness line the
 // patches run down, carried out to okL 41.5: at H 204° it lands right where the
@@ -1923,41 +1923,20 @@ export default function ParkGame() {
       drawParkBench(ctx, { x: obj.x, y: obj.y })
     }
 
+    // The park's flowers are the species art in game/flowers — daisy, tulip,
+    // poppy, lavender and bluebell, each in two builds and jittered per patch.
+    // Like the trees, the species is a function of the tile, so a patch is always
+    // the same patch and neighbours differ.
+    //
+    // frameCount drives the bob the blooms have always had; the species art keeps
+    // it, phase-shifted per stem rather than moving the whole patch as one.
     function drawFlowers(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      // Per-patch randomness (seeded by tile position) so each flower cluster has
-      // its own count / colours / sizes / scatter instead of all looking alike.
-      // Bright (un-graded) petals so the blooms pop as vivid accents at night.
-      const palette = [
-        COLORS.flower1,
-        COLORS.flower2,
-        COLORS.flower3,
-        COLORS.heart,
-        COLORS.butterfly,
-      ]
-      const rng = makeRng(obj.x * 73856093 + obj.y * 19349663 + 7)
-      const bobOffset = Math.sin(g.frameCount * 0.05 + obj.x) * 2
-      const count = 3 + Math.floor(rng() * 2) // 3–4 blooms
-      let fx = x + PIXEL * 0.08
-      for (let i = 0; i < count; i++) {
-        const cxp = fx + SCALE * 2.5
-        const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
-        const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
-        const stemH = SCALE * 4
-        ctx.fillStyle = GRASS_BOTTOM
-        ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
-        ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
-        ctx.beginPath()
-        ctx.arc(cxp, cyp, petalR, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = '#FFF07A' // brighter yellow flower center
-        ctx.beginPath()
-        ctx.arc(cxp, cyp, petalR * 0.42, 0, Math.PI * 2)
-        ctx.fill()
-        fx += SCALE * (3.6 + rng() * 1.8)
-      }
+      drawSpeciesFlowers(
+        ctx,
+        { x: obj.x, y: obj.y },
+        { frameCount: g.frameCount },
+      )
     }
 
     // Visible slice of the map in logical-x (thin wrapper over the pure
