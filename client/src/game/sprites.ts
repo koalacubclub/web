@@ -15,16 +15,16 @@ import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
 // Every key must be a colour some INK() call passes; INK falls through unchanged for
 // anything missing, so an unlisted colour renders bright in-game (usually a bug).
 const PARK_INK: Record<string, string> = {
-  '#244B30': '#274531',
+  '#244B30': '#272E49', // light-tree canopy, deepest blob — near-navy
   '#2E2E2E': '#302F30',
-  '#2E5E3A': '#2E5337',
+  '#2E5E3A': '#2D3C4E', // light-tree canopy, upper blobs — a step lighter/bluer
   '#3A2E2C': '#392F2E',
-  '#3D9C4E': '#378245',
+  '#3D9C4E': '#366A57', // park tree canopy — matches drawTree's literal in ParkGame
   '#4A4A4A': '#444344',
-  '#5A97DB': '#3D979C', // pond water — keep in sync with POND_WATER in ParkGame
+  '#5A97DB': '#4968D2', // pond water — keep in sync with POND_WATER in ParkGame
   '#6E6E6E': '#5F5D5F',
   '#767A80': '#65656D',
-  '#84B2F0': '#6D8FC6',
+  '#84B2F0': '#697CE2', // pond highlight — same periwinkle, lighter and duller
   '#8C877E': '#766F6A',
   '#8C9096': '#75767E',
   '#8E3E37': '#7A3733',
@@ -163,7 +163,9 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  // Match the base-map pond (soft blue; see drawPond in ParkGame).
+  // Match the base-map pond (see drawPond in ParkGame). This sprite is a flat fill,
+  // so in park mode PARK_INK maps it to the MEAN of that pond's periwinkle ramp
+  // rather than to either endpoint; in the shop preview it stays the bright blue.
   ctx.fillStyle = INK('#5A97DB')
   ctx.beginPath()
   ctx.ellipse(

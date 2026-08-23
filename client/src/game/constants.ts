@@ -72,20 +72,36 @@ export const NIGHT: typeof COLORS = {
   sky: 'oklch(0.1 0.008 60)',
   skyLight: 'oklch(0.11 0.008 60)',
   grass: '#7BAC6E',
-  grassDark: '#549650',
-  grassLight: '#8EBA82',
+  // Grass pair used by props, not by the lawn itself (that has its own ramps in
+  // ParkGame): grassDark draws the flower stems in the shop sprites, and both are
+  // leaf tones in the koala-shaped imprint — grassDark as one of its dark greens,
+  // grassLight as its occasional highlight. Keep grassLight clearly the lighter of
+  // the two or that sparkle disappears into the bed.
+  grassDark: '#517F60',
+  grassLight: '#89A295',
   dirt: '#AF8661',
   dirtLight: '#BFA184',
-  treeTrunk: '#795B17',
-  treeLeaves: '#429045',
-  treeLeavesLight: '#569859',
+  // Tree — a warm mid-brown trunk under two cool, blue-leaning greens. The canopy
+  // pair must keep that split: leaves darker and greener, leavesLight lighter and
+  // further round toward teal, or the two blob layers stop reading as separate.
+  treeTrunk: '#764428',
+  treeLeaves: '#407855',
+  treeLeavesLight: '#53816A',
   flower1: '#D25782',
-  flower2: '#D3B034',
+  // Amber — the blossom eyes in the koala imprint, and the second flower's petals.
+  // `fishBowl` below is a separate key that used to carry the same hex; it now sits
+  // a little yellower. They are independent on purpose — move one without the other.
+  flower2: '#CC963E',
   flower3: '#A58ED1',
-  bench: '#785C55',
-  benchLight: '#876F6B',
-  water: '#5392CB',
-  waterLight: '#77A2CD',
+  // Bench — dusty mauve, not brown. benchLight is the lit edge: keep it lighter and
+  // a touch pinker than bench so the slats stay legible against the seat.
+  bench: '#744A68',
+  benchLight: '#825D7E',
+  // Periwinkle blue, the same family as the park pond (POND_WATER in ParkGame).
+  // Nothing draws with these today; they're kept in the family so a future water
+  // surface picking them up lands in the right place.
+  water: '#507EE9',
+  waterLight: '#728DE9',
   catLight: '#A2886C',
   catOrange: '#876446',
   catDark: '#775137',

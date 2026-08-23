@@ -62,7 +62,7 @@ describe('drawShopSprite night tinting', () => {
     // its park tone in-game and left bright for the preview. Both are hand-picked
     // literals (see PARK_INK in sprites.ts), so they're pinned here on purpose.
     const CANOPY = '#3D9C4E'
-    const CANOPY_PARK = '#378245'
+    const CANOPY_PARK = '#366A57'
     const dark = paint('tree', 2, 2, true)
     expect(dark).toContain(CANOPY_PARK)
     expect(dark).not.toContain(CANOPY)

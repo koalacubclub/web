@@ -131,64 +131,94 @@ const COLORS = {
 }
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
-// The sky, ground, grass and pond cover most of the screen, so they're pinned here
+// The ground, grass and pond cover most of the screen, so they're pinned here
 // rather than living in the shared NIGHT palette — they get tuned on their own, by
-// eye, without dragging every prop along with them.
+// eye, without dragging every prop along with them. (The sky isn't one of them: it
+// draws straight from COLORS.sky/skyLight in renderStaticBackground, which sit just
+// BELOW the site's --background token, and only its horizon stop — a literal spelled
+// out there — is the token itself.)
 //
-// Values sampled from the painted colour study: each of these surfaces carries a
-// GRADIENT rather than one flat fill, which is what stops the park reading as
-// stacked cut-out shapes. Every pair below is (top, bottom) of a vertical ramp.
+// Every value below is a hand-picked literal, and every surface carries a GRADIENT
+// rather than one flat fill — that's what stops the park reading as stacked cut-out
+// shapes. Every pair below is (top, bottom) of a vertical ramp.
 
-// Sky — lightens as it approaches the horizon.
-const SKY_TOP = '#698092'
-const SKY_HORIZON = '#7493A9'
-
-// Ground — palest just under the horizon, settling darker underfoot.
+// Ground — dusty mauve, palest just under the horizon and deepening underfoot, so
+// the dirt recedes instead of reading as one slab.
 //
-// The hue deliberately SHIFTS WITH LIGHTNESS: shadows sit at ~231° (navy) and ramp
-// round to ~285° (plum) in the highlights. Saturation rides the same ramp but the
-// OTHER way — 19% at the dark end, 11% at the light — since plum goes lurid at the
-// strength navy needs. Both are kept low: the hue SHIFT is what gives the ground its
-// life, so the colours themselves can stay muted and let the props read against them.
-// That split is the point — it's what stops the dirt looking like one colour dimmed,
-// and it's why these can't be derived by scaling R/B channels or by locking a single
-// hue. Keep the lightness order below intact when retuning: hue and saturation are
-// both functions of it. SPECKLE_* are the texture dots, either side of the ramp.
-const GROUND_TOP = '#4F465E' // L 32% — plum end
-const GROUND_BOTTOM = '#413E57' // L 29%
-const GROUND_SPECKLE_DARK = '#373B51' // L 27% — navy end
-const GROUND_SPECKLE_LIGHT = '#615266' // L 36% — plum end
-// Blotch tones scattered over the ramp — the p2/p25/p90/p98 lightness points of the
-// study's dirt, each hue-mapped off its own lightness (see dirtBlotch).
-const GROUND_BLOTCH_DEEP = '#393B53' // L 27% — navy
-const GROUND_BLOTCH_DARK = '#3D3C55' // L 28%
-const GROUND_BLOTCH_LIGHT = '#554A60' // L 33%
-const GROUND_BLOTCH_PALE = '#5E5065' // L 35% — plum
+// The ramp is centred on #B8959E (okL 70.5, C 0.044, H 1°) — the single flat fill
+// this dirt used to be — so it still averages to that colour and only gains depth.
+// Hue is an explicit function of LIGHTNESS: H ≈ 1° + (L − 70.5) × 3.4°/pt, so
+// highlights warm round to rose (~8°) and shadows cool back to mauve-violet (~352°).
+// Chroma rides the same ramp the OTHER way — C ≈ 0.0436 − (L − 70.5) × 0.0018 —
+// since pink goes candy at the strength the violet end needs. Both stay low: the hue
+// SHIFT is what gives the ground its life, so the colours themselves can stay muted
+// and let the props read against them. That split is the point — it's what stops the
+// dirt looking like one colour dimmed, and it's why these can't be derived by scaling
+// channels or by locking a single hue. Keep the lightness order below intact when
+// retuning: hue and chroma are both read off it. SPECKLE_* are the texture dots,
+// sitting just outside either end of the ramp — and they are the one DELIBERATE
+// EXCEPTION to the hue rule above: they run backwards, the darker dot being the
+// warmer one. They're kept exactly as-is because they're single-pixel grain, where
+// a 15° hue inversion is invisible, and holding the two original dots verbatim is
+// worth more than making them obey a law nothing can see them break.
+const GROUND_TOP = '#BD9BA0' // okL 72.2, H 8° — rose end
+const GROUND_BOTTOM = '#B28F9D' // okL 68.7, H 352° — mauve-violet end
+const GROUND_SPECKLE_DARK = '#AF8B92' // okL 67.2, H 5° — under the ramp, but WARM
+const GROUND_SPECKLE_LIGHT = '#BE9EAC' // okL 73.2, H 350° — over it, but COOL
+// Blotch tones scattered over the ramp — roughly ±6 okL around its midpoint, each
+// hue-mapped off its own lightness by the same two rules. Wide enough to read as
+// weathering in the dirt at the alphas they're drawn with, narrow enough not to read
+// as objects on it (see dirtBlotch).
+const GROUND_BLOTCH_DEEP = '#A48295' // okL 64.5 — H 344°
+const GROUND_BLOTCH_DARK = '#AE8B9B' // okL 67.4 — H 349°
+const GROUND_BLOTCH_LIGHT = '#C19FA6' // okL 73.5 — H 4°
+const GROUND_BLOTCH_PALE = '#C8A8AB' // okL 76.1 — H 12°
 
-// Grass — THREE distinct shades, clustered out of the colour study along with the
-// proportions it uses them in: deep sage dominates, a lighter cooler green covers
-// most of the rest, and a warm olive turns up as an occasional accent. Each patch
-// picks ONE shade and runs its own top→bottom ramp within it, so neighbouring blobs
-// read as different greens instead of one flat lawn. Each entry is (top, bottom).
+// Grass — THREE distinct shades. Each patch picks ONE and runs its own top→bottom
+// ramp within it, so neighbouring blobs read as different greens instead of one flat
+// lawn. Each entry is (top, bottom).
+//
+// Inside a ramp the hue shifts WITH LIGHTNESS the same way the ground's does: the lit
+// top leans GOLD-GREEN (H ~138–141°, olive-warm) and the shadowed bottom swings
+// BLUER (H ~154–190°, toward teal). That arc is the depth; it isn't a recolour, and
+// it can't be got by darkening one green. Shade 0 is the dominant one and its two
+// ends mix back to #76947F exactly — the muted sage the lawn used to be painted in
+// flat — so 55% of the patches simply ARE that old colour with a ramp through them.
+// Shades 1 and 2 are built around the two greens that used to be scattered over the
+// patches as blade flecks (#89A295 light, #517F60 dark); with the flecks gone those
+// colours come back up a level as minority patch families, which is what keeps the
+// whole lawn averaging to the sage. Keep that balance if you retune: lighten shade 1
+// or darken shade 2 and the lawn's overall tone moves with it.
 const GRASS_SHADES: readonly (readonly [string, string])[] = [
-  ['#2C6551', '#245342'], // deep sage — 55% of the study's grass
-  ['#397C6B', '#2F6658'], // lighter, cooler — 39%
-  ['#557742', '#466236'], // warm olive accent — 6%
+  ['#859D81', '#668B7C'], // sage, dominant — mixes to #76947F, the old flat lawn
+  ['#93A48F', '#6C9491'], // lighter, built on the old light fleck #89A295
+  ['#6E9063', '#517F60'], // deep accent, ending on the old dark fleck
 ] as const
-// Cumulative weights matching those shares; see pickGrassShade.
+// Cumulative weights: 55% sage, 39% light, 6% deep accent. See pickGrassShade.
 const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
 
-const GRASS_TOP = '#2C6551' // representative green, for the front ridge
-const GRASS_BOTTOM = '#245342' // darkest, for flower stems
+const GRASS_TOP = '#76947F' // the sage itself, flat, for the front ridge
+const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
 
-// The far ridge along the skyline — darker and cooler than the grass underfoot,
-// so the hills read as distance rather than more lawn.
-const RIDGE_FAR = '#305A51'
+// The far ridge along the skyline. It's the same cooling-with-darkness line the
+// patches run down, carried out to okL 41.5: at H 204° it lands right where the
+// grass hue path points, so the hills read as the distant, cool end of one ramp
+// rather than as an unrelated green.
+const RIDGE_FAR = '#2C5357'
 
-// Pond water. The shop's pond sprite matches it via PARK_INK['#5A97DB'] in
-// sprites.ts — change both together or they'll drift apart.
-const POND_WATER = '#3D979C'
-const POND_DEEP = '#2F7C86'
+// Pond water — deep periwinkle blue, carrying a vertical ramp (POND_DEEP at the far
+// edge, POND_WATER at the near rim) rather than one flat fill.
+//
+// The ramp is centred on #4968D2, the single flat blue this pond used to be: the two
+// endpoints sit ±4.1 okL either side of it, so in OKLab they average back to exactly
+// that colour and the pond only gains depth. Keep them symmetric about it if you
+// retune — POND_WATER is ALSO the 0.5-alpha wash laid over the reflections, so
+// pulling it far off #4968D2 shifts how submerged everything in the water reads.
+// The shop's pond sprite matches this via PARK_INK['#5A97DB'] in sprites.ts, which
+// maps to #4968D2 (the mean, not either endpoint, since that sprite is a flat fill)
+// — change both together or they'll drift apart.
+const POND_WATER = '#4F75E3'
+const POND_DEEP = '#435BC2'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1540,7 +1570,7 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Ground base — a vertical plum ramp, palest just under the horizon and
+      // Ground base — a vertical dusty-mauve ramp, palest just under the horizon and
       // deepening underfoot, so the dirt recedes instead of reading as one slab.
       const groundGrad = ctx.createLinearGradient(0, PIXEL, 0, CANVAS_HEIGHT)
       groundGrad.addColorStop(0, GROUND_TOP)
@@ -1548,10 +1578,11 @@ export default function ParkGame() {
       ctx.fillStyle = groundGrad
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
-      // Broad tonal blotches over the base ramp. In the colour study the dirt swings
-      // ~25 points of luminance (#413A52 → #635065) but barely shifts hue, so these
-      // vary TONE only — adding hue here turns the ground muddy. Soft-edged and
-      // translucent so they read as weathering in the dirt, not as objects on it.
+      // Broad tonal blotches over the base ramp. They stay inside the mauve family
+      // and vary mostly in TONE (±6 okL around the ramp's midpoint, hue only following
+      // that lightness) — swing the hue independently here and the ground turns muddy.
+      // Soft-edged and translucent so they read as weathering in the dirt, not as
+      // objects on it.
       // Drawn before the grass, so patches still sit cleanly on top.
       function dirtBlotch(
         cx: number,
@@ -1629,8 +1660,10 @@ export default function ParkGame() {
             PIXEL * (layer.rx[0] + brng() * (layer.rx[1] - layer.rx[0]))
           const bry =
             PIXEL * (layer.ry[0] + brng() * (layer.ry[1] - layer.ry[0]))
-          // Tone drawn at random rather than round-robin, so runs of the same
-          // shade can clump the way they do in the study.
+          // Tone drawn at random rather than round-robin, so the same shade can
+          // come up several times running and clump into a larger patch of
+          // weathering — round-robin would space the four tones evenly and the
+          // dirt would read as a regular pattern.
           const tone = blotchTones[Math.floor(brng() * blotchTones.length)]
           blotchSeed += 7.3
           dirtBlotch(bx, byy, brx, bry, blotchSeed, tone)
@@ -1656,7 +1689,7 @@ export default function ParkGame() {
       ) {
         if (!ctx) return
         const points = 10
-        // Pick this patch's shade from the three, in the study's proportions. Seeded
+        // Pick this patch's shade from the three, in the weighted proportions. Seeded
         // by the patch's own seed, so a given blob is always the same green (no
         // flicker) but its neighbours usually aren't — that variety between patches
         // is what gives the lawn contrast. Then ramp top→bottom within that shade
@@ -1971,8 +2004,10 @@ export default function ParkGame() {
       ctx.fillStyle = NIGHT.treeTrunk
       ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
 
-      // Main (darker) canopy blob — a darker, green base leaf tone.
-      ctx.fillStyle = '#378245'
+      // Main (darker) canopy blob — the deep blue-green base leaf tone, darker than
+      // NIGHT.treeLeavesLight below so the two blob layers stay distinct. The shop's
+      // tree sprite matches it via PARK_INK['#3D9C4E'] in sprites.ts.
+      ctx.fillStyle = '#366A57'
       ctx.beginPath()
       ctx.arc(
         x + PIXEL + jx,
@@ -3869,40 +3904,6 @@ export default function ParkGame() {
     }
 
     // Bake the fully static sky + ground into the offscreen canvas once.
-    // A single pressed-grass paw print (pad + 4 toe beans), baked into the bg.
-    function drawPawStamp(px: number, py: number, angle: number, s: number) {
-      if (!ctx) return
-      ctx.save()
-      ctx.translate(px, py)
-      ctx.rotate(angle)
-      ctx.fillStyle = 'rgba(90,113,111,0.4)' // night-graded pressed grass
-      ctx.beginPath()
-      ctx.ellipse(0, s * 0.55, s * 0.9, s * 0.7, 0, 0, Math.PI * 2)
-      ctx.fill()
-      const toes: [number, number][] = [
-        [-0.7, -0.5],
-        [-0.25, -0.85],
-        [0.25, -0.85],
-        [0.7, -0.5],
-      ]
-      toes.forEach(([tx, ty]) => {
-        ctx!.beginPath()
-        ctx!.ellipse(tx * s, ty * s, s * 0.32, s * 0.4, 0, 0, Math.PI * 2)
-        ctx!.fill()
-      })
-      ctx.restore()
-    }
-    // A short wandering trail of paw prints across the lower grass (world coords).
-    function drawPawTrail() {
-      const trail: [number, number, number][] = [
-        [PIXEL * 3.2, PIXEL * 11.2, 0.5],
-        [PIXEL * 4.3, PIXEL * 10.7, 0.4],
-        [PIXEL * 5.4, PIXEL * 10.3, 0.5],
-        [PIXEL * 6.6, PIXEL * 10.0, 0.45],
-        [PIXEL * 7.8, PIXEL * 9.8, 0.5],
-      ]
-      trail.forEach(([px, py, a]) => drawPawStamp(px, py, a, SCALE * 1.6))
-    }
 
     // Rolling grass ridges over the (otherwise straight) sky/ground seam so the
     // horizon reads as soft hills against the night sky rather than a hard line.
@@ -3938,9 +3939,22 @@ export default function ParkGame() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       const horizon = HORIZON
+      // Near-black night sky, climbing 0.02 L in total from the top of the canvas to
+      // the horizon: L 0.10 → 0.11 → 0.12. Three stops, not two, because the 0.6 stop
+      // splits that lift in half over uneven spans — the upper 60% takes the first
+      // 0.01 and the lower 40% takes the second, so the ramp accelerates by 1.5× on
+      // the way down and the lightening piles up near the horizon like haze.
+      //
+      // Only the last stop is the site's --background token (oklch(0.12 0.008 60),
+      // client/src/index.css) — the sky MEETS the page background at the horizon and
+      // sits darker than it everywhere above. The other two come from COLORS and are
+      // deliberately below the token. The horizon value is written out here rather
+      // than read from COLORS, so it duplicates the token: if --background moves,
+      // this literal has to move with it.
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
-      skyGrad.addColorStop(0, SKY_TOP)
-      skyGrad.addColorStop(1, SKY_HORIZON)
+      skyGrad.addColorStop(0, COLORS.sky)
+      skyGrad.addColorStop(0.6, COLORS.skyLight)
+      skyGrad.addColorStop(1, 'oklch(0.12 0.008 60)')
       ctx!.fillStyle = skyGrad
       ctx!.fillRect(0, 0, CANVAS_WIDTH, horizon)
       // Ridge on the sky, so the textured grass patches drawn by drawGround()
@@ -3951,14 +3965,13 @@ export default function ParkGame() {
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
       // The imprint draws from the same park palette as every object, so it needs
-      // no wash of its own. These baked decorations are draw-only, so shift them
-      // right by LEFT_PAD with a translate rather than editing their coordinates.
+      // no wash of its own. It's draw-only, so shift it right by LEFT_PAD with a
+      // translate rather than editing its internal coordinates.
       ctx!.save()
       ctx!.translate(LEFT_PAD * PIXEL, 0)
       // Park palette straight in — no tint fn needed now that NIGHT holds the
       // final colours (the default tint is identity).
       drawKoalaImprint(ctx!, PIXEL, SCALE, NIGHT)
-      drawPawTrail()
       ctx!.restore()
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
