@@ -179,6 +179,34 @@ so the React UI and the imperative canvas never fight.
   `ParkGame`/`sprites.ts` still draw their own tree. Preview every species with
   `pnpm dev` at `/src/game/trees/catalog.html` (dev only; the catalog imports the
   real draw functions, so it can't drift from the art).
+- **`client/src/game/rocks/`** — the same treatment for stones, one file per
+  arrangement (`boulder` / `stack` / `cluster` / `slab`) over a shared
+  `facet.ts`, plus its own `parkInk.ts`. Every stone is an **angular silhouette
+  with a lit top plane and a shaded flank** (the park currently draws a single
+  flat ellipse), with a contact shadow and optional moss. **No drawn lines** —
+  the planes are the detail; cracks and seams at this scale read as scratches on
+  the stone rather than edges of it. `stack` beds two or three stones on each
+  other; the cairn is the rarest roll, since it's the one arrangement a person
+  had to build. Its facets are built from **contiguous angle runs**, not a
+  filtered scatter of vertices — a filtered set wraps around and self-intersects,
+  which renders as broken glass. Granite sits in the `NIGHT.stone` family and
+  sandstone is its warm sibling; tests pin granite near-neutral and sandstone
+  warm, because a lilac stone is exactly what a computed grade produces. **Not
+  wired into the scene yet.** Preview at `/src/game/rocks/catalog.html`.
+- **`client/src/game/props/`** — the built props: the **pond** in two builds
+  (`pool`, one broad basin with stones all round; `inlet`, two overlapping lobes
+  with a pebble shore at the open end) and the **bench**, rebuilt. The pond's rim
+  uses `facetedStone` from `../rocks`, so a pond's stones are the same stones as
+  the rest of the park, and `props/parkInk.ts` falls through to `../rocks/parkInk`
+  for them rather than duplicating those colours. `pondPath` traces the water's
+  outline for both the fill and the clip — wiring this in means clipping
+  reflections to the real shape, not to an ellipse that happens to be close (the
+  wired geometry and reflection cache still live in `../pond.ts`). The bench has
+  **no variance on purpose**: benches are municipal, and a row of them differing
+  reads as a mistake — a test pins that its shape is identical on every tile. It
+  gains a slatted seat and back on a dark frame, armrests, legs with a stretcher,
+  and a contact shadow. **Not wired into the scene yet.** Preview at
+  `/src/game/props/catalog.html`.
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered
