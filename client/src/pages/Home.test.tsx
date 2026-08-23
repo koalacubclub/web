@@ -26,12 +26,12 @@ describe('Home', () => {
     const reelLinks = container.querySelectorAll(
       'a[href*="instagram.com/reel/"]',
     )
-    expect(reelLinks).toHaveLength(14)
+    expect(reelLinks).toHaveLength(17)
 
     const posters = container.querySelectorAll(
       'a[href*="instagram.com/reel/"] img',
     )
-    expect(posters).toHaveLength(14)
+    expect(posters).toHaveLength(17)
     expect(posters[0]).toHaveAttribute('loading', 'lazy')
 
     // Cards open in a new tab with safe rel
