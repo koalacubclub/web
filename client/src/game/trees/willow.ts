@@ -24,10 +24,10 @@ export function drawWillow(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink }: DrawArgs,
+  { rng, form, ink, sizeBoost }: DrawArgs,
 ): void {
   const t = WILLOW_TONES
-  const j = jitter(rng)
+  const j = jitter(rng, sizeBoost)
   const foot = py + PIXEL * 2
   const cx = px + PIXEL + j.lean * 0.4
   const great = form === 0

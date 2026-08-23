@@ -6,8 +6,9 @@
 // no flicker, and no re-roll when the camera pans away and back. Map data can
 // also name a species and/or form outright to override the roll.
 //
-// Nothing here is wired into the scene yet: `ParkGame` and `sprites.ts` still
-// draw their own tree. This module is the art, ready to be dropped in.
+// This is the park's only tree art. `ParkGame` draws its base-map trees through
+// `drawNightTree`, and `sprites.ts` routes both shop previews and placed decor
+// here too, so a tree in the shop is the tree you get when you place it.
 
 import { PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
@@ -58,32 +59,65 @@ export const TREE_DRAW: Record<TreeSpecies, SpeciesDraw> = {
 }
 
 /**
- * How often each species comes up. NOT an even split: the broadleaf stays the
- * park's backbone and the rarer species read as accents — five equally common
- * species look like a sampler, not a park.
+ * The species the PARK actually grows. A deliberate subset of TREE_SPECIES: the
+ * maple and crabapple are strong feature trees — a red canopy and a blossoming
+ * one — and scattered through a small park they read as a sampler of the art
+ * rather than as a place. They stay in TREE_SPECIES so the catalog still shows
+ * them and callers can still ask for one by name via DrawTreeOptions.species.
  */
-export const SPECIES_WEIGHTS: Record<TreeSpecies, number> = {
-  broadleaf: 34,
-  pine: 18,
-  maple: 18,
-  crabapple: 16,
-  willow: 14,
+export const PARK_SPECIES = [
+  'broadleaf',
+  'pine',
+  'willow',
+] as const satisfies readonly TreeSpecies[]
+
+/**
+ * How often each park species comes up. NOT an even split: the broadleaf stays
+ * the park's backbone and the other two read as accents — equally common species
+ * look like a sampler, not a park.
+ */
+export const SPECIES_WEIGHTS: Record<(typeof PARK_SPECIES)[number], number> = {
+  broadleaf: 58,
+  pine: 27,
+  willow: 15,
 }
 
 // Distinct salts so the species roll, the form roll and the art's own jitter are
 // independent — otherwise picking a species would shift every tree's shape.
-const SEED_SPECIES = 101
+//
+// SEED_SPECIES is not arbitrary: with only a handful of groves on the map, the
+// weights above are a long-run distribution that a five-grove sample need not
+// match, and some salts hand every grove the same species. This one deals the
+// current map 6 broadleaf / 3 pine / 1 willow, which is the intended read. If the
+// tree layout changes, re-check the mix — a different salt may deal it better.
+const SEED_SPECIES = 16
 const SEED_FORM = 211
 const SEED_ART = 1
 
 const seedAt = (x: number, y: number, salt: number) =>
   makeRng(x * 73856093 + y * 19349663 + salt)
 
-/** The species a tree at tile (x, y) grows as. Stable for that tile, forever. */
+/**
+ * How many tiles wide/tall a grove is. Species is rolled per GROVE rather than
+ * per tile, so neighbouring trees come up the same kind and the park reads as
+ * stands of one species instead of one-of-each noise. Widen it for larger, more
+ * uniform stands; narrow it toward 1 to go back to every tree rolling alone.
+ */
+const GROVE_TILES = 6
+
+/**
+ * The species a tree at tile (x, y) grows as. Stable for that tile, forever, and
+ * shared with every other tree in the same grove — see GROVE_TILES. Only the
+ * species clusters: form and the art's own jitter are still rolled per tile, so
+ * trees standing together match in kind while still differing in build, size,
+ * density and lean.
+ */
 export function treeSpeciesAt(x: number, y: number): TreeSpecies {
-  const total = TREE_SPECIES.reduce((sum, k) => sum + SPECIES_WEIGHTS[k], 0)
-  let roll = seedAt(x, y, SEED_SPECIES)() * total
-  for (const species of TREE_SPECIES) {
+  const gx = Math.floor(x / GROVE_TILES)
+  const gy = Math.floor(y / GROVE_TILES)
+  const total = PARK_SPECIES.reduce((sum, k) => sum + SPECIES_WEIGHTS[k], 0)
+  let roll = seedAt(gx, gy, SEED_SPECIES)() * total
+  for (const species of PARK_SPECIES) {
     roll -= SPECIES_WEIGHTS[species]
     if (roll < 0) return species
   }
@@ -105,6 +139,12 @@ export interface DrawTreeOptions {
    * for bright shop previews.
    */
   ink?: Ink
+  /**
+   * Multiply this one tree's size roll. Defaults to 1. Use it to single out a
+   * specimen — the species and form still come from the tile, so the tree stays
+   * the kind that grows there, it just came out bigger. See `jitter`.
+   */
+  sizeBoost?: number
 }
 
 /**
@@ -122,6 +162,7 @@ export function drawTree(
     rng: seedAt(tile.x, tile.y, SEED_ART),
     form,
     ink: opts.ink ?? ((c) => c),
+    sizeBoost: opts.sizeBoost,
   })
 }
 
