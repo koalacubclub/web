@@ -16,10 +16,10 @@
     "@koala/shared": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.9.9",
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260703.1",
     "typescript": "~6.0.2",
-    "vitest": "~3.2.0",
-    "wrangler": "^4.42.0"
+    "vitest": "^4.1.9",
+    "wrangler": "4.124.0"
   }
 }

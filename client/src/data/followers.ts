@@ -36,6 +36,20 @@ export const MEMBERS_PER_PAGE = 20
 // avatar (e.g. no profile picture) falls back to a monogram in the UI, so the
 // list never shows broken images.
 export const FOLLOWERS: Member[] = [
+  { handle: 'pnitu_____134', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'rosaba.61', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'isaaaaa_dora', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'mytofuuuuuuuuu', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'queeniesgambit', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'saty_asadhana9', platform: 'instagram', addedOn: '2026-08-23' },
+  {
+    handle: 'chandankararia2023',
+    platform: 'instagram',
+    addedOn: '2026-08-23',
+  },
+  { handle: 'grandpaandziggy', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'tofustory_pom', platform: 'instagram', addedOn: '2026-08-23' },
+  { handle: 'nigelandvelma', platform: 'instagram', addedOn: '2026-08-23' },
   { handle: 'okcomputcrr', platform: 'tiktok', addedOn: '2026-07-11' },
   { handle: 'stelmacha49', platform: 'instagram', addedOn: '2026-07-05' },
   { handle: 'odniddis', platform: 'instagram', addedOn: '2026-07-05' },
