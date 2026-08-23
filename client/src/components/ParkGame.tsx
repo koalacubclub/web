@@ -138,41 +138,32 @@ const COLORS = {
 // BELOW the site's --background token, and only its horizon stop — a literal spelled
 // out there — is the token itself.)
 //
-// Every value below is a hand-picked literal, and every surface carries a GRADIENT
-// rather than one flat fill — that's what stops the park reading as stacked cut-out
-// shapes. Every pair below is (top, bottom) of a vertical ramp.
+// Every value below is a hand-picked literal. Most surfaces carry a GRADIENT rather
+// than one flat fill — that's what stops the park reading as stacked cut-out shapes
+// — and for those, each pair below is (top, bottom) of a vertical ramp. The GROUND is
+// the exception: see below.
 
-// Ground — dusty mauve, palest just under the horizon and deepening underfoot, so
-// the dirt recedes instead of reading as one slab.
+// Ground — one FLAT dusty mauve, #B8959E (okL 70.5, C 0.044, H 1°), exactly the fill
+// this dirt has always been. It deliberately carries NO vertical ramp: a gradient
+// across a surface this large read as a wash of colour sliding down the screen, which
+// is a different thing from ground having texture. All of its life comes from a single
+// pass drawn on top instead: the speckle grain below.
 //
-// The ramp is centred on #B8959E (okL 70.5, C 0.044, H 1°) — the single flat fill
-// this dirt used to be — so it still averages to that colour and only gains depth.
-// Hue is an explicit function of LIGHTNESS: H ≈ 1° + (L − 70.5) × 3.4°/pt, so
-// highlights warm round to rose (~8°) and shadows cool back to mauve-violet (~352°).
-// Chroma rides the same ramp the OTHER way — C ≈ 0.0436 − (L − 70.5) × 0.0018 —
-// since pink goes candy at the strength the violet end needs. Both stay low: the hue
-// SHIFT is what gives the ground its life, so the colours themselves can stay muted
-// and let the props read against them. That split is the point — it's what stops the
-// dirt looking like one colour dimmed, and it's why these can't be derived by scaling
-// channels or by locking a single hue. Keep the lightness order below intact when
-// retuning: hue and chroma are both read off it. SPECKLE_* are the texture dots,
-// sitting just outside either end of the ramp — and they are the one DELIBERATE
-// EXCEPTION to the hue rule above: they run backwards, the darker dot being the
-// warmer one. They're kept exactly as-is because they're single-pixel grain, where
-// a 15° hue inversion is invisible, and holding the two original dots verbatim is
-// worth more than making them obey a law nothing can see them break.
-const GROUND_TOP = '#BD9BA0' // okL 72.2, H 8° — rose end
-const GROUND_BOTTOM = '#B28F9D' // okL 68.7, H 352° — mauve-violet end
-const GROUND_SPECKLE_DARK = '#AF8B92' // okL 67.2, H 5° — under the ramp, but WARM
-const GROUND_SPECKLE_LIGHT = '#BE9EAC' // okL 73.2, H 350° — over it, but COOL
-// Blotch tones scattered over the ramp — roughly ±6 okL around its midpoint, each
-// hue-mapped off its own lightness by the same two rules. Wide enough to read as
-// weathering in the dirt at the alphas they're drawn with, narrow enough not to read
-// as objects on it (see dirtBlotch).
-const GROUND_BLOTCH_DEEP = '#A48295' // okL 64.5 — H 344°
-const GROUND_BLOTCH_DARK = '#AE8B9B' // okL 67.4 — H 349°
-const GROUND_BLOTCH_LIGHT = '#C19FA6' // okL 73.5 — H 4°
-const GROUND_BLOTCH_PALE = '#C8A8AB' // okL 76.1 — H 12°
+// The speckles are VIOLET, and that is the whole point of them. They straddle the base
+// in lightness (okL 62 and 78 against its 70.5) but sit ~315° away from it in hue,
+// where the base is ~1°. That hue gap is what makes them read as flecks of a different
+// colour caught in the dirt rather than as the base colour lightened and darkened —
+// which is all a ramp could ever give. Chroma is lifted above the base's 0.044 for the
+// same reason; drop it and they vanish into the fill. Keep the pair straddling the
+// base's lightness, or the grain will read as a stain over one half of the tonal range.
+const GROUND_BASE = '#B8959E' // okL 70.5, C 0.044, H 1° — the flat fill
+const GROUND_SPECKLE_DARK = '#9978A4' // okL 62.0, C 0.075, H 318° — deep violet
+const GROUND_SPECKLE_LIGHT = '#C5ADD0' // okL 77.9, C 0.056, H 315° — lilac
+// There are deliberately no broad tonal blotches over the base any more. Soft
+// same-hue washes at ±6 okL were tried and read as a gradient smeared across the
+// dirt — the very thing the flat fill is here to avoid. Texture is the speckles'
+// job alone; if this ground ever needs more life, make the grain denser or widen
+// its lightness spread rather than reintroducing a tonal layer under it.
 
 // Grass — THREE distinct shades. Each patch picks ONE and runs its own top→bottom
 // ramp within it, so neighbouring blobs read as different greens instead of one flat
@@ -1570,114 +1561,36 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Ground base — a vertical dusty-mauve ramp, palest just under the horizon and
-      // deepening underfoot, so the dirt recedes instead of reading as one slab.
-      const groundGrad = ctx.createLinearGradient(0, PIXEL, 0, CANVAS_HEIGHT)
-      groundGrad.addColorStop(0, GROUND_TOP)
-      groundGrad.addColorStop(1, GROUND_BOTTOM)
-      ctx.fillStyle = groundGrad
+      // Ground base — one flat dusty mauve, with no ramp and no tonal blotching over
+      // it. Both were tried and both read as a wash of colour sliding across the
+      // screen rather than as ground having texture; the speckle grain below is the
+      // only thing that varies the surface now, and that is deliberate.
+      ctx.fillStyle = GROUND_BASE
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
-      // Broad tonal blotches over the base ramp. They stay inside the mauve family
-      // and vary mostly in TONE (±6 okL around the ramp's midpoint, hue only following
-      // that lightness) — swing the hue independently here and the ground turns muddy.
-      // Soft-edged and translucent so they read as weathering in the dirt, not as
-      // objects on it.
-      // Drawn before the grass, so patches still sit cleanly on top.
-      function dirtBlotch(
-        cx: number,
-        cy: number,
-        radiusX: number,
-        radiusY: number,
-        seed: number,
-        fill: string,
-      ) {
-        if (!ctx) return
-        const points = 11
-        ctx.fillStyle = fill
-        ctx.beginPath()
-        for (let i = 0; i <= points; i++) {
-          const angle = (i / points) * Math.PI * 2
-          // Two harmonics rather than one: a single sine gives every blob the same
-          // lobed silhouette, which the eye picks up as a repeated stamp once there
-          // are dozens on screen. The second, faster term breaks that up.
-          const wob =
-            0.66 +
-            0.22 * Math.sin(seed * 2.9 + i * 2.4) +
-            0.14 * Math.cos(seed * 1.3 + i * 5.1)
-          const px = cx + Math.cos(angle) * radiusX * wob
-          const py = cy + Math.sin(angle) * radiusY * wob
-          if (i === 0) {
-            ctx.moveTo(px, py)
-          } else {
-            const pa = ((i - 0.5) / points) * Math.PI * 2
-            const pw = 0.78 + 0.22 * Math.cos(seed * 1.7 + (i - 0.5) * 3.3)
-            ctx.quadraticCurveTo(
-              cx + Math.cos(pa) * radiusX * pw * 1.12,
-              cy + Math.sin(pa) * radiusY * pw * 1.08,
-              px,
-              py,
-            )
-          }
-        }
-        ctx.closePath()
-        ctx.fill()
-      }
-
-      const blotchTones = [
-        GROUND_BLOTCH_PALE,
-        GROUND_BLOTCH_DEEP,
-        GROUND_BLOTCH_LIGHT,
-        GROUND_BLOTCH_DARK,
-      ]
-      // Three passes, coarse → fine: a broad tonal wash, mid-size patches, then
-      // small accents. The layering is what sells it as weathered ground — a single
-      // pass at one size reads as scattered discs no matter how many you draw, since
-      // nothing overlaps at a different scale. Each pass is more opaque than the one
-      // under it, so fine detail stays legible on top of the broad wash.
-      const blotchLayers = [
-        { count: 16, alpha: 0.3, rx: [4, 9], ry: [2, 4.5] },
-        { count: 28, alpha: 0.4, rx: [2, 5], ry: [1, 2.6] },
-        { count: 26, alpha: 0.5, rx: [0.8, 2.2], ry: [0.5, 1.3] },
-      ]
-      const brng = makeRng(4242)
-      let blotchSeed = 100
+      // Violet speckle grain — the sole source of texture in the dirt, so it runs far
+      // denser than the 40 dots that used to sit on top of the old ramp: sparse grain
+      // over a flat fill just reads as dust on the screen. Seeded, so the field is
+      // identical every reload (it bakes into the static background) and never flickers.
+      const srng = makeRng(9137)
       ctx.save()
-      // Clip to the ground rect. The broad first pass reaches 4.5 tiles of radius,
-      // so any blob seeded near the top edge would otherwise spill up over the
-      // horizon and smear into the sky. Clipping (rather than insetting where they
-      // may be placed) keeps blobs meeting the skyline cut off cleanly there, which
-      // is what makes the ground read as continuing behind the horizon.
-      ctx.beginPath()
-      ctx.rect(0, PIXEL, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL)
-      ctx.clip()
-      for (const layer of blotchLayers) {
-        ctx.globalAlpha = layer.alpha
-        for (let i = 0; i < layer.count; i++) {
-          const bx = brng() * CANVAS_WIDTH
-          const byy = PIXEL * 1.4 + brng() * (CANVAS_HEIGHT - PIXEL * 2.4)
-          const brx =
-            PIXEL * (layer.rx[0] + brng() * (layer.rx[1] - layer.rx[0]))
-          const bry =
-            PIXEL * (layer.ry[0] + brng() * (layer.ry[1] - layer.ry[0]))
-          // Tone drawn at random rather than round-robin, so the same shade can
-          // come up several times running and clump into a larger patch of
-          // weathering — round-robin would space the four tones evenly and the
-          // dirt would read as a regular pattern.
-          const tone = blotchTones[Math.floor(brng() * blotchTones.length)]
-          blotchSeed += 7.3
-          dirtBlotch(bx, byy, brx, bry, blotchSeed, tone)
-        }
+      for (let i = 0; i < 700; i++) {
+        const sx = srng() * CANVAS_WIDTH
+        const sy = PIXEL * 1.2 + srng() * (CANVAS_HEIGHT - PIXEL * 2.2)
+        ctx.fillStyle =
+          srng() < 0.55 ? GROUND_SPECKLE_DARK : GROUND_SPECKLE_LIGHT
+        // Sized in a continuous range, with a larger minority on top: a field of
+        // identically sized dots reads as a regular stipple however randomly it is
+        // placed, and two fixed sizes only halve that. Grains need to clear roughly
+        // 1.5x SCALE to register as flecks of colour at all — below that they blur
+        // into the fill and the ground goes flat again.
+        const d =
+          SCALE * (srng() < 0.2 ? 2.8 + srng() * 0.9 : 1.6 + srng() * 0.8)
+        // Varying alpha keeps the grain sitting IN the dirt rather than on it.
+        ctx.globalAlpha = 0.5 + srng() * 0.4
+        ctx.fillRect(sx, sy, d, d)
       }
       ctx.restore()
-
-      // Texture dots, either side of the ramp.
-      for (let i = 0; i < 40; i++) {
-        const sx = ((i * 73 + 17) % MAP_COLS) * PIXEL + ((i * 31) % PIXEL)
-        const sy = PIXEL * 1.5 + ((i * 47 + 11) % (CANVAS_HEIGHT - PIXEL * 2))
-        ctx.fillStyle = i % 2 === 0 ? GROUND_SPECKLE_DARK : GROUND_SPECKLE_LIGHT
-        ctx.fillRect(sx, sy, SCALE, SCALE)
-      }
 
       // Irregular grass patches on top of sand (using bezier blob shapes)
       function drawBlobPatch(
