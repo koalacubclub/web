@@ -9,7 +9,8 @@
 // Nothing here is wired into the scene yet: `ParkGame` and `sprites.ts` still
 // draw their own tree. This module is the art, ready to be dropped in.
 
-import { PIXEL, makeRng, night } from '../constants'
+import { PIXEL, makeRng } from '../constants'
+import { parkInk } from './parkInk'
 import { drawBroadleaf } from './broadleaf'
 import { drawCrabapple } from './crabapple'
 import { drawMaple } from './maple'
@@ -100,7 +101,7 @@ export interface DrawTreeOptions {
   /** Override the tile's form roll. */
   form?: TreeForm
   /**
-   * Colour pass-through: `night` for trees in the park, identity (the default)
+   * Colour pass-through: `parkInk` for trees in the park, identity (the default)
    * for bright shop previews.
    */
   ink?: Ink
@@ -124,11 +125,11 @@ export function drawTree(
   })
 }
 
-/** Convenience for the park itself: the same draw, night-graded. */
+/** Convenience for the park itself: the same draw, re-inked to the park palette. */
 export function drawNightTree(
   ctx: Ctx,
   tile: TreeTile,
   opts: Omit<DrawTreeOptions, 'ink'> = {},
 ): void {
-  drawTree(ctx, tile, { ...opts, ink: night })
+  drawTree(ctx, tile, { ...opts, ink: parkInk })
 }

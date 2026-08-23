@@ -2,7 +2,8 @@
 // exported draw functions themselves (never a copy), so the catalog always shows
 // the current art.
 
-import { COLORS, PIXEL, makeRng, night } from '../constants'
+import { COLORS, NIGHT, PIXEL, makeRng } from '../constants'
+import { parkInk } from './parkInk'
 import {
   SPECIES_WEIGHTS,
   TREE_SPECIES,
@@ -13,7 +14,7 @@ import {
 import type { Ink, TreeForm, TreeSpecies } from './types'
 
 const identity: Ink = (c) => c
-let ink: Ink = night
+let ink: Ink = parkInk
 let seed = 3
 
 function setupCanvas(
@@ -39,14 +40,18 @@ function drawGround(
   horizon: number,
 ): void {
   const sky = ctx.createLinearGradient(0, 0, 0, horizon)
-  const isNight = ink === night
+  const isNight = ink === parkInk
   sky.addColorStop(0, isNight ? '#12100e' : '#2a3550')
   sky.addColorStop(1, isNight ? '#1b1726' : '#4d5a7d')
   ctx.fillStyle = sky
   ctx.fillRect(0, 0, w, horizon)
-  ctx.fillStyle = ink(COLORS.grass)
+  // This backdrop is the catalog's own scenery, not species art, so none of it
+  // goes through ink(): parkInk only maps the tree palettes. Each surface picks
+  // its park counterpart directly — from NIGHT where the colour is a palette
+  // entry, and from a literal where it isn't.
+  ctx.fillStyle = isNight ? NIGHT.grass : COLORS.grass
   ctx.fillRect(0, horizon - 14, w, h - horizon + 14)
-  ctx.fillStyle = ink('#5E9A5A')
+  ctx.fillStyle = isNight ? '#4F695F' : '#5E9A5A'
   ctx.beginPath()
   ctx.moveTo(0, horizon)
   for (let px = 0; px <= w; px += 8) {
@@ -59,7 +64,7 @@ function drawGround(
   ctx.lineTo(0, horizon + 22)
   ctx.closePath()
   ctx.fill()
-  ctx.fillStyle = ink(COLORS.grassDark)
+  ctx.fillStyle = isNight ? NIGHT.grassDark : COLORS.grassDark
   const rng = makeRng(99)
   for (let i = 0; i < 24; i++) {
     const gx = rng() * w
@@ -148,11 +153,11 @@ const btnNight = document.getElementById('btn-night') as HTMLButtonElement
 const btnDay = document.getElementById('btn-day') as HTMLButtonElement
 function setInk(next: Ink): void {
   ink = next
-  btnNight.setAttribute('aria-pressed', String(next === night))
+  btnNight.setAttribute('aria-pressed', String(next === parkInk))
   btnDay.setAttribute('aria-pressed', String(next === identity))
   renderAll()
 }
-btnNight.addEventListener('click', () => setInk(night))
+btnNight.addEventListener('click', () => setInk(parkInk))
 btnDay.addEventListener('click', () => setInk(identity))
 document.getElementById('btn-reroll')!.addEventListener('click', () => {
   seed = (seed * 7 + 13) % 499
