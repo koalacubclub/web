@@ -7,10 +7,17 @@
 export const IG_PROFILE = 'https://www.instagram.com/koalacubclub/'
 export const reelUrl = (code: string) =>
   `https://www.instagram.com/reel/${code}/`
+export const tiktokReelUrl = (id: string) =>
+  `https://www.tiktok.com/@koalacubclub/video/${id}`
 
 export interface Reel {
   code: string
   caption: string
+  // TikTok video id for the same clip, when a mirror exists (TikTok lags IG
+  // uploads, so most entries won't have one). There's no shared id between
+  // platforms — match by caption/thumbnail during refresh, see
+  // docs/content-workflows.md.
+  tiktok?: string
 }
 
 export const REELS: Reel[] = [

@@ -34,6 +34,12 @@ build by vite-imagetools. Matched to reels by the `<code>` (shortcode) filename.
 3. Update `REELS` in `src/data/reels.ts`, newest first. Keep captions short (they
    truncate to one line) and strip hashtags. The crawlable `<noscript>`
    regenerates from this on the next build — no other edits.
+4. Optionally set `tiktok` on an entry when the same clip is also posted on
+   TikTok, so the card shows a "watch on TikTok" badge. IG stays the primary
+   order — this is a same-content cross-link, not a second feed. There's no
+   shared id between platforms, so match by caption/thumbnail against
+   `tiktok.com/@koalacubclub` and grab the video id from its URL
+   (`/video/<id>`). Leave it unset when no TikTok mirror exists yet.
 
 ## Refresh the club (followers)
 
