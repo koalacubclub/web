@@ -44,7 +44,7 @@ import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
-import { NIGHT, night, makeRng, HORIZON } from '@/game/constants'
+import { NIGHT, makeRng, HORIZON } from '@/game/constants'
 import {
   getPondReflection,
   drawPondStones,
@@ -129,6 +129,87 @@ const COLORS = {
   stoneDark: '#757575',
   charcoal: '#4A4A4A',
 }
+
+// ─── Big-surface colours ────────────────────────────────────────────────────
+// The ground, grass and pond cover most of the screen, so they're pinned here
+// rather than living in the shared NIGHT palette — they get tuned on their own, by
+// eye, without dragging every prop along with them. (The sky isn't one of them: it
+// draws straight from COLORS.sky/skyLight in renderStaticBackground, which sit just
+// BELOW the site's --background token, and only its horizon stop — a literal spelled
+// out there — is the token itself.)
+//
+// Every value below is a hand-picked literal. Most surfaces carry a GRADIENT rather
+// than one flat fill — that's what stops the park reading as stacked cut-out shapes
+// — and for those, each pair below is (top, bottom) of a vertical ramp. The GROUND is
+// the exception: see below.
+
+// Ground — one FLAT dusty mauve, #B8959E (okL 70.5, C 0.044, H 1°), exactly the fill
+// this dirt has always been. It deliberately carries NO vertical ramp: a gradient
+// across a surface this large read as a wash of colour sliding down the screen, which
+// is a different thing from ground having texture. All of its life comes from a single
+// pass drawn on top instead: the speckle grain below.
+//
+// The speckles are VIOLET, and that is the whole point of them. They straddle the base
+// in lightness (okL 62 and 78 against its 70.5) but sit ~315° away from it in hue,
+// where the base is ~1°. That hue gap is what makes them read as flecks of a different
+// colour caught in the dirt rather than as the base colour lightened and darkened —
+// which is all a ramp could ever give. Chroma is lifted above the base's 0.044 for the
+// same reason; drop it and they vanish into the fill. Keep the pair straddling the
+// base's lightness, or the grain will read as a stain over one half of the tonal range.
+const GROUND_BASE = '#B8959E' // okL 70.5, C 0.044, H 1° — the flat fill
+const GROUND_SPECKLE_DARK = '#9978A4' // okL 62.0, C 0.075, H 318° — deep violet
+const GROUND_SPECKLE_LIGHT = '#C5ADD0' // okL 77.9, C 0.056, H 315° — lilac
+// There are deliberately no broad tonal blotches over the base any more. Soft
+// same-hue washes at ±6 okL were tried and read as a gradient smeared across the
+// dirt — the very thing the flat fill is here to avoid. Texture is the speckles'
+// job alone; if this ground ever needs more life, make the grain denser or widen
+// its lightness spread rather than reintroducing a tonal layer under it.
+
+// Grass — THREE distinct shades. Each patch picks ONE and runs its own top→bottom
+// ramp within it, so neighbouring blobs read as different greens instead of one flat
+// lawn. Each entry is (top, bottom).
+//
+// Inside a ramp the hue shifts WITH LIGHTNESS the same way the ground's does: the lit
+// top leans GOLD-GREEN (H ~138–141°, olive-warm) and the shadowed bottom swings
+// BLUER (H ~154–190°, toward teal). That arc is the depth; it isn't a recolour, and
+// it can't be got by darkening one green. Shade 0 is the dominant one and its two
+// ends mix back to #76947F exactly — the muted sage the lawn used to be painted in
+// flat — so 55% of the patches simply ARE that old colour with a ramp through them.
+// Shades 1 and 2 are built around the two greens that used to be scattered over the
+// patches as blade flecks (#89A295 light, #517F60 dark); with the flecks gone those
+// colours come back up a level as minority patch families, which is what keeps the
+// whole lawn averaging to the sage. Keep that balance if you retune: lighten shade 1
+// or darken shade 2 and the lawn's overall tone moves with it.
+const GRASS_SHADES: readonly (readonly [string, string])[] = [
+  ['#859D81', '#668B7C'], // sage, dominant — mixes to #76947F, the old flat lawn
+  ['#93A48F', '#6C9491'], // lighter, built on the old light fleck #89A295
+  ['#6E9063', '#517F60'], // deep accent, ending on the old dark fleck
+] as const
+// Cumulative weights: 55% sage, 39% light, 6% deep accent. See pickGrassShade.
+const GRASS_SHADE_WEIGHTS = [0.55, 0.94, 1] as const
+
+const GRASS_TOP = '#76947F' // the sage itself, flat, for the front ridge
+const GRASS_BOTTOM = '#517F60' // darkest, for flower stems
+
+// The far ridge along the skyline. It's the same cooling-with-darkness line the
+// patches run down, carried out to okL 41.5: at H 204° it lands right where the
+// grass hue path points, so the hills read as the distant, cool end of one ramp
+// rather than as an unrelated green.
+const RIDGE_FAR = '#2C5357'
+
+// Pond water — deep periwinkle blue, carrying a vertical ramp (POND_DEEP at the far
+// edge, POND_WATER at the near rim) rather than one flat fill.
+//
+// The ramp is centred on #4968D2, the single flat blue this pond used to be: the two
+// endpoints sit ±4.1 okL either side of it, so in OKLab they average back to exactly
+// that colour and the pond only gains depth. Keep them symmetric about it if you
+// retune — POND_WATER is ALSO the 0.5-alpha wash laid over the reflections, so
+// pulling it far off #4968D2 shifts how submerged everything in the water reads.
+// The shop's pond sprite matches this via PARK_INK['#5A97DB'] in sprites.ts, which
+// maps to #4968D2 (the mean, not either endpoint, since that sprite is a flat fill)
+// — change both together or they'll drift apart.
+const POND_WATER = '#4F75E3'
+const POND_DEEP = '#435BC2'
 
 // Collectible food. Custom sprites drop in at public/game/food/<key>.png (256px,
 // transparent); until then each falls back to its emoji so the game works now.
@@ -1480,17 +1561,36 @@ export default function ParkGame() {
       if (!ctx) return
       // Sky is drawn separately (screen space) in the game loop.
 
-      // Sand base (night-graded, like every other below-wash colour)
-      ctx.fillStyle = night('#E8D5A8')
+      // Ground base — one flat dusty mauve, with no ramp and no tonal blotching over
+      // it. Both were tried and both read as a wash of colour sliding across the
+      // screen rather than as ground having texture; the speckle grain below is the
+      // only thing that varies the surface now, and that is deliberate.
+      ctx.fillStyle = GROUND_BASE
       ctx.fillRect(0, PIXEL * 1, CANVAS_WIDTH, CANVAS_HEIGHT - PIXEL * 1)
 
-      // Sand texture dots
-      for (let i = 0; i < 40; i++) {
-        const sx = ((i * 73 + 17) % MAP_COLS) * PIXEL + ((i * 31) % PIXEL)
-        const sy = PIXEL * 1.5 + ((i * 47 + 11) % (CANVAS_HEIGHT - PIXEL * 2))
-        ctx.fillStyle = i % 2 === 0 ? night('#DCC89A') : night('#F0E2B8')
-        ctx.fillRect(sx, sy, SCALE, SCALE)
+      // Violet speckle grain — the sole source of texture in the dirt, so it runs far
+      // denser than the 40 dots that used to sit on top of the old ramp: sparse grain
+      // over a flat fill just reads as dust on the screen. Seeded, so the field is
+      // identical every reload (it bakes into the static background) and never flickers.
+      const srng = makeRng(9137)
+      ctx.save()
+      for (let i = 0; i < 700; i++) {
+        const sx = srng() * CANVAS_WIDTH
+        const sy = PIXEL * 1.2 + srng() * (CANVAS_HEIGHT - PIXEL * 2.2)
+        ctx.fillStyle =
+          srng() < 0.55 ? GROUND_SPECKLE_DARK : GROUND_SPECKLE_LIGHT
+        // Sized in a continuous range, with a larger minority on top: a field of
+        // identically sized dots reads as a regular stipple however randomly it is
+        // placed, and two fixed sizes only halve that. Grains need to clear roughly
+        // 1.5x SCALE to register as flecks of colour at all — below that they blur
+        // into the fill and the ground goes flat again.
+        const d =
+          SCALE * (srng() < 0.2 ? 2.8 + srng() * 0.9 : 1.6 + srng() * 0.8)
+        // Varying alpha keeps the grain sitting IN the dirt rather than on it.
+        ctx.globalAlpha = 0.5 + srng() * 0.4
+        ctx.fillRect(sx, sy, d, d)
       }
+      ctx.restore()
 
       // Irregular grass patches on top of sand (using bezier blob shapes)
       function drawBlobPatch(
@@ -1502,7 +1602,24 @@ export default function ParkGame() {
       ) {
         if (!ctx) return
         const points = 10
-        ctx.fillStyle = NIGHT.grass
+        // Pick this patch's shade from the three, in the weighted proportions. Seeded
+        // by the patch's own seed, so a given blob is always the same green (no
+        // flicker) but its neighbours usually aren't — that variety between patches
+        // is what gives the lawn contrast. Then ramp top→bottom within that shade
+        // for internal depth, so it doesn't read as a flat cut-out.
+        const pick = makeRng(Math.round(seed * 977) + 1)()
+        const shadeIdx = GRASS_SHADE_WEIGHTS.findIndex((wgt) => pick < wgt)
+        const [shadeTop, shadeBottom] =
+          GRASS_SHADES[shadeIdx === -1 ? 0 : shadeIdx]
+        const blobGrad = ctx.createLinearGradient(
+          0,
+          cy - radiusY,
+          0,
+          cy + radiusY,
+        )
+        blobGrad.addColorStop(0, shadeTop)
+        blobGrad.addColorStop(1, shadeBottom)
+        ctx.fillStyle = blobGrad
         ctx.beginPath()
         for (let i = 0; i <= points; i++) {
           const angle = (i / points) * Math.PI * 2
@@ -1531,16 +1648,6 @@ export default function ParkGame() {
         }
         ctx.closePath()
         ctx.fill()
-
-        // Grass blade details scattered inside
-        for (let j = 0; j < 10; j++) {
-          const angle = (j / 10) * Math.PI * 2 + seed
-          const dist = 0.4 + ((j * 0.07) % 0.4)
-          const gx = cx + Math.cos(angle) * radiusX * dist
-          const gy = cy + Math.sin(angle) * radiusY * dist
-          ctx.fillStyle = j % 3 === 0 ? NIGHT.grassDark : NIGHT.grassLight
-          ctx.fillRect(gx, gy, SCALE * 2, SCALE * 3)
-        }
       }
 
       // Existing baked grass texture is draw-only (no game logic), so instead of
@@ -1810,8 +1917,10 @@ export default function ParkGame() {
       ctx.fillStyle = NIGHT.treeTrunk
       ctx.fillRect(x + PIXEL * 0.7, y + PIXEL, PIXEL * 0.6, PIXEL)
 
-      // Main (darker) canopy blob — a darker, green base leaf tone.
-      ctx.fillStyle = night('#3D9C4E')
+      // Main (darker) canopy blob — the deep blue-green base leaf tone, darker than
+      // NIGHT.treeLeavesLight below so the two blob layers stay distinct. The shop's
+      // tree sprite matches it via PARK_INK['#3D9C4E'] in sprites.ts.
+      ctx.fillStyle = '#366A57'
       ctx.beginPath()
       ctx.arc(
         x + PIXEL + jx,
@@ -1881,7 +1990,7 @@ export default function ParkGame() {
         const cyp = y + PIXEL * (0.28 + rng() * 0.28) + bobOffset
         const petalR = SCALE * 2.5 // uniform size — only colour/position/count vary
         const stemH = SCALE * 4
-        ctx.fillStyle = NIGHT.grassDark
+        ctx.fillStyle = GRASS_BOTTOM
         ctx.fillRect(cxp - SCALE * 0.5, cyp + petalR * 0.4, SCALE, stemH)
         ctx.fillStyle = palette[Math.floor(rng() * palette.length)]
         ctx.beginPath()
@@ -1947,8 +2056,11 @@ export default function ParkGame() {
     function drawPond(obj: GameObject) {
       if (!ctx) return
       const { cx, cy, rx, ry } = pondGeom(obj.x, obj.y)
-      // Still water body.
-      ctx.fillStyle = night('#5A97DB')
+      // Still water body — deeper at the far edge, shallower toward the near rim.
+      const waterGrad = ctx.createLinearGradient(0, cy - ry, 0, cy + ry)
+      waterGrad.addColorStop(0, POND_DEEP)
+      waterGrad.addColorStop(1, POND_WATER)
+      ctx.fillStyle = waterGrad
       ctx.beginPath()
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
       ctx.fill()
@@ -2007,7 +2119,7 @@ export default function ParkGame() {
       // Water wash — one translucent layer over everything so the reflections read
       // as submerged (and uniformly faded, avoiding per-shape transparency seams).
       ctx.globalAlpha = 0.5
-      ctx.fillStyle = night('#5A97DB')
+      ctx.fillStyle = POND_WATER
       ctx.fillRect(cx - rx, cy - ry, rx * 2, ry * 2)
       ctx.globalAlpha = 1
       ctx.restore()
@@ -2032,7 +2144,7 @@ export default function ParkGame() {
         Math.PI * 2,
       )
       ctx.fill()
-      ctx.fillStyle = night('#FF6B6B')
+      ctx.fillStyle = '#D25759'
       ctx.beginPath()
       ctx.arc(
         x + PIXEL * 0.5,
@@ -2172,7 +2284,7 @@ export default function ParkGame() {
       ctx.ellipse(0, h * 0.5, w * 0.5, PIXEL * 0.08, 0, 0, Math.PI * 2)
       ctx.fill()
       // Polaroid frame.
-      ctx.fillStyle = night('#FBFBF7')
+      ctx.fillStyle = '#CEC9CB'
       ctx.beginPath()
       ctx.roundRect(-w / 2, -h / 2, w, h, SCALE)
       ctx.fill()
@@ -2196,7 +2308,7 @@ export default function ParkGame() {
         ctx.drawImage(heroImg, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh)
         ctx.restore()
       } else {
-        ctx.fillStyle = night('#DDD7C8')
+        ctx.fillStyle = '#B6ACA4'
         ctx.fillRect(ix, iy, iw, ih)
       }
       ctx.restore()
@@ -2337,7 +2449,7 @@ export default function ParkGame() {
           ctx.stroke()
         } else {
           // Half-closed eyes
-          ctx.fillStyle = night('#8B9B2A')
+          ctx.fillStyle = '#778128'
           ctx.beginPath()
           ctx.ellipse(s * 4, s * 1.5, s * 0.6, s * 0.3, 0, 0, Math.PI * 2)
           ctx.fill()
@@ -2493,7 +2605,7 @@ export default function ParkGame() {
       ctx.fill()
 
       // Pupils
-      ctx.fillStyle = night('#8B9B2A')
+      ctx.fillStyle = '#778128'
       ctx.beginPath()
       ctx.arc(s * 3.2, -s * 0.4, s * 0.7, 0, Math.PI * 2)
       ctx.fill()
@@ -2520,7 +2632,7 @@ export default function ParkGame() {
 
       // Little open mouth while airborne (with a tiny pink tongue).
       if (airborne) {
-        ctx.fillStyle = night('#5A2A2A')
+        ctx.fillStyle = '#522A2B'
         ctx.beginPath()
         ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
         ctx.fill()
@@ -3705,40 +3817,6 @@ export default function ParkGame() {
     }
 
     // Bake the fully static sky + ground into the offscreen canvas once.
-    // A single pressed-grass paw print (pad + 4 toe beans), baked into the bg.
-    function drawPawStamp(px: number, py: number, angle: number, s: number) {
-      if (!ctx) return
-      ctx.save()
-      ctx.translate(px, py)
-      ctx.rotate(angle)
-      ctx.fillStyle = 'rgba(90,113,111,0.4)' // night-graded pressed grass
-      ctx.beginPath()
-      ctx.ellipse(0, s * 0.55, s * 0.9, s * 0.7, 0, 0, Math.PI * 2)
-      ctx.fill()
-      const toes: [number, number][] = [
-        [-0.7, -0.5],
-        [-0.25, -0.85],
-        [0.25, -0.85],
-        [0.7, -0.5],
-      ]
-      toes.forEach(([tx, ty]) => {
-        ctx!.beginPath()
-        ctx!.ellipse(tx * s, ty * s, s * 0.32, s * 0.4, 0, 0, Math.PI * 2)
-        ctx!.fill()
-      })
-      ctx.restore()
-    }
-    // A short wandering trail of paw prints across the lower grass (world coords).
-    function drawPawTrail() {
-      const trail: [number, number, number][] = [
-        [PIXEL * 3.2, PIXEL * 11.2, 0.5],
-        [PIXEL * 4.3, PIXEL * 10.7, 0.4],
-        [PIXEL * 5.4, PIXEL * 10.3, 0.5],
-        [PIXEL * 6.6, PIXEL * 10.0, 0.45],
-        [PIXEL * 7.8, PIXEL * 9.8, 0.5],
-      ]
-      trail.forEach(([px, py, a]) => drawPawStamp(px, py, a, SCALE * 1.6))
-    }
 
     // Rolling grass ridges over the (otherwise straight) sky/ground seam so the
     // horizon reads as soft hills against the night sky rather than a hard line.
@@ -3766,14 +3844,26 @@ export default function ParkGame() {
         ctx!.closePath()
         ctx!.fill()
       }
-      ridge(night('#2E7D48'), 0.75, 0.4, 2.1, 5) // furthest ridge — deep blue-green (matches imprint)
-      ridge(NIGHT.grass, 0.4, 0.42, 0.0, 7) // lighter front ridge
+      ridge(RIDGE_FAR, 0.75, 0.4, 2.1, 5) // furthest ridge — cool, reads as distance
+      ridge(GRASS_TOP, 0.4, 0.42, 0.0, 7) // front ridge — meets the grass underfoot
     }
 
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       const horizon = HORIZON
+      // Near-black night sky, climbing 0.02 L in total from the top of the canvas to
+      // the horizon: L 0.10 → 0.11 → 0.12. Three stops, not two, because the 0.6 stop
+      // splits that lift in half over uneven spans — the upper 60% takes the first
+      // 0.01 and the lower 40% takes the second, so the ramp accelerates by 1.5× on
+      // the way down and the lightening piles up near the horizon like haze.
+      //
+      // Only the last stop is the site's --background token (oklch(0.12 0.008 60),
+      // client/src/index.css) — the sky MEETS the page background at the horizon and
+      // sits darker than it everywhere above. The other two come from COLORS and are
+      // deliberately below the token. The horizon value is written out here rather
+      // than read from COLORS, so it duplicates the token: if --background moves,
+      // this literal has to move with it.
       const skyGrad = ctx!.createLinearGradient(0, 0, 0, horizon)
       skyGrad.addColorStop(0, COLORS.sky)
       skyGrad.addColorStop(0.6, COLORS.skyLight)
@@ -3787,14 +3877,14 @@ export default function ParkGame() {
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
       drawGround()
-      // Same night grade as every object: the imprint tints its own colours via
-      // night() (bright colours/whites still pop), so no global wash is needed.
-      // These baked decorations are draw-only, so shift them right by LEFT_PAD
-      // with a translate rather than editing their internal coordinates.
+      // The imprint draws from the same park palette as every object, so it needs
+      // no wash of its own. It's draw-only, so shift it right by LEFT_PAD with a
+      // translate rather than editing its internal coordinates.
       ctx!.save()
       ctx!.translate(LEFT_PAD * PIXEL, 0)
-      drawKoalaImprint(ctx!, PIXEL, SCALE, COLORS, night)
-      drawPawTrail()
+      // Park palette straight in — no tint fn needed now that NIGHT holds the
+      // final colours (the default tint is identity).
+      drawKoalaImprint(ctx!, PIXEL, SCALE, NIGHT)
       ctx!.restore()
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)

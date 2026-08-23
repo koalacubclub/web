@@ -7,9 +7,41 @@
 // Each fn draws with the object's top-left at (obj.x*PIXEL, obj.y*PIXEL); the
 // caller sets up any world translate / device-resolution transform.
 
-import { COLORS, NIGHT, PIXEL, SCALE, night } from './constants'
+import { COLORS, NIGHT, PIXEL, SCALE } from './constants'
 
-// Active palette + ink for the current draw: night-tinted for the in-game park,
+// Park-mode counterparts for the one-off colours the sprite art uses directly (the
+// ones not covered by the PAL palette). Hand-picked per entry, exactly like NIGHT —
+// there is no grading function; a colour is dark because it is written dark here.
+// Every key must be a colour some INK() call passes; INK falls through unchanged for
+// anything missing, so an unlisted colour renders bright in-game (usually a bug).
+const PARK_INK: Record<string, string> = {
+  '#244B30': '#272E49', // light-tree canopy, deepest blob — near-navy
+  '#2E2E2E': '#302F30',
+  '#2E5E3A': '#2D3C4E', // light-tree canopy, upper blobs — a step lighter/bluer
+  '#3A2E2C': '#392F2E',
+  '#3D9C4E': '#366A57', // park tree canopy — matches drawTree's literal in ParkGame
+  '#4A4A4A': '#444344',
+  '#5A97DB': '#4968D2', // pond water — keep in sync with POND_WATER in ParkGame
+  '#6E6E6E': '#5F5D5F',
+  '#767A80': '#65656D',
+  '#84B2F0': '#697CE2', // pond highlight — same periwinkle, lighter and duller
+  '#8C877E': '#766F6A',
+  '#8C9096': '#75767E',
+  '#8E3E37': '#7A3733',
+  '#A5503F': '#8C4438',
+  '#A6A29A': '#8A8380',
+  '#A87B4A': '#8E6641',
+  '#B5895A': '#97714D',
+  '#C0554B': '#A14741',
+  '#C4A06A': '#A38259',
+  '#C9C9C9': '#A5A1A5',
+  '#E2D896': '#BAAE7C',
+  '#E8C9A0': '#BFA184',
+  '#EFEFEE': '#DDDBDC',
+  '#FF6B6B': '#D25759',
+}
+
+// Active palette + ink for the current draw: park-toned for the in-game world,
 // bright for shop previews. Set at the top of drawShopSprite; the internal draw
 // helpers read these module-level values so their signatures stay unchanged.
 let PAL: typeof COLORS = COLORS
@@ -131,7 +163,9 @@ function drawPond(ctx: Ctx, obj: SpriteObject, frameCount: number) {
   const x = obj.x * PIXEL
   const y = obj.y * PIXEL
   const wobble = Math.sin(frameCount * 0.03) * 2
-  // Match the base-map pond (soft blue; see drawPond in ParkGame).
+  // Match the base-map pond (see drawPond in ParkGame). This sprite is a flat fill,
+  // so in park mode PARK_INK maps it to the MEAN of that pond's periwinkle ramp
+  // rather than to either endpoint; in the shop preview it stays the bright blue.
   ctx.fillStyle = INK('#5A97DB')
   ctx.beginPath()
   ctx.ellipse(
@@ -815,7 +849,7 @@ export function drawShopSprite(
 ) {
   const { now, reducedMotion } = opts
   PAL = opts.night ? NIGHT : COLORS
-  INK = opts.night ? night : (c) => c
+  INK = opts.night ? (c) => PARK_INK[c] ?? c : (c) => c
   withPlacedFlourish(ctx, obj, now, reducedMotion, () => {
     switch (obj.type) {
       case 'tree':

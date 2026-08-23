@@ -152,18 +152,23 @@ export function drawKoalaImprint(
   const nearS = 1.08 // …and at the near (bottom) edge
   // Park-palette greens, but weighted DARK (tree greens + a deep green) so the
   // word reads against the light grass patch it sits on. A little grassLight is
-  // kept for highlight sparkle. All baked with the same night tint as the park.
-  // Night-grade every colour with the same `tint` the objects use (so the imprint
-  // reads consistently with the park, and its white blossoms still stay bright).
+  // kept for highlight sparkle. The park hands in its own dark palette (NIGHT), so
+  // the `colors.*` entries arrive already dark — there is no grading step; `tint`
+  // is an identity hook for callers that want one, and ParkGame passes none.
+  //
+  // The two literals below are NOT palette entries, so nothing darkens them for
+  // us: they must be written at their final park value or they render full-bright
+  // and blow out a third of the foliage. Keep them in the same tonal band as the
+  // `colors.*` greens around them.
   const leafGreens = [
-    '#2E7D48', // deep green, nudged a touch bluer
-    '#2E7D48',
+    '#2C5357', // deep green, nudged a touch bluer
+    '#2C5357',
     colors.treeLeaves,
     colors.treeLeaves,
     colors.grassDark,
     colors.treeLeavesLight,
     colors.grassLight, // occasional highlight
-    '#C2EC63', // a few bright yellow-green leaves for variety
+    '#9BA461', // a few yellow-green leaves for variety
   ].map(tint)
   const leafVein = 'rgba(55,70,64,0.45)'
   // White blossoms only (a soft yellow eye for a little definition).

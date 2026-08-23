@@ -18,9 +18,10 @@ export type TreeSpecies =
 export type TreeForm = 0 | 1
 
 /**
- * Colour pass-through. Pass `night` (from `../constants`) for trees drawn in the
+ * Colour pass-through. Pass `parkInk` (from `./parkInk`) for trees drawn in the
  * park, or leave it as the identity for bright shop previews — every colour a
- * species uses goes through it, so the night grade lives in the colours.
+ * species uses goes through it, so a species file only ever declares its bright
+ * palette and the park counterpart is looked up, never computed.
  */
 export type Ink = (color: string) => string
 

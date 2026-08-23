@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { night } from '../constants'
+import { parkInk } from './parkInk'
 import {
   SPECIES_WEIGHTS,
   TREE_SPECIES,
@@ -57,7 +57,7 @@ function paint(
     {
       species: opts.species,
       form: opts.form,
-      ink: opts.night ? night : undefined,
+      ink: opts.night ? parkInk : undefined,
     },
   )
   return calls
@@ -114,9 +114,21 @@ describe('drawing', () => {
       const dark = paint(4, 2, { species, night: true })
       const bright = paint(4, 2, { species })
       expect(dark).not.toEqual(bright)
-      // Night colours are the graded rgb() form, never a raw hex.
-      expect(dark.some((c) => c.startsWith('color(rgb('))).toBe(true)
-      expect(bright.some((c) => c.startsWith('color(#'))).toBe(true)
+      // Both sets are hex literals now (the old night() grade emitted rgb()
+      // strings, which is what this used to key on). What must hold is that the
+      // park pass actually re-inked: every bright colour parkInk knows about is
+      // gone from the dark pass, and each was replaced by its mapped counterpart.
+      const hex = (cs: string[]) =>
+        cs.flatMap((c) => c.match(/^color\((#[0-9A-Fa-f]{6})\)$/)?.[1] ?? [])
+      const brightHex = hex(bright)
+      expect(brightHex.length).toBeGreaterThan(0)
+      const remapped = brightHex.filter((c) => parkInk(c) !== c)
+      expect(remapped.length).toBeGreaterThan(0)
+      const darkHex = new Set(hex(dark))
+      for (const c of remapped) {
+        expect(darkHex.has(c)).toBe(false)
+        expect(darkHex.has(parkInk(c))).toBe(true)
+      }
     },
   )
 

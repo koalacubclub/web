@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { drawShopSprite } from './sprites'
-import { COLORS, night } from './constants'
+import { COLORS, NIGHT } from './constants'
 import { SHOP_ITEMS } from './shopItems'
 
 // A minimal CanvasRenderingContext2D stand-in that records every colour assigned
@@ -49,20 +49,22 @@ describe('drawShopSprite night tinting', () => {
   it('tints a placed item (night:true) and leaves the preview bright', () => {
     const dark = paint('stone', 1, 1, true)
     const bright = paint('stone', 1, 1)
-    // Night render uses the baked colour, not the raw palette one.
-    expect(dark).toContain(night(COLORS.stone))
+    // Park render uses the park palette colour, not the raw bright one.
+    expect(dark).toContain(NIGHT.stone)
     expect(dark).not.toContain(COLORS.stone)
     // Preview render uses the raw bright palette colour.
     expect(bright).toContain(COLORS.stone)
-    expect(bright).not.toContain(night(COLORS.stone))
+    expect(bright).not.toContain(NIGHT.stone)
   })
 
   it('tints tree foliage for placed decor', () => {
-    // The canopy uses a fixed leaf tone (matched to the base-map trees), tinted at
-    // night and left bright for the preview.
+    // The canopy uses a fixed leaf tone (matched to the base-map trees), swapped for
+    // its park tone in-game and left bright for the preview. Both are hand-picked
+    // literals (see PARK_INK in sprites.ts), so they're pinned here on purpose.
     const CANOPY = '#3D9C4E'
+    const CANOPY_PARK = '#366A57'
     const dark = paint('tree', 2, 2, true)
-    expect(dark).toContain(night(CANOPY))
+    expect(dark).toContain(CANOPY_PARK)
     expect(dark).not.toContain(CANOPY)
     const bright = paint('tree', 2, 2)
     expect(bright).toContain(CANOPY)
