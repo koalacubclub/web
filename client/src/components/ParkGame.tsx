@@ -135,10 +135,10 @@ const COLORS = {
   charcoal: '#4A4A4A',
 }
 
-// The koala's iris. Green is the one hue that reads instantly against orange
-// fur, and at eye size it has to be lifted well clear of the olive it used to be
-// (#778128, okL 55) or it just goes dark.
-const EYE_IRIS = '#9FBF3B' // okL 74, C 0.130, H 128
+// The koala's eye is a white circle with one green dot in it — no pupil inside
+// the dot, so the dot has to BE the pupil. That means it sits dark (okL 60):
+// the lime it was first tried at read as a lit disc rather than as an eye.
+const EYE_IRIS = '#658F3E' // okL 60, C 0.120, H 132
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
 // The ground, grass and pond cover most of the screen, so they're pinned here
@@ -2379,17 +2379,15 @@ export default function ParkGame() {
         ctx.quadraticCurveTo(s * 5.2, s * 3.05, s * 5.2, s * 3.05)
         ctx.closePath()
         ctx.fill()
-        // Mouth: a philtrum and two shallow curves, kept clear of the nose so
-        // the whole thing doesn't clot into one dark smudge.
+        // Mouth: the same plain chevron the standing pose wears.
         ctx.strokeStyle = NIGHT.catStripe
         ctx.lineWidth = s * 0.24
         ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
         ctx.beginPath()
-        ctx.moveTo(s * 5.2, s * 3.05)
-        ctx.lineTo(s * 5.2, s * 3.35)
-        ctx.moveTo(s * 4.5, s * 3.3)
-        ctx.quadraticCurveTo(s * 4.85, s * 3.85, s * 5.2, s * 3.35)
-        ctx.quadraticCurveTo(s * 5.55, s * 3.85, s * 5.9, s * 3.3)
+        ctx.moveTo(s * 4.78, s * 3.62)
+        ctx.lineTo(s * 5.2, s * 3.15)
+        ctx.lineTo(s * 5.62, s * 3.62)
         ctx.stroke()
 
         // Front paws tucked under the head, with a toe split in each.
@@ -2623,44 +2621,20 @@ export default function ParkGame() {
       ctx.ellipse(s * 4.3, s * 1.1, s * 2.6, s * 2, 0, 0, Math.PI * 2)
       ctx.fill()
 
-      // Eyes: sclera, iris, pupil, two catchlights, and a lid line that gives
-      // her an actual expression instead of two dots.
+      // Eyes: a circle and a dot, nothing else. Catchlights and a lid line were
+      // both tried and both read as decoration stuck onto her face.
       for (const ex of [s * 2.9, s * 5.6]) {
         ctx.fillStyle = NIGHT.white
         ctx.beginPath()
-        ctx.ellipse(ex, -s * 0.5, s * 1.35, s * 1.25, 0, 0, Math.PI * 2)
+        ctx.ellipse(ex, -s * 0.5, s * 1.15, s * 1.1, 0, 0, Math.PI * 2)
         ctx.fill()
         ctx.fillStyle = EYE_IRIS
         ctx.beginPath()
-        ctx.arc(ex + s * 0.2, -s * 0.4, s * 0.95, 0, Math.PI * 2)
+        ctx.arc(ex, -s * 0.45, s * 0.8, 0, Math.PI * 2)
         ctx.fill()
-        ctx.fillStyle = NIGHT.catStripe
-        ctx.beginPath()
-        ctx.ellipse(
-          ex + s * 0.25,
-          -s * 0.4,
-          s * 0.4,
-          s * 0.72,
-          0,
-          0,
-          Math.PI * 2,
-        )
-        ctx.fill()
-        ctx.fillStyle = NIGHT.white
-        ctx.beginPath()
-        ctx.arc(ex + s * 0.6, -s * 0.9, s * 0.32, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.arc(ex - s * 0.2, s * 0.2, s * 0.16, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = NIGHT.catDark
-        ctx.lineWidth = s * 0.35
-        ctx.beginPath()
-        ctx.arc(ex, -s * 0.5, s * 1.35, 1.05 * Math.PI, 1.95 * Math.PI)
-        ctx.stroke()
       }
 
-      // Nose, with a philtrum dropping into the two curves of the mouth.
+      // Nose, and a plain chevron under it for the mouth.
       ctx.fillStyle = NIGHT.catNose
       ctx.beginPath()
       ctx.moveTo(s * 3.7, s * 0.5)
@@ -2671,12 +2645,11 @@ export default function ParkGame() {
       ctx.strokeStyle = NIGHT.catStripe
       ctx.lineWidth = s * 0.26
       ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
       ctx.beginPath()
-      ctx.moveTo(s * 4.3, s * 1.4)
-      ctx.lineTo(s * 4.3, s * 1.75)
-      ctx.moveTo(s * 3.55, s * 1.7)
-      ctx.quadraticCurveTo(s * 3.95, s * 2.3, s * 4.3, s * 1.75)
-      ctx.quadraticCurveTo(s * 4.65, s * 2.3, s * 5.05, s * 1.7)
+      ctx.moveTo(s * 3.85, s * 2.05)
+      ctx.lineTo(s * 4.3, s * 1.55)
+      ctx.lineTo(s * 4.75, s * 2.05)
       ctx.stroke()
 
       // Little open mouth while airborne (with a tiny pink tongue).
