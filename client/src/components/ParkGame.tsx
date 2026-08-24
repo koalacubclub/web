@@ -44,6 +44,7 @@ import { drawShopSprite, withPlacedFlourish } from '@/game/sprites'
 import { drawNightTree as drawSpeciesTree } from '@/game/trees'
 import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
 import { drawNightRock as drawSpeciesRock } from '@/game/rocks'
+import { drawParkBall } from '@/game/decor'
 import {
   drawParkBench,
   drawPondSurface,
@@ -1966,37 +1967,11 @@ export default function ParkGame() {
       drawPondSurface(ctx, tile)
     }
 
+    // The ball is the decor module's ball — the same draw a bought one gets,
+    // so the base balls the park seeds and a shop ball are one sprite.
     function drawBall(obj: GameObject) {
       if (!ctx) return
-      const x = obj.x * PIXEL
-      const y = obj.y * PIXEL
-      const bounce = Math.abs(Math.sin(g.frameCount * 0.06)) * SCALE * 2
-      ctx.fillStyle = 'rgba(0,0,0,0.1)'
-      ctx.beginPath()
-      ctx.ellipse(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.8,
-        PIXEL * 0.25,
-        PIXEL * 0.1,
-        0,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      ctx.fillStyle = '#D25759'
-      ctx.beginPath()
-      ctx.arc(
-        x + PIXEL * 0.5,
-        y + PIXEL * 0.5 - bounce,
-        PIXEL * 0.25,
-        0,
-        Math.PI * 2,
-      )
-      ctx.fill()
-      ctx.fillStyle = NIGHT.fishBowl
-      ctx.beginPath()
-      ctx.arc(x + PIXEL * 0.4, y + PIXEL * 0.4 - bounce, SCALE, 0, Math.PI * 2)
-      ctx.fill()
+      drawParkBall(ctx, obj, g.frameCount)
     }
 
     // The park's stones are the faceted art in game/rocks — a boulder, a cairn,
