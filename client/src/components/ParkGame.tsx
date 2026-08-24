@@ -123,8 +123,8 @@ const COLORS = {
   waterLight: '#90CAF9',
   catLight: '#FFBD72',
   catOrange: '#D47027',
-  catDark: '#8B3E09',
-  catStripe: '#521F03',
+  catDark: '#7C492E',
+  catStripe: '#45281A',
   catCream: '#FDF4E3',
   catNose: '#D87972',
   white: '#FFFFFF',
@@ -2341,34 +2341,17 @@ export default function ParkGame() {
             ctx.stroke()
             continue
           }
-          ctx.beginPath()
-          ctx.moveTo(ex - s * 0.8, ey)
-          ctx.lineTo(ex + s * 0.8, ey)
-          ctx.quadraticCurveTo(ex + s * 0.8, ey + s * 1, ex, ey + s * 1)
-          ctx.quadraticCurveTo(ex - s * 0.8, ey + s * 1, ex - s * 0.8, ey)
-          ctx.closePath()
+          // The same green circle and brown dot as standing, squashed down: the
+          // squash alone carries "drowsy". A lid line over it just read as an
+          // eyebrow.
           ctx.fillStyle = EYE_IRIS
+          ctx.beginPath()
+          ctx.ellipse(ex, ey + s * 0.4, s * 0.95, s * 0.6, 0, 0, Math.PI * 2)
           ctx.fill()
           ctx.fillStyle = NIGHT.catStripe
           ctx.beginPath()
-          ctx.ellipse(
-            ex + s * 0.1,
-            ey + s * 0.42,
-            s * 0.28,
-            s * 0.4,
-            0,
-            0,
-            Math.PI * 2,
-          )
+          ctx.ellipse(ex, ey + s * 0.4, s * 0.34, s * 0.24, 0, 0, Math.PI * 2)
           ctx.fill()
-          // The lid bows down a little at its middle: dead straight it read as a
-          // scowl rather than as someone about to nod off.
-          ctx.strokeStyle = NIGHT.catDark
-          ctx.lineWidth = s * 0.26
-          ctx.beginPath()
-          ctx.moveTo(ex - s * 0.85, ey - s * 0.1)
-          ctx.quadraticCurveTo(ex, ey + s * 0.22, ex + s * 0.85, ey - s * 0.1)
-          ctx.stroke()
         }
 
         // Nose, and the two little curves of the mouth under it.
@@ -2385,9 +2368,9 @@ export default function ParkGame() {
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
         ctx.beginPath()
-        ctx.moveTo(s * 4.78, s * 3.62)
-        ctx.lineTo(s * 5.2, s * 3.15)
-        ctx.lineTo(s * 5.62, s * 3.62)
+        ctx.moveTo(s * 4.94, s * 3.48)
+        ctx.lineTo(s * 5.2, s * 3.18)
+        ctx.lineTo(s * 5.46, s * 3.48)
         ctx.stroke()
 
         // Front paws tucked under the head, with a toe split in each.
@@ -2621,16 +2604,17 @@ export default function ParkGame() {
       ctx.ellipse(s * 4.3, s * 1.1, s * 2.6, s * 2, 0, 0, Math.PI * 2)
       ctx.fill()
 
-      // Eyes: a circle and a dot, nothing else. Catchlights and a lid line were
-      // both tried and both read as decoration stuck onto her face.
+      // Eyes: a green circle with a small brown dot in it, and nothing else.
+      // Catchlights, a white sclera and a lid line were each tried and each read
+      // as decoration stuck onto her face.
       for (const ex of [s * 2.9, s * 5.6]) {
-        ctx.fillStyle = NIGHT.white
-        ctx.beginPath()
-        ctx.ellipse(ex, -s * 0.5, s * 1.15, s * 1.1, 0, 0, Math.PI * 2)
-        ctx.fill()
         ctx.fillStyle = EYE_IRIS
         ctx.beginPath()
-        ctx.arc(ex, -s * 0.45, s * 0.8, 0, Math.PI * 2)
+        ctx.arc(ex, -s * 0.5, s * 1.1, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catStripe
+        ctx.beginPath()
+        ctx.arc(ex, -s * 0.5, s * 0.4, 0, Math.PI * 2)
         ctx.fill()
       }
 
@@ -2647,9 +2631,9 @@ export default function ParkGame() {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       ctx.beginPath()
-      ctx.moveTo(s * 3.85, s * 2.05)
-      ctx.lineTo(s * 4.3, s * 1.55)
-      ctx.lineTo(s * 4.75, s * 2.05)
+      ctx.moveTo(s * 4.02, s * 1.92)
+      ctx.lineTo(s * 4.3, s * 1.6)
+      ctx.lineTo(s * 4.58, s * 1.92)
       ctx.stroke()
 
       // Little open mouth while airborne (with a tiny pink tongue).

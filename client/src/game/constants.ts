@@ -45,8 +45,8 @@ export const COLORS = {
   waterLight: '#90CAF9',
   catLight: '#FFBD72',
   catOrange: '#D47027',
-  catDark: '#8B3E09',
-  catStripe: '#521F03',
+  catDark: '#7C492E',
+  catStripe: '#45281A',
   catCream: '#FDF4E3', // chest, muzzle and paws
   catNose: '#D87972',
   catEar: '#FFC9D9', // light pink inner ear
@@ -110,12 +110,13 @@ export const NIGHT: typeof COLORS = {
   // the body clears the ground by 9 okL and carries 3x its chroma, and the rest
   // run down to okL 26, far under anything she stands on. She is drawn with NO
   // outline, so that spread is the only thing holding her shape -- keep it if
-  // you retune the hue. It's the spread, not the orange, that stops her
-  // blending.
+  // you retune the hue. It's the LIGHTNESS spread, not the chroma, that stops
+  // her blending, which is why the two browns can sit this desaturated: they
+  // read as fur rather than as ink while the gap to the ground is untouched.
   catLight: '#F9A551', // okL 79, C 0.140, H 63 -- lit body
   catOrange: '#BB5C0C', // okL 58, C 0.145, H 52 -- dorsal band, ears, tail
-  catDark: '#753000', // okL 40, C 0.110, H 47 -- eyelids, toe splits
-  catStripe: '#411400', // okL 26, C 0.077, H 43 -- spots
+  catDark: '#673B24', // okL 40, C 0.072, H 48 -- toe splits
+  catStripe: '#361C12', // okL 26, C 0.045, H 42 -- spots, pupils
   catCream: '#F4EAD5', // okL 94, C 0.030, H 86
   catNose: '#C06A64', // okL 62, C 0.111, H 25
   catEar: '#D1A1B2',
