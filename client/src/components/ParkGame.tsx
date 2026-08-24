@@ -135,10 +135,11 @@ const COLORS = {
   charcoal: '#4A4A4A',
 }
 
-// The koala's eye: a green circle with a small brown pupil in it. The pupil is
-// what reads as the eye, so the green is free to sit pale (okL 80) — it only
-// had to go dark back when it was doing the pupil's job itself.
-const EYE_IRIS = '#A2CD7F' // okL 80, C 0.114, H 132
+// The koala's eye: a near-white circle with a small brown pupil in it. It keeps
+// just enough green (okL 91 at chroma 0.056) to read as green rather than as a
+// plain white sclera. The pupil is what reads as the eye, so this is free to
+// sit here — the green only had to go dark back when it was the whole eye.
+const EYE_IRIS = '#D4EAC4' // okL 91, C 0.056, H 132
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
 // The ground, grass and pond cover most of the screen, so they're pinned here
