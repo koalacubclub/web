@@ -135,10 +135,10 @@ const COLORS = {
   charcoal: '#4A4A4A',
 }
 
-// The koala's eye is a white circle with one green dot in it — no pupil inside
-// the dot, so the dot has to BE the pupil. That means it sits dark (okL 60):
-// the lime it was first tried at read as a lit disc rather than as an eye.
-const EYE_IRIS = '#658F3E' // okL 60, C 0.120, H 132
+// The koala's eye: a green circle with a small brown pupil in it. The pupil is
+// what reads as the eye, so the green is free to sit light (okL 70) — it only
+// had to go dark back when it was doing the pupil's job itself.
+const EYE_IRIS = '#81AF59' // okL 70, C 0.126, H 132
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
 // The ground, grass and pond cover most of the screen, so they're pinned here
