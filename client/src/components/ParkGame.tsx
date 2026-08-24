@@ -121,10 +121,12 @@ const COLORS = {
   benchLight: '#A1887F',
   water: '#64B5F6',
   waterLight: '#90CAF9',
-  catLight: '#D6A071',
-  catOrange: '#C46C31',
-  catDark: '#9F5028',
-  catStripe: '#7C3A1D',
+  catLight: '#FFBD72',
+  catOrange: '#D47027',
+  catDark: '#8B3E09',
+  catStripe: '#521F03',
+  catCream: '#FDF4E3',
+  catNose: '#D87972',
   white: '#FFFFFF',
   heart: '#FF6B9D',
   fishBowl: '#FFD93D',
@@ -132,6 +134,11 @@ const COLORS = {
   stoneDark: '#757575',
   charcoal: '#4A4A4A',
 }
+
+// The koala's iris. Green is the one hue that reads instantly against orange
+// fur, and at eye size it has to be lifted well clear of the olive it used to be
+// (#778128, okL 55) or it just goes dark.
+const EYE_IRIS = '#9FBF3B' // okL 74, C 0.130, H 128
 
 // ─── Big-surface colours ────────────────────────────────────────────────────
 // The ground, grass and pond cover most of the screen, so they're pinned here
@@ -2174,12 +2181,52 @@ export default function ParkGame() {
         ctx.restore()
       }
 
+      // Every fur shape is filled and then immediately inked with the same dark
+      // line. That line is what keeps her off the background: the park's big
+      // surfaces all sit between okL 55 and 78, and catDark is 40, so the
+      // silhouette holds whether she's on dirt, sage or the shaded end of a
+      // grass ramp. Shapes drawn later paint over the lines they cross, which is
+      // what makes the head read as in FRONT of the body instead of welded to it.
+      const ink = (w = 0.55) => {
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = s * w
+        ctx.strokeStyle = NIGHT.catDark
+        ctx.stroke()
+      }
+      // A rounded triangle: base corners, a tip, and the sides bowed out a
+      // little so ears read as fur rather than as folded paper.
+      const furEar = (
+        b1x: number,
+        b1y: number,
+        tx: number,
+        ty: number,
+        b2x: number,
+        b2y: number,
+      ) => {
+        ctx.beginPath()
+        ctx.moveTo(b1x, b1y)
+        ctx.quadraticCurveTo(
+          (b1x + tx) / 2 - (ty - b1y) * 0.12,
+          (b1y + ty) / 2 + (tx - b1x) * 0.12,
+          tx,
+          ty,
+        )
+        ctx.quadraticCurveTo(
+          (tx + b2x) / 2 - (b2y - ty) * 0.12,
+          (ty + b2y) / 2 + (b2x - tx) * 0.12,
+          b2x,
+          b2y,
+        )
+        ctx.closePath()
+      }
+
       // Different poses based on idle state
       if (cat.state === 'lying' || cat.state === 'sleeping') {
         // Draw lying/sleeping cat
         ctx.save()
         ctx.translate(x + PIXEL * 0.5, y + PIXEL * 0.5)
         ctx.scale(flip, 1)
+        ctx.lineCap = 'round'
 
         // Shadow (wider when lying)
         ctx.fillStyle = 'rgba(0,0,0,0.08)'
@@ -2187,111 +2234,203 @@ export default function ParkGame() {
         ctx.ellipse(0, PIXEL * 0.3, PIXEL * 0.5, PIXEL * 0.1, 0, 0, Math.PI * 2)
         ctx.fill()
 
-        // Body (flat oval, lying down)
-        ctx.fillStyle = NIGHT.catLight
-        ctx.beginPath()
-        ctx.ellipse(0, s * 3, s * 6, s * 3, 0, 0, Math.PI * 2)
-        ctx.fill()
-
-        // White belly (underside visible when lying)
-        ctx.fillStyle = NIGHT.white
-        ctx.beginPath()
-        ctx.ellipse(0, s * 4.5, s * 4, s * 1.8, 0, 0, Math.PI * 2)
-        ctx.fill()
-
-        // Tabby stripes on body
-        ctx.fillStyle = NIGHT.catStripe
-        for (let i = 0; i < 3; i++) {
-          ctx.fillRect(-s * 4 + i * s * 3, s * 1.5, s * 1.5, s * 2.5)
+        // Tail curled around the body, drawn first so it sits behind her. The
+        // ink pass is just the same stroke run fatter underneath the fur one.
+        const tailWag = Math.sin(g.frameCount * 0.03) * s * 0.5
+        const tailPath = () => {
+          ctx.beginPath()
+          ctx.moveTo(-s * 4.6, s * 3.2)
+          ctx.quadraticCurveTo(-s * 7.4, s * 1, -s * 5.4, -s * 0.8 + tailWag)
         }
+        tailPath()
+        ctx.strokeStyle = NIGHT.catDark
+        ctx.lineWidth = s * 2.9
+        ctx.stroke()
+        tailPath()
+        ctx.strokeStyle = NIGHT.catOrange
+        ctx.lineWidth = s * 1.8
+        ctx.stroke()
+        // Pale tip.
+        ctx.beginPath()
+        ctx.arc(-s * 5.4, -s * 0.8 + tailWag, s * 0.62, 0, Math.PI * 2)
+        ctx.fillStyle = NIGHT.catCream
+        ctx.fill()
+        ink(0.4)
+
+        // Body
+        const bodyPath = () => {
+          ctx.beginPath()
+          ctx.ellipse(0, s * 3, s * 6, s * 3, 0, 0, Math.PI * 2)
+        }
+        bodyPath()
+        ctx.fillStyle = NIGHT.catLight
+        ctx.fill()
+        // Everything that lives ON the fur is clipped to the body, so each layer
+        // can be a loose shape and still land exactly on the silhouette.
+        ctx.save()
+        bodyPath()
+        ctx.clip()
+        // Dorsal band — the darker fur down the spine.
+        ctx.fillStyle = NIGHT.catOrange
+        ctx.beginPath()
+        ctx.ellipse(-s * 0.5, s * 0.3, s * 6.4, s * 2.2, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Chest and belly, cream rather than white: pure white against fur this
+        // bright flattens both of them.
+        ctx.fillStyle = NIGHT.catCream
+        ctx.beginPath()
+        ctx.ellipse(0, s * 4.8, s * 4.4, s * 1.9, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Spots — tapered and leaning with the curve of the back, not flat bars.
+        ctx.fillStyle = NIGHT.catStripe
+        for (let i = 0; i < 4; i++) {
+          const sx = -s * 4 + i * s * 2.5
+          ctx.beginPath()
+          ctx.moveTo(sx - s * 0.6, s * 0.3)
+          ctx.quadraticCurveTo(sx + s * 0.2, s * 1.9, sx - s * 0.1, s * 3.6)
+          ctx.lineTo(sx + s * 0.9, s * 3.4)
+          ctx.quadraticCurveTo(sx + s * 1, s * 1.7, sx + s * 0.5, s * 0.3)
+          ctx.closePath()
+          ctx.fill()
+        }
+        ctx.restore()
+        bodyPath()
+        ink(0.6)
+
+        // Ears go down before the head so the skull hides their bases.
+        ctx.fillStyle = NIGHT.catOrange
+        furEar(s * 2, s * 0.5, s * 2.9, -s * 3.5, s * 5, -s * 0.6)
+        ctx.fill()
+        ink()
+        furEar(s * 5.2, -s * 0.8, s * 7.4, -s * 3.3, s * 8.1, s * 0.6)
+        ctx.fill()
+        ink()
 
         // Head (resting on paws)
+        const headPath = () => {
+          ctx.beginPath()
+          ctx.arc(s * 5, s * 1.4, s * 3.6, 0, Math.PI * 2)
+        }
+        headPath()
         ctx.fillStyle = NIGHT.catLight
+        ctx.fill()
+        ctx.save()
+        headPath()
+        ctx.clip()
+        // Cap of darker fur over the crown, and a blaze between the ears.
+        ctx.fillStyle = NIGHT.catOrange
         ctx.beginPath()
-        ctx.arc(s * 5, s * 1.5, s * 3.5, 0, Math.PI * 2)
+        ctx.ellipse(s * 5, -s * 2.1, s * 3.8, s * 2.2, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catStripe
+        ctx.beginPath()
+        ctx.ellipse(s * 5.1, -s * 1.3, s * 0.32, s * 1.3, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(s * 3.8, -s * 1.1, s * 0.28, s * 1, 0.3, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.ellipse(s * 6.4, -s * 1.1, s * 0.28, s * 1, -0.3, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+        headPath()
+        ink(0.6)
+
+        // Inner ears, on top of the head so they sit inside the visible ear.
+        ctx.fillStyle = NIGHT.catEar
+        furEar(s * 2.7, s * 0.1, s * 3.1, -s * 2.4, s * 4.5, -s * 0.5)
+        ctx.fill()
+        furEar(s * 5.6, -s * 0.7, s * 7, -s * 2.3, s * 7.5, s * 0.1)
         ctx.fill()
 
         // White muzzle/chin
-        ctx.fillStyle = NIGHT.white
+        ctx.fillStyle = NIGHT.catCream
         ctx.beginPath()
-        ctx.ellipse(s * 5.2, s * 2.8, s * 2, s * 1.5, 0, 0, Math.PI * 2)
+        ctx.ellipse(s * 5.2, s * 2.6, s * 2.1, s * 1.5, 0, 0, Math.PI * 2)
         ctx.fill()
 
-        // Ears
-        ctx.fillStyle = NIGHT.catOrange
-        ctx.beginPath()
-        ctx.moveTo(s * 3.5, -s * 1.5)
-        ctx.lineTo(s * 5, 0)
-        ctx.lineTo(s * 2.5, -s * 0.2)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.moveTo(s * 6.5, -s * 1.5)
-        ctx.lineTo(s * 7.5, -s * 0.2)
-        ctx.lineTo(s * 5, 0)
-        ctx.fill()
-
-        // Inner ears (light pink)
-        ctx.fillStyle = NIGHT.catEar
-        ctx.beginPath()
-        ctx.moveTo(s * 3.8, -s * 1)
-        ctx.lineTo(s * 4.8, 0)
-        ctx.lineTo(s * 3, -s * 0.1)
-        ctx.fill()
-        ctx.beginPath()
-        ctx.moveTo(s * 6.2, -s * 1)
-        ctx.lineTo(s * 7, -s * 0.1)
-        ctx.lineTo(s * 5.2, 0)
-        ctx.fill()
-
-        // Eyes (closed when sleeping, half-closed when lying)
-        ctx.strokeStyle = NIGHT.charcoal
-        ctx.lineWidth = 1.5
-        if (cat.state === 'sleeping') {
-          // Closed eyes - curved lines
+        // Eyes. Asleep they're two soft closed curves; lying they're half-open —
+        // a straight lid across the top with the iris bulging below it, which is
+        // what makes drowsy read as drowsy rather than as a drawn-on scowl.
+        for (const ex of [s * 3.6, s * 6.4]) {
+          const ey = s * 1.15
+          if (cat.state === 'sleeping') {
+            ctx.strokeStyle = NIGHT.catStripe
+            ctx.lineWidth = s * 0.34
+            ctx.beginPath()
+            ctx.arc(ex, ey, s * 0.85, 0.12 * Math.PI, 0.88 * Math.PI)
+            ctx.stroke()
+            continue
+          }
           ctx.beginPath()
-          ctx.arc(s * 4, s * 1.5, s * 0.8, 0, Math.PI)
-          ctx.stroke()
-          ctx.beginPath()
-          ctx.arc(s * 6.2, s * 1.5, s * 0.8, 0, Math.PI)
-          ctx.stroke()
-        } else {
-          // Half-closed eyes
-          ctx.fillStyle = '#778128'
-          ctx.beginPath()
-          ctx.ellipse(s * 4, s * 1.5, s * 0.6, s * 0.3, 0, 0, Math.PI * 2)
+          ctx.moveTo(ex - s * 0.8, ey)
+          ctx.lineTo(ex + s * 0.8, ey)
+          ctx.quadraticCurveTo(ex + s * 0.8, ey + s * 1, ex, ey + s * 1)
+          ctx.quadraticCurveTo(ex - s * 0.8, ey + s * 1, ex - s * 0.8, ey)
+          ctx.closePath()
+          ctx.fillStyle = EYE_IRIS
           ctx.fill()
+          ctx.fillStyle = NIGHT.catStripe
           ctx.beginPath()
-          ctx.ellipse(s * 6.2, s * 1.5, s * 0.6, s * 0.3, 0, 0, Math.PI * 2)
+          ctx.ellipse(
+            ex + s * 0.1,
+            ey + s * 0.42,
+            s * 0.28,
+            s * 0.4,
+            0,
+            0,
+            Math.PI * 2,
+          )
           ctx.fill()
+          // The lid bows down a little at its middle: dead straight it read as a
+          // scowl rather than as someone about to nod off.
+          ctx.strokeStyle = NIGHT.catDark
+          ctx.lineWidth = s * 0.26
+          ctx.beginPath()
+          ctx.moveTo(ex - s * 0.85, ey - s * 0.1)
+          ctx.quadraticCurveTo(ex, ey + s * 0.22, ex + s * 0.85, ey - s * 0.1)
+          ctx.stroke()
         }
 
-        // Nose (brown, matching her back fur)
-        ctx.fillStyle = NIGHT.catOrange
+        // Nose, and the two little curves of the mouth under it.
+        ctx.fillStyle = NIGHT.catNose
         ctx.beginPath()
-        ctx.moveTo(s * 5.1, s * 2.2)
-        ctx.lineTo(s * 4.8, s * 2.6)
-        ctx.lineTo(s * 5.4, s * 2.6)
+        ctx.moveTo(s * 4.8, s * 2.45)
+        ctx.lineTo(s * 5.6, s * 2.45)
+        ctx.quadraticCurveTo(s * 5.2, s * 3.05, s * 5.2, s * 3.05)
+        ctx.closePath()
         ctx.fill()
-
-        // Tail curled around body
-        const tailWag = Math.sin(g.frameCount * 0.03) * s * 0.5
-        ctx.strokeStyle = NIGHT.catOrange
-        ctx.lineWidth = s * 2
+        // Mouth: a philtrum and two shallow curves, kept clear of the nose so
+        // the whole thing doesn't clot into one dark smudge.
+        ctx.strokeStyle = NIGHT.catStripe
+        ctx.lineWidth = s * 0.24
         ctx.lineCap = 'round'
         ctx.beginPath()
-        ctx.moveTo(-s * 5, s * 3)
-        ctx.quadraticCurveTo(
-          -s * 7,
-          s * 1 + tailWag,
-          -s * 5,
-          -s * 0.5 + tailWag,
-        )
+        ctx.moveTo(s * 5.2, s * 3.05)
+        ctx.lineTo(s * 5.2, s * 3.35)
+        ctx.moveTo(s * 4.5, s * 3.3)
+        ctx.quadraticCurveTo(s * 4.85, s * 3.85, s * 5.2, s * 3.35)
+        ctx.quadraticCurveTo(s * 5.55, s * 3.85, s * 5.9, s * 3.3)
         ctx.stroke()
 
-        // Front paws tucked under head
-        ctx.fillStyle = NIGHT.white
-        ctx.fillRect(s * 3, s * 3.5, s * 1.5, s * 1)
-        ctx.fillRect(s * 5, s * 3.5, s * 1.5, s * 1)
+        // Front paws tucked under the head, with a toe split in each.
+        ctx.fillStyle = NIGHT.catCream
+        ctx.beginPath()
+        ctx.ellipse(s * 2.9, s * 4.9, s * 1.35, s * 0.85, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ink(0.4)
+        ctx.beginPath()
+        ctx.ellipse(s * 5.7, s * 5, s * 1.35, s * 0.85, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ink(0.4)
+        ctx.strokeStyle = NIGHT.catDark
+        ctx.lineWidth = s * 0.25
+        ctx.beginPath()
+        ctx.moveTo(s * 2.9, s * 4.3)
+        ctx.lineTo(s * 2.9, s * 5)
+        ctx.moveTo(s * 5.7, s * 4.4)
+        ctx.lineTo(s * 5.7, s * 5.1)
+        ctx.stroke()
 
         ctx.restore()
 
@@ -2346,182 +2485,75 @@ export default function ParkGame() {
         ctx.fill()
       }
 
-      // Body
-      ctx.fillStyle = NIGHT.catLight
-      ctx.beginPath()
-      ctx.ellipse(0, s * 2, s * 5, s * 4, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // White belly (bottom half of body)
-      ctx.fillStyle = NIGHT.white
-      ctx.beginPath()
-      ctx.ellipse(0, s * 4, s * 3.5, s * 2.5, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Tabby stripes
-      ctx.fillStyle = NIGHT.catStripe
-      for (let i = 0; i < 3; i++) {
-        ctx.fillRect(-s * 3 + i * s * 3, s * 0.5, s * 1.5, s * 2)
-      }
-
-      // Head
-      ctx.fillStyle = NIGHT.catLight
-      ctx.beginPath()
-      ctx.arc(s * 4, -s * 1, s * 4, 0, Math.PI * 2)
-      ctx.fill()
-
-      // White muzzle/chin area
-      ctx.fillStyle = NIGHT.white
-      ctx.beginPath()
-      ctx.ellipse(s * 4.3, s * 1, s * 2.5, s * 2, 0, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Ears
-      ctx.fillStyle = NIGHT.catOrange
-      ctx.beginPath()
-      ctx.moveTo(s * 1.5, -s * 5.5)
-      ctx.lineTo(s * 3, -s * 3)
-      ctx.lineTo(0, -s * 3)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.moveTo(s * 6.5, -s * 5.5)
-      ctx.lineTo(s * 8, -s * 3)
-      ctx.lineTo(s * 5, -s * 3)
-      ctx.fill()
-
-      // Inner ears (light pink)
-      ctx.fillStyle = NIGHT.catEar
-      ctx.beginPath()
-      ctx.moveTo(s * 1.5, -s * 4.8)
-      ctx.lineTo(s * 2.7, -s * 3.3)
-      ctx.lineTo(s * 0.5, -s * 3.3)
-      ctx.fill()
-
-      // Head stripes
-      ctx.fillStyle = NIGHT.catStripe
-      ctx.fillRect(s * 3, -s * 3, s * 1, s * 1.5)
-      ctx.fillRect(s * 4.5, -s * 2.8, s * 0.8, s * 1.2)
-
-      // Eyes
-      ctx.fillStyle = NIGHT.white
-      ctx.beginPath()
-      ctx.arc(s * 3, -s * 0.5, s * 1.2, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(s * 5.5, -s * 0.5, s * 1.2, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Pupils
-      ctx.fillStyle = '#778128'
-      ctx.beginPath()
-      ctx.arc(s * 3.2, -s * 0.4, s * 0.7, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(s * 5.7, -s * 0.4, s * 0.7, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Pupil highlights
-      ctx.fillStyle = NIGHT.white
-      ctx.beginPath()
-      ctx.arc(s * 3.4, -s * 0.7, s * 0.3, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(s * 5.9, -s * 0.7, s * 0.3, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Nose (brown, matching her back fur)
-      ctx.fillStyle = NIGHT.catOrange
-      ctx.beginPath()
-      ctx.moveTo(s * 4.3, s * 0.5)
-      ctx.lineTo(s * 4, s * 1)
-      ctx.lineTo(s * 4.6, s * 1)
-      ctx.fill()
-
-      // Little open mouth while airborne (with a tiny pink tongue).
-      if (airborne) {
-        ctx.fillStyle = '#522A2B'
-        ctx.beginPath()
-        ctx.ellipse(s * 4.3, s * 1.8, s * 0.7, s * 0.9, 0, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.fillStyle = NIGHT.catEar
-        ctx.beginPath()
-        ctx.ellipse(s * 4.3, s * 2.2, s * 0.4, s * 0.4, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // Whiskers
-      ctx.strokeStyle = NIGHT.charcoal
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(s * 2, s * 0.5)
-      ctx.lineTo(-s * 0.5, 0)
-      ctx.moveTo(s * 2, s * 1)
-      ctx.lineTo(-s * 0.5, s * 1.5)
-      ctx.moveTo(s * 6.5, s * 0.5)
-      ctx.lineTo(s * 9, 0)
-      ctx.moveTo(s * 6.5, s * 1)
-      ctx.lineTo(s * 9, s * 1.5)
-      ctx.stroke()
-
-      // Tail
+      // Tail, behind the body: an ink stroke run fat, the fur stroke laid on top.
       const tailWag = Math.sin(g.frameCount * 0.08) * s * 2
-      ctx.strokeStyle = NIGHT.catOrange
-      ctx.lineWidth = s * 2
+      const tailPath = () => {
+        ctx.beginPath()
+        ctx.moveTo(-s * 4.6, s * 1)
+        ctx.quadraticCurveTo(
+          -s * 7.2,
+          -s * 2 + tailWag,
+          -s * 6,
+          -s * 4.4 + tailWag,
+        )
+      }
       ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.moveTo(-s * 5, s * 1)
-      ctx.quadraticCurveTo(-s * 7, -s * 2 + tailWag, -s * 6, -s * 4 + tailWag)
+      tailPath()
+      ctx.strokeStyle = NIGHT.catDark
+      ctx.lineWidth = s * 3
       ctx.stroke()
-
-      // Tail stripes
+      tailPath()
+      ctx.strokeStyle = NIGHT.catOrange
+      ctx.lineWidth = s * 1.9
+      ctx.stroke()
+      // Rings up the tail, then a pale tip.
       ctx.strokeStyle = NIGHT.catStripe
-      ctx.lineWidth = s * 0.8
+      ctx.lineWidth = s * 0.7
       ctx.beginPath()
-      ctx.moveTo(-s * 5.5, 0)
-      ctx.lineTo(-s * 6, -s * 0.5)
-      ctx.moveTo(-s * 6, -s * 1.5 + tailWag * 0.5)
-      ctx.lineTo(-s * 6.2, -s * 2.5 + tailWag * 0.5)
+      ctx.moveTo(-s * 5.6, s * 0.1)
+      ctx.lineTo(-s * 6.3, -s * 0.5)
+      ctx.moveTo(-s * 6.2, -s * 1.6 + tailWag * 0.5)
+      ctx.lineTo(-s * 6.9, -s * 2.1 + tailWag * 0.5)
       ctx.stroke()
+      ctx.beginPath()
+      ctx.arc(-s * 6, -s * 4.4 + tailWag, s * 0.95, 0, Math.PI * 2)
+      ctx.fillStyle = NIGHT.catCream
+      ctx.fill()
+      ink(0.4)
 
-      // Legs — front pair tucks up + shifts forward mid-hop; during a slap the
+      // Legs go down BEFORE the body, so the torso covers where they root into
+      // it — drawn after, every leg's ink line would run straight across the
+      // belly. Front pair tucks up + shifts forward mid-hop; during a slap the
       // front (s*4) leg becomes the raised arm below, so skip it here.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
       const frontX = airborne ? s * 1 : 0 // forward (toward the head)
       const frontY = airborne ? -s * 1 : 0 // up
-      ctx.fillStyle = NIGHT.white
-      ctx.fillRect(
-        s * 2 + frontX,
-        s * 4 + legOffset + frontY,
-        s * 2,
-        s * 3 - frontTuck,
-      )
-      if (slap === 0)
-        ctx.fillRect(
-          s * 4 + frontX,
-          s * 4 - legOffset + frontY,
-          s * 2,
-          s * 3 - frontTuck,
-        )
-      // Front paws (ride up with the tuck).
-      ctx.fillRect(
-        s * 2 + frontX,
-        s * 6.5 + legOffset - frontTuck + frontY,
-        s * 2,
-        s * 1,
-      )
-      if (slap === 0)
-        ctx.fillRect(
-          s * 4 + frontX,
-          s * 6.5 - legOffset - frontTuck + frontY,
-          s * 2,
-          s * 1,
-        )
-
-      // Rear legs — stretched down, and rotated back a touch mid-hop so they
-      // trail the torso (drawn about the hip pivot since fillRect can't rotate).
       const backRot = airborne ? 0.5 : 0
-      const backLen = s * 3 + backStretch
+      const backLen = s * 3.5 + backStretch
       const backShift = airborne ? -s * 1.2 : 0 // nudge rear legs toward the tail
+      // One leg: a fur shank with a cream sock and a toe split on the end. The
+      // shank is fur-coloured on purpose — cream legs under a cream belly turned
+      // her whole lower half into one pale block.
+      const leg = (lx: number, ly: number, len: number) => {
+        ctx.fillStyle = NIGHT.catLight
+        ctx.beginPath()
+        ctx.roundRect(lx, ly, s * 2, len, s * 0.7)
+        ctx.fill()
+        ink(0.45)
+        ctx.fillStyle = NIGHT.catCream
+        ctx.beginPath()
+        ctx.roundRect(lx, ly + len - s * 1.5, s * 2, s * 1.5, s * 0.7)
+        ctx.fill()
+        ink(0.45)
+        ctx.strokeStyle = NIGHT.catDark
+        ctx.lineWidth = s * 0.25
+        ctx.beginPath()
+        ctx.moveTo(lx + s, ly + len - s * 0.85)
+        ctx.lineTo(lx + s, ly + len - s * 0.15)
+        ctx.stroke()
+      }
+      // Rear pair first — they sit furthest back. (fillRect can't rotate, so the
+      // mid-hop trail is drawn about the hip pivot.)
       for (const [pivotX, pivotY] of [
         [-s * 2 + backShift, s * 4 - legOffset],
         [backShift, s * 4 + legOffset],
@@ -2529,10 +2561,184 @@ export default function ParkGame() {
         ctx.save()
         ctx.translate(pivotX, pivotY)
         ctx.rotate(backRot)
-        ctx.fillRect(-s * 1, 0, s * 2, backLen)
-        ctx.fillRect(-s * 1, backLen - s * 0.5, s * 2, s * 1) // paw
+        leg(-s * 1, 0, backLen)
         ctx.restore()
       }
+      leg(s * 2 + frontX, s * 4 + legOffset + frontY, s * 3.5 - frontTuck)
+      if (slap === 0)
+        leg(s * 4 + frontX, s * 4 - legOffset + frontY, s * 3.5 - frontTuck)
+
+      // Body
+      const bodyPath = () => {
+        ctx.beginPath()
+        ctx.ellipse(0, s * 2, s * 5, s * 4, 0, 0, Math.PI * 2)
+      }
+      bodyPath()
+      ctx.fillStyle = NIGHT.catLight
+      ctx.fill()
+      ctx.save()
+      bodyPath()
+      ctx.clip()
+      // Dorsal band down the spine.
+      ctx.fillStyle = NIGHT.catOrange
+      ctx.beginPath()
+      ctx.ellipse(-s * 0.4, -s * 1.6, s * 5.4, s * 3, 0, 0, Math.PI * 2)
+      ctx.fill()
+      // Chest and belly.
+      ctx.fillStyle = NIGHT.catCream
+      ctx.beginPath()
+      ctx.ellipse(s * 0.4, s * 4.2, s * 3.6, s * 2.8, 0, 0, Math.PI * 2)
+      ctx.fill()
+      // Tapered spots across the flank.
+      ctx.fillStyle = NIGHT.catStripe
+      for (let i = 0; i < 3; i++) {
+        const sx = -s * 2.8 + i * s * 2.6
+        ctx.beginPath()
+        ctx.moveTo(sx - s * 0.6, -s * 1.4)
+        ctx.quadraticCurveTo(sx + s * 0.2, s * 0.6, sx - s * 0.1, s * 2.6)
+        ctx.lineTo(sx + s * 0.9, s * 2.4)
+        ctx.quadraticCurveTo(sx + s * 1, s * 0.4, sx + s * 0.5, -s * 1.4)
+        ctx.closePath()
+        ctx.fill()
+      }
+      ctx.restore()
+      bodyPath()
+      ink(0.6)
+
+      // Ears first, so the skull covers their bases.
+      ctx.fillStyle = NIGHT.catOrange
+      furEar(s * 0.2, -s * 2.4, s * 1, -s * 7.2, s * 3.6, -s * 3.6)
+      ctx.fill()
+      ink()
+      furEar(s * 4.6, -s * 3.8, s * 7.2, -s * 6.8, s * 8, -s * 2.2)
+      ctx.fill()
+      ink()
+
+      // Head
+      const headPath = () => {
+        ctx.beginPath()
+        ctx.arc(s * 4, -s * 1, s * 4, 0, Math.PI * 2)
+      }
+      headPath()
+      ctx.fillStyle = NIGHT.catLight
+      ctx.fill()
+      ctx.save()
+      headPath()
+      ctx.clip()
+      // Darker crown, plus the tabby blaze between the ears.
+      ctx.fillStyle = NIGHT.catOrange
+      ctx.beginPath()
+      ctx.ellipse(s * 4, -s * 4.4, s * 4.4, s * 2.8, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = NIGHT.catStripe
+      ctx.beginPath()
+      ctx.ellipse(s * 4, -s * 3.4, s * 0.5, s * 1.7, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(s * 2.2, -s * 3, s * 0.45, s * 1.3, 0.35, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.ellipse(s * 5.8, -s * 3, s * 0.45, s * 1.3, -0.35, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      headPath()
+      ink(0.6)
+
+      // Inner ears, drawn over the head so they land inside the visible ear.
+      ctx.fillStyle = NIGHT.catEar
+      furEar(s * 1, -s * 2.9, s * 1.4, -s * 6, s * 3.1, -s * 3.5)
+      ctx.fill()
+      furEar(s * 5.1, -s * 3.6, s * 6.8, -s * 5.8, s * 7.3, -s * 2.8)
+      ctx.fill()
+
+      // White muzzle/chin area
+      ctx.fillStyle = NIGHT.catCream
+      ctx.beginPath()
+      ctx.ellipse(s * 4.3, s * 1.1, s * 2.6, s * 2, 0, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Eyes: sclera, iris, pupil, two catchlights, and a lid line that gives
+      // her an actual expression instead of two dots.
+      for (const ex of [s * 2.9, s * 5.6]) {
+        ctx.fillStyle = NIGHT.white
+        ctx.beginPath()
+        ctx.ellipse(ex, -s * 0.5, s * 1.35, s * 1.25, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = EYE_IRIS
+        ctx.beginPath()
+        ctx.arc(ex + s * 0.2, -s * 0.4, s * 0.95, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catStripe
+        ctx.beginPath()
+        ctx.ellipse(
+          ex + s * 0.25,
+          -s * 0.4,
+          s * 0.4,
+          s * 0.72,
+          0,
+          0,
+          Math.PI * 2,
+        )
+        ctx.fill()
+        ctx.fillStyle = NIGHT.white
+        ctx.beginPath()
+        ctx.arc(ex + s * 0.6, -s * 0.9, s * 0.32, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.beginPath()
+        ctx.arc(ex - s * 0.2, s * 0.2, s * 0.16, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = NIGHT.catDark
+        ctx.lineWidth = s * 0.35
+        ctx.beginPath()
+        ctx.arc(ex, -s * 0.5, s * 1.35, 1.05 * Math.PI, 1.95 * Math.PI)
+        ctx.stroke()
+      }
+
+      // Nose, with a philtrum dropping into the two curves of the mouth.
+      ctx.fillStyle = NIGHT.catNose
+      ctx.beginPath()
+      ctx.moveTo(s * 3.7, s * 0.5)
+      ctx.lineTo(s * 4.9, s * 0.5)
+      ctx.quadraticCurveTo(s * 4.3, s * 1.4, s * 4.3, s * 1.4)
+      ctx.closePath()
+      ctx.fill()
+      ctx.strokeStyle = NIGHT.catStripe
+      ctx.lineWidth = s * 0.26
+      ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(s * 4.3, s * 1.4)
+      ctx.lineTo(s * 4.3, s * 1.75)
+      ctx.moveTo(s * 3.55, s * 1.7)
+      ctx.quadraticCurveTo(s * 3.95, s * 2.3, s * 4.3, s * 1.75)
+      ctx.quadraticCurveTo(s * 4.65, s * 2.3, s * 5.05, s * 1.7)
+      ctx.stroke()
+
+      // Little open mouth while airborne (with a tiny pink tongue).
+      if (airborne) {
+        ctx.fillStyle = '#522A2B'
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 2.1, s * 0.8, s * 1, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = NIGHT.catEar
+        ctx.beginPath()
+        ctx.ellipse(s * 4.3, s * 2.5, s * 0.45, s * 0.45, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+
+      // Whiskers — one bowed pair each side, half-transparent so they sit on the
+      // muzzle instead of scoring lines across it.
+      ctx.strokeStyle = 'rgba(65,20,0,0.45)'
+      ctx.lineWidth = s * 0.2
+      ctx.beginPath()
+      ctx.moveTo(s * 2.4, s * 1)
+      ctx.quadraticCurveTo(s * 0.9, s * 0.8, -s * 0.4, s * 0.4)
+      ctx.moveTo(s * 2.4, s * 1.5)
+      ctx.quadraticCurveTo(s * 0.9, s * 1.7, -s * 0.4, s * 2.1)
+      ctx.moveTo(s * 6.2, s * 1)
+      ctx.quadraticCurveTo(s * 7.7, s * 0.8, s * 9, s * 0.4)
+      ctx.moveTo(s * 6.2, s * 1.5)
+      ctx.quadraticCurveTo(s * 7.7, s * 1.7, s * 9, s * 2.1)
+      ctx.stroke()
 
       // Slap: a white front arm (rect + paw) pivoting at the shoulder — it raises
       // up, then chops down (top → bottom). `slap` is the 0..1 progress. Drawn in
@@ -2561,13 +2767,16 @@ export default function ParkGame() {
         ctx.save()
         ctx.translate(s * 3, s * 3.5) // shoulder pivot at the front-leg root
         ctx.rotate(ang)
-        ctx.fillStyle = NIGHT.white
+        ctx.fillStyle = NIGHT.catLight
         ctx.beginPath()
         ctx.roundRect(0, -armW / 2, armLen, armW, armW / 2)
         ctx.fill()
+        ink(0.45)
+        ctx.fillStyle = NIGHT.catCream
         ctx.beginPath() // paw at the end
         ctx.arc(armLen, 0, armW * 0.75, 0, Math.PI * 2)
         ctx.fill()
+        ink(0.45)
         ctx.restore()
       }
 

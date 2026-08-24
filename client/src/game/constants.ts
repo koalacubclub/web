@@ -43,10 +43,12 @@ export const COLORS = {
   benchLight: '#A1887F',
   water: '#64B5F6',
   waterLight: '#90CAF9',
-  catLight: '#D6A071',
-  catOrange: '#C46C31',
-  catDark: '#9F5028',
-  catStripe: '#7C3A1D',
+  catLight: '#FFBD72',
+  catOrange: '#D47027',
+  catDark: '#8B3E09',
+  catStripe: '#521F03',
+  catCream: '#FDF4E3', // chest, muzzle and paws
+  catNose: '#D87972',
   catEar: '#FFC9D9', // light pink inner ear
   white: '#FFFFFF',
   heart: '#FF6B9D',
@@ -101,10 +103,20 @@ export const NIGHT: typeof COLORS = {
   // surface picking them up lands in the right place.
   water: '#507EE9',
   waterLight: '#728DE9',
-  catLight: '#C08959',
-  catOrange: '#A16036',
-  catDark: '#84482A',
-  catStripe: '#67341E',
+  // The koala is the one thing on screen that must never sink into it. Every
+  // large surface in the park sits between okL 55 and 78 at chroma under 0.08
+  // (ground 70.5/0.044, grass 60-70/0.05, speckles 62-78/0.07), so fur pitched
+  // anywhere in that band reads as more park. These five leave it on both axes:
+  // the body clears the ground by 9 okL and carries 3x its chroma, catDark
+  // draws a line 39 okL below the dirt around the whole silhouette, and the
+  // spots go deeper still. Keep the SPREAD if you retune the hue -- it's the
+  // spread, not the orange, that stops her blending.
+  catLight: '#F9A551', // okL 79, C 0.140, H 63 -- lit body
+  catOrange: '#BB5C0C', // okL 58, C 0.145, H 52 -- dorsal band, ears, tail
+  catDark: '#753000', // okL 40, C 0.110, H 47 -- silhouette line
+  catStripe: '#411400', // okL 26, C 0.077, H 43 -- spots
+  catCream: '#F4EAD5', // okL 94, C 0.030, H 86
+  catNose: '#C06A64', // okL 62, C 0.111, H 25
   catEar: '#D1A1B2',
   white: '#FFFFFF',
   heart: '#D25782',
