@@ -157,11 +157,14 @@ so the React UI and the imperative canvas never fight.
   D-minor loop with a 2-bar melody). **Slapping the radio cycles** play-A → off →
   play-B → off → … (`radioCycle` 0–3 on the object; `radio.setTrack` picks the
   loop). The Settings **mute** toggle silences all of it globally (persisted).
-- **`client/src/game/sprites.ts`** — the shop sprites, drawn with `ctx`
-  primitives (`drawShopSprite`); the reused decor mirrors ParkGame's base-object
-  art so a bought tree looks like a park tree. The shop renders the **real item
-  art at real relative size** via `client/src/components/ItemPreview.tsx` (a
-  `<canvas>`), not emoji.
+- **`client/src/game/sprites.ts`** — **dispatch only, no art.** `drawShopSprite`
+  maps an item type to the module that draws it and wraps placed items in the
+  pop-in/blink flourish. Every sprite comes from `trees/`, `flowers/`, `rocks/`,
+  `props/` or `decor/` — the same draws the park itself uses, so a bought tree
+  looks like a park tree. The shop renders the **real item art at real relative
+  size** via `client/src/components/ItemPreview.tsx` (a `<canvas>`), not emoji.
+  There is no module-level `PAL`/`INK`/`IS_PARK` any more: each module owns its
+  own bright→park map and `night` is passed down the call.
 - **`client/src/game/trees/`** — the tree species art, one file per species
   (`broadleaf` / `pine` / `crabapple` / `maple` / `willow`) plus `index.ts`
   (registry + per-tile species and form rolls), `variance.ts` (the per-tree
@@ -224,6 +227,21 @@ so the React UI and the imperative canvas never fight.
   the split. The bench has **no variance on purpose** — benches are municipal, and
   a row of them differing reads as a mistake; a test pins its shape as identical on
   every tile. Preview at `/src/game/props/catalog.html`.
+- **`client/src/game/decor/`** — the **ball** and the six shop pieces that
+  aren't scenery: `mushroom`, `snowcat`, `cardbox`, `house`, `lightTree`,
+  `radio` (with `note.ts` for the ones it puffs out). One file each, plus
+  `index.ts` (a `type` → draw dispatch and `isDecor`), `types.ts` and its own
+  `parkInk.ts`. **Nothing here rolls a form or a jitter** — a mushroom is a
+  mushroom; the light tree is the only exception, and only in where its lamps
+  sit (seeded from the tile). **Drawn by the park** — `ParkGame` draws the ball
+  through it, so a base ball and a bought one are one sprite. Colours that
+  should **glow** — lit windows, fairy lights, the star topper, the drifting
+  music notes — are deliberately absent from `parkInk`, so they fall through
+  bright against the night exactly like flower petals do. A test walks every
+  palette colour the art reaches for and fails if one has no park counterpart,
+  since a miss renders bright in the middle of the night park. Preview at
+  `/src/game/decor/catalog.html` — which animates, because half these pieces
+  only exist in motion.
 - **Collision-aware placement:** on purchase the store spirals out from Koala's
   tile for the nearest spot whose whole `w×h` footprint fits the ground and
   **overlaps neither other placed items nor the fixed base objects** (registered
