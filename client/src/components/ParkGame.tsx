@@ -2181,18 +2181,6 @@ export default function ParkGame() {
         ctx.restore()
       }
 
-      // Every fur shape is filled and then immediately inked with the same dark
-      // line. That line is what keeps her off the background: the park's big
-      // surfaces all sit between okL 55 and 78, and catDark is 40, so the
-      // silhouette holds whether she's on dirt, sage or the shaded end of a
-      // grass ramp. Shapes drawn later paint over the lines they cross, which is
-      // what makes the head read as in FRONT of the body instead of welded to it.
-      const ink = (w = 0.55) => {
-        ctx.lineJoin = 'round'
-        ctx.lineWidth = s * w
-        ctx.strokeStyle = NIGHT.catDark
-        ctx.stroke()
-      }
       // A rounded triangle: base corners, a tip, and the sides bowed out a
       // little so ears read as fur rather than as folded paper.
       const furEar = (
@@ -2234,8 +2222,7 @@ export default function ParkGame() {
         ctx.ellipse(0, PIXEL * 0.3, PIXEL * 0.5, PIXEL * 0.1, 0, 0, Math.PI * 2)
         ctx.fill()
 
-        // Tail curled around the body, drawn first so it sits behind her. The
-        // ink pass is just the same stroke run fatter underneath the fur one.
+        // Tail curled around the body, drawn first so it sits behind her.
         const tailWag = Math.sin(g.frameCount * 0.03) * s * 0.5
         const tailPath = () => {
           ctx.beginPath()
@@ -2243,19 +2230,14 @@ export default function ParkGame() {
           ctx.quadraticCurveTo(-s * 7.4, s * 1, -s * 5.4, -s * 0.8 + tailWag)
         }
         tailPath()
-        ctx.strokeStyle = NIGHT.catDark
-        ctx.lineWidth = s * 2.9
-        ctx.stroke()
-        tailPath()
         ctx.strokeStyle = NIGHT.catOrange
-        ctx.lineWidth = s * 1.8
+        ctx.lineWidth = s * 2.4
         ctx.stroke()
         // Pale tip.
         ctx.beginPath()
         ctx.arc(-s * 5.4, -s * 0.8 + tailWag, s * 0.62, 0, Math.PI * 2)
         ctx.fillStyle = NIGHT.catCream
         ctx.fill()
-        ink(0.4)
 
         // Body
         const bodyPath = () => {
@@ -2266,7 +2248,8 @@ export default function ParkGame() {
         ctx.fillStyle = NIGHT.catLight
         ctx.fill()
         // Everything that lives ON the fur is clipped to the body, so each layer
-        // can be a loose shape and still land exactly on the silhouette.
+        // can be a loose shape and still land exactly on the silhouette. With no
+        // outline drawn, the clip IS the edge — nothing else redraws it.
         ctx.save()
         bodyPath()
         ctx.clip()
@@ -2295,16 +2278,13 @@ export default function ParkGame() {
         }
         ctx.restore()
         bodyPath()
-        ink(0.6)
 
         // Ears go down before the head so the skull hides their bases.
         ctx.fillStyle = NIGHT.catOrange
         furEar(s * 2, s * 0.5, s * 2.9, -s * 3.5, s * 5, -s * 0.6)
         ctx.fill()
-        ink()
         furEar(s * 5.2, -s * 0.8, s * 7.4, -s * 3.3, s * 8.1, s * 0.6)
         ctx.fill()
-        ink()
 
         // Head (resting on paws)
         const headPath = () => {
@@ -2334,7 +2314,6 @@ export default function ParkGame() {
         ctx.fill()
         ctx.restore()
         headPath()
-        ink(0.6)
 
         // Inner ears, on top of the head so they sit inside the visible ear.
         ctx.fillStyle = NIGHT.catEar
@@ -2418,11 +2397,9 @@ export default function ParkGame() {
         ctx.beginPath()
         ctx.ellipse(s * 2.9, s * 4.9, s * 1.35, s * 0.85, 0, 0, Math.PI * 2)
         ctx.fill()
-        ink(0.4)
         ctx.beginPath()
         ctx.ellipse(s * 5.7, s * 5, s * 1.35, s * 0.85, 0, 0, Math.PI * 2)
         ctx.fill()
-        ink(0.4)
         ctx.strokeStyle = NIGHT.catDark
         ctx.lineWidth = s * 0.25
         ctx.beginPath()
@@ -2485,7 +2462,7 @@ export default function ParkGame() {
         ctx.fill()
       }
 
-      // Tail, behind the body: an ink stroke run fat, the fur stroke laid on top.
+      // Tail, behind the body, as one fur stroke.
       const tailWag = Math.sin(g.frameCount * 0.08) * s * 2
       const tailPath = () => {
         ctx.beginPath()
@@ -2499,12 +2476,8 @@ export default function ParkGame() {
       }
       ctx.lineCap = 'round'
       tailPath()
-      ctx.strokeStyle = NIGHT.catDark
-      ctx.lineWidth = s * 3
-      ctx.stroke()
-      tailPath()
       ctx.strokeStyle = NIGHT.catOrange
-      ctx.lineWidth = s * 1.9
+      ctx.lineWidth = s * 2.5
       ctx.stroke()
       // Rings up the tail, then a pale tip.
       ctx.strokeStyle = NIGHT.catStripe
@@ -2519,10 +2492,9 @@ export default function ParkGame() {
       ctx.arc(-s * 6, -s * 4.4 + tailWag, s * 0.95, 0, Math.PI * 2)
       ctx.fillStyle = NIGHT.catCream
       ctx.fill()
-      ink(0.4)
 
       // Legs go down BEFORE the body, so the torso covers where they root into
-      // it — drawn after, every leg's ink line would run straight across the
+      // it and each shank reads as hanging off her rather than pasted on the
       // belly. Front pair tucks up + shifts forward mid-hop; during a slap the
       // front (s*4) leg becomes the raised arm below, so skip it here.
       const legOffset = !cat.idle ? Math.sin(g.frameCount * 0.2) * s * 1.5 : 0
@@ -2539,12 +2511,10 @@ export default function ParkGame() {
         ctx.beginPath()
         ctx.roundRect(lx, ly, s * 2, len, s * 0.7)
         ctx.fill()
-        ink(0.45)
         ctx.fillStyle = NIGHT.catCream
         ctx.beginPath()
         ctx.roundRect(lx, ly + len - s * 1.5, s * 2, s * 1.5, s * 0.7)
         ctx.fill()
-        ink(0.45)
         ctx.strokeStyle = NIGHT.catDark
         ctx.lineWidth = s * 0.25
         ctx.beginPath()
@@ -2603,16 +2573,13 @@ export default function ParkGame() {
       }
       ctx.restore()
       bodyPath()
-      ink(0.6)
 
       // Ears first, so the skull covers their bases.
       ctx.fillStyle = NIGHT.catOrange
       furEar(s * 0.2, -s * 2.4, s * 1, -s * 7.2, s * 3.6, -s * 3.6)
       ctx.fill()
-      ink()
       furEar(s * 4.6, -s * 3.8, s * 7.2, -s * 6.8, s * 8, -s * 2.2)
       ctx.fill()
-      ink()
 
       // Head
       const headPath = () => {
@@ -2642,7 +2609,6 @@ export default function ParkGame() {
       ctx.fill()
       ctx.restore()
       headPath()
-      ink(0.6)
 
       // Inner ears, drawn over the head so they land inside the visible ear.
       ctx.fillStyle = NIGHT.catEar
@@ -2771,12 +2737,10 @@ export default function ParkGame() {
         ctx.beginPath()
         ctx.roundRect(0, -armW / 2, armLen, armW, armW / 2)
         ctx.fill()
-        ink(0.45)
         ctx.fillStyle = NIGHT.catCream
         ctx.beginPath() // paw at the end
         ctx.arc(armLen, 0, armW * 0.75, 0, Math.PI * 2)
         ctx.fill()
-        ink(0.45)
         ctx.restore()
       }
 
