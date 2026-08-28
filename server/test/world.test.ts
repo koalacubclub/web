@@ -1201,6 +1201,41 @@ describe('GameWorld cast', () => {
     expect(w.players).toHaveLength(0) // A is offline: a slot, not a koala
     expect(w.placed.some((p: any) => p.ownerId === a.id)).toBe(true)
     expect(w.authors[a.id]).toBe(a.name)
+    // ...and A is listed as a sleeper, so the park draws them napping by the
+    // poppies they planted rather than leaving a gap where a koala would be.
+    expect(w.sleepers).toEqual([{ id: a.id, name: a.name }])
+  })
+
+  it('lists an away item owner as a sleeper, and as a koala once they are back', async () => {
+    await setCastLimit(3)
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    await grantLikes(a.id, 100)
+    wsA.send(JSON.stringify({ t: 'buy', key: 'flowers-tulip', x: 12, y: 4 }))
+    await wait(120)
+    wsA.close()
+    await wait(60)
+
+    // While A is away it is a sleeper: its tulips are standing in the park, so
+    // the park shows A napping by them rather than an unexplained flowerbed.
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(60)
+    const away = msgsB.find((m) => m.t === 'welcome')
+    expect(away.players).toEqual([])
+    expect(away.sleepers).toEqual([{ id: a.id, name: a.name }])
+
+    // Back on its feet, A is sampled as a live koala instead.
+    await connect(a.cookie)
+    await wait(80)
+    const c = await session()
+    const { msgs: msgsC } = await connect(c.cookie)
+    await wait(60)
+    const back = msgsC.find((m) => m.t === 'welcome')
+    expect(back.sleepers).toEqual([])
+    expect(back.players.map((p: any) => p.id).sort()).toEqual(
+      [a.id, b.id].sort(),
+    )
   })
 
   it('always shows a viewer its own items and the park fixtures', async () => {

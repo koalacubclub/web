@@ -20,6 +20,7 @@ import type {
   Player,
   PlayerState,
   ServerMessage,
+  SleepingPlayer,
   WorldStats,
 } from '@koala/shared'
 import { CAST_SIZE, CLIENT_SEND_HZ, NAME_MAX } from '@koala/shared'
@@ -59,6 +60,10 @@ export interface Multiplayer {
    *  CAST_SIZE) — so this holds at most CAST_SIZE entries however busy the world
    *  is, and `placed` likewise only carries those koalas' items. */
   readonly players: Map<string, RemotePlayer>
+  /** The cast members who are offline, keyed by session id — drawn asleep in the
+   *  park rather than left as a gap (their items are standing there either way).
+   *  A `leave` moves a koala in here, a `join` takes it back out. */
+  readonly sleepers: Map<string, SleepingPlayer>
   /** Server-owned collectibles currently on the map, keyed by food id. */
   readonly food: Map<string, Food>
   /** Server-owned placed decorations (shop items), keyed by item id. */
@@ -119,6 +124,9 @@ export function createMultiplayer(
     onWallet?: (likes: number) => void
     /** Fired with the full placed set whenever it changes. */
     onPlaced?: (placed: PlacedItem[]) => void
+    /** Fired whenever the sleeping set changes, so the game can re-lay them out
+     *  (which tile each one gets is the client's business — see game/sleepers). */
+    onSleepers?: (sleepers: SleepingPlayer[]) => void
     /** Fired when a buy is rejected by the server. */
     onBuyFail?: (reason: BuyFailReason) => void
     /** Fired with this player's own name (on welcome and on rename). */
@@ -149,6 +157,7 @@ export function createMultiplayer(
   if (!HTTP_BASE || !WS_BASE) return null
 
   const players = new Map<string, RemotePlayer>()
+  const sleepers = new Map<string, SleepingPlayer>()
   const food = new Map<string, Food>()
   const placed = new Map<string, PlacedItem>()
   const authors = new Map<string, string>()
@@ -159,6 +168,7 @@ export function createMultiplayer(
 
   const handle: Multiplayer = {
     players,
+    sleepers,
     food,
     placed,
     authors,
@@ -187,6 +197,7 @@ export function createMultiplayer(
     opts.onName?.(name)
   }
   const emitPlaced = () => opts.onPlaced?.([...placed.values()])
+  const emitSleepers = () => opts.onSleepers?.([...sleepers.values()])
   // The live roster = self (if known) + every remote player, sorted by name so
   // the Settings list is stable frame to frame.
   const emitPresence = () => {
@@ -249,6 +260,8 @@ export function createMultiplayer(
           typeof msg.now === 'number' ? msg.now - Date.now() : 0
         players.clear()
         for (const p of msg.players ?? []) upsert(p)
+        sleepers.clear()
+        for (const sp of msg.sleepers ?? []) sleepers.set(sp.id, sp)
         food.clear()
         for (const f of msg.food ?? []) food.set(f.id, f)
         placed.clear()
@@ -260,6 +273,7 @@ export function createMultiplayer(
         handle.population = msg.population ?? players.size + 1
         handle.stats = msg.stats
         if (msg.stats) opts.onStats?.(msg.stats)
+        emitSleepers()
         opts.onResync?.() // drop stale local ball sim before rebuilding from placed
         // Only when the server was already tracking us: adopt its position so a
         // fresh local spawn isn't clamped against the live server baseline.
@@ -273,24 +287,38 @@ export function createMultiplayer(
       case 'roster': {
         players.clear()
         for (const p of msg.players ?? []) upsert(p)
+        sleepers.clear()
+        for (const sp of msg.sleepers ?? []) sleepers.set(sp.id, sp)
         placed.clear()
         for (const it of msg.placed ?? []) placed.set(it.id, it)
         authors.clear()
         for (const [oid, nm] of Object.entries(msg.authors ?? {}))
           authors.set(oid, nm)
         handle.population = msg.population ?? players.size + 1
+        emitSleepers()
         emitPlaced()
         emitPresence()
         break
       }
       case 'join':
         upsert(msg.p)
+        // They were lying asleep by their things; now they're back on their feet.
+        if (sleepers.delete(msg.p.id)) emitSleepers()
         emitPresence()
         break
-      case 'leave':
+      case 'leave': {
+        // A koala only ever leaves a cast it is still IN (slots are never taken
+        // back — see CAST_SIZE), so leaving means falling asleep, not vanishing:
+        // its items stay standing and it stays in the park, napping by them.
+        const gone = players.get(msg.id)
         players.delete(msg.id)
+        if (gone) {
+          sleepers.set(gone.id, { id: gone.id, name: gone.name })
+          emitSleepers()
+        }
         emitPresence()
         break
+      }
       case 'state': {
         if (handle.self && msg.id === handle.self.id) break
         const p = players.get(msg.id)
@@ -338,6 +366,11 @@ export function createMultiplayer(
         else {
           const p = players.get(msg.id)
           if (p) p.name = msg.name // canvas name tag reads this each frame
+          const sp = sleepers.get(msg.id)
+          if (sp) {
+            sleepers.set(msg.id, { id: msg.id, name: msg.name })
+            emitSleepers()
+          }
         }
         // One update relabels ALL of this owner's items (author labels resolve
         // through this map), so a rename propagates to previously-placed items.
@@ -418,6 +451,8 @@ export function createMultiplayer(
       setConnected(false)
       handle.population = 0
       players.clear()
+      sleepers.clear()
+      emitSleepers()
       food.clear()
       placed.clear()
       authors.clear()

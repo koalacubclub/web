@@ -33,6 +33,17 @@ export interface Player extends PlayerState {
   name: string
 }
 
+// A cast member who is not currently connected. The cast never evicts (see
+// CAST_SIZE), so an offline member keeps their slot and their items keep
+// standing — and rather than leaving a gap where a koala was, the client draws
+// them asleep beside their things. They have no position on the wire: nothing
+// about them changes, so the client lays them out itself (it alone knows where
+// the park's own scenery stands) and keeps them there.
+export interface SleepingPlayer {
+  id: string
+  name: string
+}
+
 // ---- Collectibles / points ("likes") ----
 // The server owns the collectibles: it spawns them, decides their point value,
 // and awards "likes" when a koala reaches one. The client never reports points
@@ -441,6 +452,10 @@ export type ServerMessage =
       // the client keeps its own spawn.
       resumed: boolean
       players: Player[]
+      // The cast members who are offline right now, drawn asleep (see
+      // SleepingPlayer). A `leave` moves a koala into this set and a `join`
+      // takes it back out, so the client tracks the transitions itself.
+      sleepers: SleepingPlayer[]
       food: Food[]
       placed: PlacedItem[]
       authors: Record<string, string> // ownerId → current name (incl. offline owners)
@@ -482,6 +497,7 @@ export type ServerMessage =
   | {
       t: 'roster'
       players: Player[]
+      sleepers: SleepingPlayer[]
       placed: PlacedItem[]
       authors: Record<string, string>
       population: number

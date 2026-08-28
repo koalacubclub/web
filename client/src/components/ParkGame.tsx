@@ -59,6 +59,8 @@ import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, makeRng, HORIZON } from '@/game/constants'
 import { getPondReflection, reflectObjects, reflectCat } from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
+import { layoutSleepers } from '@/game/sleepers'
+import type { SleepSpot } from '@/game/sleepers'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
 
@@ -744,6 +746,9 @@ export default function ParkGame() {
       onName: (name) => parkStore.applyServerName(name),
       onPresence: (roster, population) =>
         parkStore.applyServerPresence(roster, population),
+      onSleepers: () => {
+        sleepersStale = true
+      },
       onStats: (stats) => parkStore.applyServerStats(stats),
       // A peer launched a ball: seed its velocity onto our local object and mark
       // it rolling, so our own updateSlappables carries it at 60fps (no position
@@ -807,6 +812,34 @@ export default function ParkGame() {
       idleFrames: 0,
       state: 'standing',
     }
+    // ...and one for the sleepers: the cast members who are offline. They keep
+    // their slot and their items, so the park lays them down beside their things
+    // instead of leaving a gap (see game/sleepers). Nothing about them animates,
+    // so the layout is computed only when the set — or the park — changes, and
+    // kept in a y-sorted array ready to draw.
+    const sleeperCat: DrawableCat = {
+      x: 0,
+      y: 0,
+      dir: 'right',
+      idle: true,
+      interacting: false,
+      idleFrames: 0,
+      state: 'sleeping',
+    }
+    let sleepSpots = new Map<string, SleepSpot>()
+    let sleepSorted: SleepSpot[] = []
+    let sleepersStale = true
+    const relayoutSleepers = () => {
+      sleepersStale = false
+      const list = mp ? [...mp.sleepers.values()] : []
+      sleepSpots = layoutSleepers(
+        list,
+        { objects: g.objects, cols: MAP_COLS, rows: GROUND_ROWS },
+        sleepSpots,
+      )
+      // Depth order, like every other body on the ground.
+      sleepSorted = [...sleepSpots.values()].sort((a, b) => a.y - b.y)
+    }
 
     // Skip the decorative placed-item pop-in / blink when reduced motion is on.
     const reducedMotion =
@@ -853,6 +886,10 @@ export default function ParkGame() {
           return obj
         }),
       )
+      // The objects are what a sleeper is placed beside and must not lie on, so
+      // a purchase or an expiry re-lays them out. Spots already assigned are
+      // kept (layoutSleepers takes the previous layout), so nobody is shuffled.
+      sleepersStale = true
     }
     rebuildObjects()
     const unsubscribeStore = parkStore.subscribe(rebuildObjects)
@@ -1777,9 +1814,16 @@ export default function ParkGame() {
       })
     }
 
-    function drawDreamBubble() {
+    // The Zzz bubble says someone is ACTUALLY HERE and merely idle. The park's
+    // sleepers — cast members who are offline (see game/sleepers) — are drawn in
+    // the same pose and deliberately get no bubble: that is the one thing that
+    // tells a napping visitor apart from a koala who has gone home.
+    function drawDreamBubble(cat: {
+      x: number
+      y: number
+      state: DrawableCat['state']
+    }) {
       if (!ctx) return
-      const cat = g.cat
       if (cat.state !== 'sleeping') return
       const x = cat.x * PIXEL
       const y = cat.y * PIXEL
@@ -3845,6 +3889,21 @@ export default function ParkGame() {
         interacting: g.cat.interacting,
       })
       const nowMs = performance.now()
+      // The sleeping cast, drawn under everyone still awake. Culled like the
+      // objects are — the layout spreads them across the whole map, so most of
+      // them are off-camera at any moment.
+      if (sleepSorted.length || sleepersStale) {
+        if (sleepersStale) relayoutSleepers()
+        const sleepVis = visibleX()
+        for (const s of sleepSorted) {
+          if (!isVisibleX(s.x * PIXEL, (s.x + 1) * PIXEL, sleepVis, PIXEL))
+            continue
+          sleeperCat.x = s.x
+          sleeperCat.y = s.y
+          sleeperCat.dir = s.dir
+          drawCat(sleeperCat, s.name, 0, 0)
+        }
+      }
       drawCat(
         g.cat,
         undefined,
@@ -3911,7 +3970,18 @@ export default function ParkGame() {
       ctx!.restore()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      drawDreamBubble()
+      drawDreamBubble(g.cat)
+      // Every koala who is really here and dozing gets one too — the offline
+      // sleepers pointedly don't.
+      if (mp && mp.players.size) {
+        const bubbleVis = visibleX()
+        for (const p of mp.players.values()) {
+          if (p.pose !== 'sleeping') continue
+          if (!isVisibleX(p.rx * PIXEL, (p.rx + 1) * PIXEL, bubbleVis, PIXEL))
+            continue
+          drawDreamBubble({ x: p.rx, y: p.ry, state: 'sleeping' })
+        }
+      }
       drawFoods()
       g.effects = drawEffects(ctx!, g.effects, g.frameCount, PIXEL, f)
       drawAuthorLabels()

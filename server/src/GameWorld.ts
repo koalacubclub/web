@@ -6,6 +6,7 @@ import type {
   Player,
   PlayerState,
   ServerMessage,
+  SleepingPlayer,
 } from '@koala/shared'
 import {
   ABILITY_COOLDOWNS_MS,
@@ -292,6 +293,7 @@ export class GameWorld extends DurableObject<Env> {
       // clamped-into-place dead period on a fast reload / second tab.
       resumed: rejoining,
       players,
+      sleepers: this.sleepersFor(id),
       food: [...this.food.values()],
       placed: placedItems,
       authors: this.authorsFor(placedItems),
@@ -968,6 +970,22 @@ export class GameWorld extends DurableObject<Env> {
     return out
   }
 
+  /**
+   * The cast members `viewer` is shown who are not connected — the owner of that
+   * tree, asleep under it. Both kinds land here: someone who was online when the
+   * cast was drawn and has since logged off, and someone who was only ever in it
+   * as the owner of an item. No position travels: the client places them (it is
+   * the only side that knows where the park's own scenery stands).
+   */
+  private sleepersFor(viewer: string): SleepingPlayer[] {
+    const out: SleepingPlayer[] = []
+    for (const id of this.casting.castOf(viewer)) {
+      if (this.sockets.has(id)) continue
+      out.push({ id, name: this.getName(id) ?? 'Koala' })
+    }
+    return out
+  }
+
   /** The items `viewer` is shown: its cast's, its own, and the park's permanent
    *  fixtures (the seeded balls, which belong to nobody). */
   private placedFor(viewer: string): PlacedItem[] {
@@ -1025,6 +1043,7 @@ export class GameWorld extends DurableObject<Env> {
     return {
       t: 'roster',
       players,
+      sleepers: this.sleepersFor(viewer),
       placed,
       authors: this.authorsFor(placed),
       population: this.sockets.size,
