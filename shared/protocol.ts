@@ -33,6 +33,17 @@ export interface Player extends PlayerState {
   name: string
 }
 
+// A cast member who is not currently connected. The cast never evicts (see
+// CAST_SIZE), so an offline member keeps their slot and their items keep
+// standing — and rather than leaving a gap where a koala was, the client draws
+// them asleep beside their things. They have no position on the wire: nothing
+// about them changes, so the client lays them out itself (it alone knows where
+// the park's own scenery stands) and keeps them there.
+export interface SleepingPlayer {
+  id: string
+  name: string
+}
+
 // ---- Collectibles / points ("likes") ----
 // The server owns the collectibles: it spawns them, decides their point value,
 // and awards "likes" when a koala reaches one. The client never reports points
@@ -367,6 +378,26 @@ export interface PlacedItem {
   expiresAt: number // epoch ms (server)
 }
 
+// ---- The cast: how much of a crowded park one client is shown ----
+// A park that thousands of koalas can join cannot be a park that any one client
+// renders in full — every extra koala costs a broadcast on the wire and a full
+// procedural draw every frame. So each connection is shown a CAST: a random
+// sample of at most CAST_SIZE other users, drawn once when it joins the world.
+//
+// The cast is what a client sees, in both senses — those koalas AND the items
+// those koalas placed. It is sampled ONLINE-FIRST (a live park is the point),
+// then topped up from the owners of placed items so a quiet park is still a
+// furnished one rather than bare grass.
+//
+// Two properties matter more than the number itself:
+//   - it never evicts. A cast member who logs off keeps their slot (their items
+//     stay put) and is simply not drawn; if they come back, they're back.
+//   - it is per-viewer and asymmetric. You seeing someone does not put you in
+//     their cast — with thousands online, two koalas may well be in different
+//     samples of the same park.
+// A fresh sample is drawn on the next connect, so reloading re-rolls the world.
+export const CAST_SIZE = 10
+
 // Display-name bounds (server-enforced; the input caps at NAME_MAX too).
 export const NAME_MIN = 1
 export const NAME_MAX = 20
@@ -421,11 +452,19 @@ export type ServerMessage =
       // the client keeps its own spawn.
       resumed: boolean
       players: Player[]
+      // The cast members who are offline right now, drawn asleep (see
+      // SleepingPlayer). A `leave` moves a koala into this set and a `join`
+      // takes it back out, so the client tracks the transitions itself.
+      sleepers: SleepingPlayer[]
       food: Food[]
       placed: PlacedItem[]
       authors: Record<string, string> // ownerId → current name (incl. offline owners)
       likes: number
       stats: WorldStats
+      // Everyone currently in the park, including the koalas this viewer's cast
+      // left out — `players` is capped at CAST_SIZE, this never is. The UI shows
+      // both ("12 of 1,204 koalas"), so a big park still reads as a big park.
+      population: number
       now: number
     }
   | { t: 'join'; p: Player }
@@ -445,7 +484,24 @@ export type ServerMessage =
   | { t: 'renamed'; id: string; name: string } // broadcast; also acks the sender
   // Refreshed global stats, broadcast when a brand-new session joins (so open
   // Settings menus update). Per-viewer `yourVisits` only travels in `welcome`.
-  | { t: 'stats'; active24h: number; totalSessions: number }
+  | {
+      t: 'stats'
+      active24h: number
+      totalSessions: number
+      population: number
+    }
+  // Full resync of what this viewer is shown — its cast's players and their
+  // items (replaces the client's sets). Sent when the Durable Object wakes from
+  // hibernation: casts are in-memory, so a wake re-samples them, and without
+  // this a client would keep drawing peers whose updates now go elsewhere.
+  | {
+      t: 'roster'
+      players: Player[]
+      sleepers: SleepingPlayer[]
+      placed: PlacedItem[]
+      authors: Record<string, string>
+      population: number
+    }
   // A player used an ability — broadcast to everyone else so they animate it.
   | { t: 'acted'; id: string; a: AbilityKind }
   // A ball was launched by a peer (relayed from `push`, sender excluded). Seeds

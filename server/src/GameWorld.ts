@@ -6,6 +6,7 @@ import type {
   Player,
   PlayerState,
   ServerMessage,
+  SleepingPlayer,
 } from '@koala/shared'
 import {
   ABILITY_COOLDOWNS_MS,
@@ -40,6 +41,7 @@ import {
   SHOP_ITEMS_BY_KEY,
   WORLD,
 } from '@koala/shared'
+import { Casting } from './cast'
 import type { Env } from './types'
 
 // Per-socket metadata. Stored via serializeAttachment so it survives Durable
@@ -52,6 +54,11 @@ interface Attachment {
   v: number
   s: PlayerState
 }
+
+// How often (ms) the lazy collectible + placed-item sweeps may run. They hang
+// off inbound player traffic (there is no game tick, so the DO can hibernate),
+// which means their frequency scales with the crowd unless it is capped here.
+const SWEEP_INTERVAL_MS = 250
 
 // Where a koala first appears — centre of the park.
 const SPAWN: PlayerState = {
@@ -107,6 +114,26 @@ export class GameWorld extends DurableObject<Env> {
   // persisted in SQLite, expire on a wall-clock TTL. Kept in memory for fast
   // overlap checks + broadcasts; rehydrated from SQLite on wake.
   private placed = new Map<string, PlacedItem>()
+
+  // Live sockets by session id (a session can hold several — a second tab).
+  // Presence traffic is now addressed (a koala's movement goes to the viewers
+  // showing them, not to the park), so the hot path has to reach a session by
+  // id — and the old broadcast, which called deserializeAttachment() on every
+  // socket for every message, no longer does. Ephemeral: rebuilt from the
+  // surviving sockets on a hibernation wake.
+  private sockets = new Map<string, Set<WebSocket>>()
+
+  // Who each viewer is shown. See cast.ts: a random, online-first sample of at
+  // most CAST_SIZE users, drawn on connect, whose koalas AND items are the whole
+  // of the park that client renders. In-memory (like positions), so a wake
+  // re-samples and resyncs.
+  private casting = new Casting()
+
+  // Last time the lazy collectible/expiry sweeps ran. They used to run on EVERY
+  // inbound message — at 12 updates/s per player that is O(players²) map walks a
+  // second — so they're throttled to SWEEP_INTERVAL_MS. Nothing here is
+  // time-critical: food TTLs are tens of seconds and item TTLs are days.
+  private lastSweepAt = 0
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -186,8 +213,15 @@ export class GameWorld extends DurableObject<Env> {
     const sockets = this.ctx.getWebSockets()
     for (const ws of sockets) {
       const a = ws.deserializeAttachment() as Attachment | null
-      if (a) this.positions.set(a.id, { ...a.s })
+      if (!a) continue
+      this.positions.set(a.id, { ...a.s })
+      this.socketsOf(a.id).add(ws)
     }
+    // Casts are in-memory too, so a wake re-samples every viewer from whoever
+    // survived the nap. Each client is then told what it is now shown (`roster`)
+    // — otherwise it would keep drawing peers whose updates now go elsewhere.
+    for (const id of this.sockets.keys()) this.openCast(id)
+    for (const id of this.sockets.keys()) this.sendId(id, this.rosterFor(id))
     // If we woke from hibernation with players still connected, our in-memory
     // food was wiped without per-item despawns — so those clients may still be
     // rendering stale food (which blinks forever, never getting a despawn). Push
@@ -219,11 +253,7 @@ export class GameWorld extends DurableObject<Env> {
     // Is this session already present (e.g. a second tab)? A connect only counts
     // as a fresh "visit" when the session was fully offline beforehand — checked
     // before acceptWebSocket() so the new socket isn't in the set yet.
-    const rejoining = this.ctx
-      .getWebSockets()
-      .some(
-        (ws) => (ws.deserializeAttachment() as Attachment | null)?.id === id,
-      )
+    const rejoining = this.sockets.has(id)
 
     const { 0: client, 1: server } = new WebSocketPair()
     this.ctx.acceptWebSocket(server)
@@ -236,19 +266,15 @@ export class GameWorld extends DurableObject<Env> {
       s: start,
     } satisfies Attachment)
     this.positions.set(id, start)
+    this.socketsOf(id).add(server)
 
-    // Tell the newcomer who is already in the park.
-    const players: Player[] = []
-    for (const ws of this.ctx.getWebSockets()) {
-      if (ws === server) continue
-      const a = ws.deserializeAttachment() as Attachment | null
-      if (!a || a.id === id) continue
-      players.push({
-        id: a.id,
-        name: a.name,
-        ...(this.positions.get(a.id) ?? SPAWN),
-      })
-    }
+    // Draw this connection's cast — the sample of the park it is shown — and
+    // tell it about those koalas only. A session that is already here (a second
+    // tab) keeps the sample it has, so the tab already open doesn't have the
+    // park reshuffled underneath it; a real reload drops the session first, and
+    // comes back to a freshly drawn one.
+    if (!this.casting.hasViewer(id)) this.openCast(id)
+    const players = this.playersFor(id)
     const self: Player = { id, name, ...start }
     // Refresh the collectibles + placed items on join, then hand the newcomer
     // the current world plus their stored likes total.
@@ -258,7 +284,7 @@ export class GameWorld extends DurableObject<Env> {
     const yourVisits = this.touchSession(id, nowJoin, !rejoining)
     this.maybeSpawn(nowJoin)
     this.sweepPlaced(nowJoin)
-    const placedItems = [...this.placed.values()]
+    const placedItems = this.placedFor(id)
     this.sendTo(server, {
       t: 'welcome',
       self,
@@ -268,20 +294,40 @@ export class GameWorld extends DurableObject<Env> {
       // clamped-into-place dead period on a fast reload / second tab.
       resumed: rejoining,
       players,
+      sleepers: this.sleepersFor(id),
       food: [...this.food.values()],
       placed: placedItems,
       authors: this.authorsFor(placedItems),
       likes: this.getLikes(id),
       stats: { ...this.globalStats(nowJoin), yourVisits },
+      population: this.sockets.size,
       now: nowJoin,
     })
 
-    // Announce the newcomer to everyone else.
-    this.broadcast({ t: 'join', p: self }, id)
+    // Announce the newcomer, to two audiences. First: viewers still holding a
+    // slot for this session, which saw it leave and now see it come back. Their
+    // copy of its items never went away, so only the koala is re-announced.
+    // (Snapshot the set — admit() below adds to the very same one.)
+    for (const viewer of [...this.casting.watchersOf(id)]) {
+      this.sendId(viewer, { t: 'join', p: self })
+    }
+    // Then: viewers that still have a free slot, which take them in. A cast is
+    // koalas and their things alike, so their items arrive with them.
+    for (const { viewer } of this.casting.admit(id)) {
+      this.sendId(viewer, { t: 'join', p: self })
+      this.sendItemsOf(viewer, id)
+    }
     // A brand-new session changes the global totals — push them to everyone else
     // so open Settings menus refresh (rejoins don't move these numbers).
     if (!rejoining) {
-      this.broadcast({ t: 'stats', ...this.globalStats(nowJoin) }, id)
+      this.broadcast(
+        {
+          t: 'stats',
+          ...this.globalStats(nowJoin),
+          population: this.sockets.size,
+        },
+        id,
+      )
     }
 
     return new Response(null, { status: 101, webSocket: client })
@@ -311,10 +357,14 @@ export class GameWorld extends DurableObject<Env> {
     }
 
     // Player traffic drives the collectibles + placed-item expiry (no game tick →
-    // the DO can still hibernate when the park is empty).
+    // the DO can still hibernate when the park is empty), throttled so a busy
+    // park doesn't re-walk both maps on every one of its thousands of updates.
     const now = Date.now()
-    this.maybeSpawn(now)
-    this.sweepPlaced(now)
+    if (now - this.lastSweepAt >= SWEEP_INTERVAL_MS) {
+      this.lastSweepAt = now
+      this.maybeSpawn(now)
+      this.sweepPlaced(now)
+    }
 
     if (msg.t === 'state') {
       const s = sanitizeState(msg.s)
@@ -346,7 +396,9 @@ export class GameWorld extends DurableObject<Env> {
       this.positions.set(a.id, s)
       // Persist last-known position on the socket so it survives hibernation.
       ws.serializeAttachment({ ...a, s } satisfies Attachment)
-      this.broadcast({ t: 'state', id: a.id, s }, a.id)
+      // The hot path: a position goes only to the viewers showing this koala —
+      // at most CAST_SIZE of them on average, however many are in the park.
+      this.toWatchers(a.id, { t: 'state', id: a.id, s })
       return
     }
 
@@ -361,7 +413,10 @@ export class GameWorld extends DurableObject<Env> {
         if (oa?.id === a.id)
           other.serializeAttachment({ ...oa, name } satisfies Attachment)
       }
-      this.broadcast({ t: 'renamed', id: a.id, name }) // everyone incl. sender = ack
+      // Everyone shown this koala (their name tag + their items' author label),
+      // plus the sender itself as the ack.
+      this.toWatchers(a.id, { t: 'renamed', id: a.id, name })
+      this.sendTo(ws, { t: 'renamed', id: a.id, name })
       return
     }
 
@@ -376,7 +431,7 @@ export class GameWorld extends DurableObject<Env> {
       // Jump additionally opens this session's airborne-food collect window.
       if (act.a === 'jump') this.jumpAt.set(a.id, now)
       // Broadcast so everyone else can animate it (the actor plays it locally).
-      this.broadcast({ t: 'acted', id: a.id, a: act.a }, a.id)
+      this.toWatchers(a.id, { t: 'acted', id: a.id, a: act.a })
       return
     }
 
@@ -390,9 +445,10 @@ export class GameWorld extends DurableObject<Env> {
       if (!item || item.type !== 'ball') return
       item.x = r.x
       item.y = r.y
-      this.broadcast(
+      this.toItemAudience(
+        item,
         { t: 'pushed', id: r.id, x: r.x, y: r.y, vx: r.vx, vy: r.vy },
-        a.id, // exclude the sender — it already simulates the roll locally
+        { except: a.id }, // the sender already simulates the roll locally
       )
       return
     }
@@ -418,7 +474,13 @@ export class GameWorld extends DurableObject<Env> {
         ry,
         r.id,
       )
-      this.broadcast({ t: 'moved', id: r.id, x: rx, y: ry })
+      // Everyone who is shown this ball, plus the slapper (it needs the tile to
+      // reconcile its local roll even if the ball's owner isn't in its cast).
+      this.toItemAudience(
+        item,
+        { t: 'moved', id: r.id, x: rx, y: ry },
+        { also: a.id },
+      )
       return
     }
 
@@ -512,8 +574,11 @@ export class GameWorld extends DurableObject<Env> {
         item.expiresAt,
       )
       this.placed.set(item.id, item)
-      // Include the buyer's current name so every client can fill its authors map.
-      this.broadcast({ t: 'placed', item, authorName: a.name })
+      // An item is part of its owner, so it reaches exactly the clients that are
+      // shown its owner — plus the buyer, who always sees their own things.
+      // (Include the buyer's name so those clients can fill their authors map.)
+      this.toWatchers(a.id, { t: 'placed', item, authorName: a.name })
+      this.sendTo(ws, { t: 'placed', item, authorName: a.name })
       this.sendTo(ws, { t: 'wallet', likes }) // buyer's new balance
     }
   }
@@ -532,24 +597,34 @@ export class GameWorld extends DurableObject<Env> {
     const a = ws.deserializeAttachment() as Attachment | null
     if (!a) return
     // Keep the player present if another socket (e.g. a second tab) shares the
-    // same session id.
-    const stillHere = this.ctx
-      .getWebSockets()
-      .some(
-        (o) =>
-          o !== ws &&
-          (o.deserializeAttachment() as Attachment | null)?.id === a.id,
-      )
-    if (!stillHere) {
-      this.positions.delete(a.id)
-      this.rate.delete(a.id)
-      this.jumpAt.delete(a.id)
-      this.lastMove.delete(a.id)
-      for (const k of this.lastActionAt.keys()) {
-        if (k.startsWith(`${a.id}::`)) this.lastActionAt.delete(k)
-      }
-      this.broadcast({ t: 'leave', id: a.id }, a.id)
+    // same session id: it keeps the session's cast and its traffic.
+    const live = this.sockets.get(a.id)
+    live?.delete(ws)
+    if (live && live.size > 0) return
+    this.sockets.delete(a.id)
+    // The session is fully gone, so it stops being a viewer of anyone. Its own
+    // sample is re-rolled when it reconnects; the slots it holds in OTHER casts
+    // are untouched — that is what keeps its items standing in their parks.
+    this.casting.close(a.id)
+    this.positions.delete(a.id)
+    this.rate.delete(a.id)
+    this.jumpAt.delete(a.id)
+    this.lastMove.delete(a.id)
+    for (const k of this.lastActionAt.keys()) {
+      if (k.startsWith(`${a.id}::`)) this.lastActionAt.delete(k)
     }
+    // Their koala goes; their slot and their items stay. No backfill — the park
+    // you were shown doesn't reshuffle because someone logged off, and if they
+    // come back they walk straight back into it.
+    this.toWatchers(a.id, { t: 'leave', id: a.id })
+    // The head count just dropped. Tell everyone, or a park that emptied out
+    // would keep claiming the crowd it had when they arrived — the mirror of
+    // the stats push a new session triggers.
+    this.broadcast({
+      t: 'stats',
+      ...this.globalStats(Date.now()),
+      population: this.sockets.size,
+    })
   }
 
   private allow(id: string): boolean {
@@ -646,7 +721,7 @@ export class GameWorld extends DurableObject<Env> {
         this.broadcast({ t: 'despawn', id, reason: 'expired' })
       }
     }
-    const cap = foodCap(this.ctx.getWebSockets().length)
+    const cap = foodCap(this.sockets.size)
     if (
       this.food.size < cap &&
       now - this.lastSpawnAt >= FOOD_SPAWN_COOLDOWN_MS
@@ -811,18 +886,175 @@ export class GameWorld extends DurableObject<Env> {
     }
   }
 
+  /** Everyone in the park. Reserved for world-level news (food, stats, expiry) —
+   *  anything about one koala goes to that koala's viewers instead. */
   private broadcast(msg: ServerMessage, exceptId?: string): void {
     const data = JSON.stringify(msg)
-    for (const ws of this.ctx.getWebSockets()) {
-      if (exceptId) {
-        const a = ws.deserializeAttachment() as Attachment | null
-        if (a?.id === exceptId) continue
-      }
-      try {
-        ws.send(data)
-      } catch {
-        // Ignore individual send failures; the close handler will clean up.
-      }
+    for (const [id, sockets] of this.sockets) {
+      if (id === exceptId) continue
+      for (const ws of sockets) this.rawSend(ws, data)
+    }
+  }
+
+  /** Send to one session by id — every socket it holds (no-op if it's gone). */
+  private sendId(id: string, msg: ServerMessage): void {
+    const sockets = this.sockets.get(id)
+    if (!sockets || sockets.size === 0) return
+    const data = JSON.stringify(msg)
+    for (const ws of sockets) this.rawSend(ws, data)
+  }
+
+  private socketsOf(id: string): Set<WebSocket> {
+    let set = this.sockets.get(id)
+    if (!set) {
+      set = new Set()
+      this.sockets.set(id, set)
+    }
+    return set
+  }
+
+  private rawSend(ws: WebSocket, data: string): void {
+    try {
+      ws.send(data)
+    } catch {
+      // Ignore individual send failures; the close handler will clean up.
+    }
+  }
+
+  /**
+   * Send to every viewer currently shown `user` — the addressed replacement for
+   * broadcasting one koala's movement, name and items at the whole park. One
+   * JSON.stringify, then at most CAST_SIZE sends on average however big the
+   * park gets. The subject itself is never a viewer of its own traffic.
+   */
+  private toWatchers(user: string, msg: ServerMessage): void {
+    const viewers = this.casting.watchersOf(user)
+    if (viewers.size === 0) return
+    const data = JSON.stringify(msg)
+    for (const viewer of viewers) {
+      const sockets = this.sockets.get(viewer)
+      if (!sockets) continue
+      for (const ws of sockets) this.rawSend(ws, data)
+    }
+  }
+
+  // ---- the cast (see cast.ts) ----
+
+  /** Draw `viewer`'s sample of the park: whoever is online first, then topped up
+   *  from the owners of items already standing in it (typically offline), so a
+   *  quiet park is still a furnished one. */
+  private openCast(viewer: string): void {
+    this.casting.open(viewer, this.sockets.keys(), this.itemOwners())
+  }
+
+  /** Owners of the placed items, most recently placed first — the top-up pool
+   *  for a cast that still has room after everyone online is in it. */
+  private itemOwners(): string[] {
+    const seen = new Set<string>()
+    const items = [...this.placed.values()].sort(
+      (a, b) => b.placedAt - a.placedAt,
+    )
+    for (const it of items) {
+      if (it.ownerId) seen.add(it.ownerId)
+    }
+    return [...seen]
+  }
+
+  /** The players `viewer` is shown, with their live positions. */
+  private playersFor(viewer: string): Player[] {
+    const out: Player[] = []
+    for (const id of this.casting.castOf(viewer)) {
+      const ws = this.sockets.get(id)?.values().next().value
+      const a = ws ? (ws.deserializeAttachment() as Attachment | null) : null
+      // Offline cast members hold their slot (and their items) but have no
+      // koala to draw, so they don't travel in the roster.
+      if (!a) continue
+      out.push({
+        id: a.id,
+        name: a.name,
+        ...(this.positions.get(a.id) ?? SPAWN),
+      })
+    }
+    return out
+  }
+
+  /**
+   * The cast members `viewer` is shown who are not connected — the owner of that
+   * tree, asleep under it. Both kinds land here: someone who was online when the
+   * cast was drawn and has since logged off, and someone who was only ever in it
+   * as the owner of an item. No position travels: the client places them (it is
+   * the only side that knows where the park's own scenery stands).
+   */
+  private sleepersFor(viewer: string): SleepingPlayer[] {
+    const out: SleepingPlayer[] = []
+    for (const id of this.casting.castOf(viewer)) {
+      if (this.sockets.has(id)) continue
+      out.push({ id, name: this.getName(id) ?? 'Koala' })
+    }
+    return out
+  }
+
+  /** The items `viewer` is shown: its cast's, its own, and the park's permanent
+   *  fixtures (the seeded balls, which belong to nobody). */
+  private placedFor(viewer: string): PlacedItem[] {
+    const out: PlacedItem[] = []
+    for (const it of this.placed.values()) {
+      if (this.showsItem(viewer, it)) out.push(it)
+    }
+    return out
+  }
+
+  private showsItem(viewer: string, it: PlacedItem): boolean {
+    if (it.ownerId === '' || it.expiresAt === PLACED_PERMANENT) return true
+    return it.ownerId === viewer || this.casting.shows(viewer, it.ownerId)
+  }
+
+  /**
+   * Send to the clients that are shown `item`: its owner's viewers plus the
+   * owner. The park's own fixtures (the seeded balls, which belong to nobody)
+   * are shown to everyone, so they still go out as a broadcast.
+   */
+  private toItemAudience(
+    item: PlacedItem,
+    msg: ServerMessage,
+    opts: { except?: string; also?: string } = {},
+  ): void {
+    const { except, also } = opts
+    if (item.ownerId === '' || item.expiresAt === PLACED_PERMANENT) {
+      this.broadcast(msg, except)
+      return
+    }
+    // One send each: the owner is usually also a viewer of its own item, and the
+    // slapper (`also`) may be either, neither or both.
+    const to = new Set<string>(this.casting.watchersOf(item.ownerId))
+    to.add(item.ownerId)
+    if (also) to.add(also)
+    if (except) to.delete(except)
+    for (const id of to) this.sendId(id, msg)
+  }
+
+  /** Hand `viewer` the items owned by `user` — sent when a cast admits someone,
+   *  so their things arrive with them. */
+  private sendItemsOf(viewer: string, user: string): void {
+    const name = this.getName(user) ?? 'Koala'
+    for (const it of this.placed.values()) {
+      if (it.ownerId !== user) continue
+      this.sendId(viewer, { t: 'placed', item: it, authorName: name })
+    }
+  }
+
+  /** A full "here is what you are shown" resync (used after a hibernation wake,
+   *  which re-samples every cast). */
+  private rosterFor(viewer: string): ServerMessage {
+    const players = this.playersFor(viewer)
+    const placed = this.placedFor(viewer)
+    return {
+      t: 'roster',
+      players,
+      sleepers: this.sleepersFor(viewer),
+      placed,
+      authors: this.authorsFor(placed),
+      population: this.sockets.size,
     }
   }
 }
