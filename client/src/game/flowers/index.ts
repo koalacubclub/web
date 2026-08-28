@@ -2,8 +2,12 @@
 // `../trees`: a patch is (species, form, jitter), all three rolled from the tile
 // it grows on, so it looks identical on every frame and every reload.
 //
-// Nothing here is wired into the scene: `ParkGame` and `sprites.ts` still draw
-// their own flower patch. This module is the art, ready to be dropped in.
+// The park draws its patches with `drawNightFlowers`; `sprites.ts` still has its
+// own little flower for the shop previews.
+//
+// A patch only sways while Koala is near it: the park's flowers are still until
+// she walks up to them. How near is near is the park's business, not the art's
+// — see `../proximity.ts` — so all this module takes is a `sway` amplitude.
 
 import { PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
@@ -102,6 +106,12 @@ export interface DrawFlowersOptions {
   ink?: Ink
   /** Game frame counter, for the bloom bob. Default 0 (static). */
   frameCount?: number
+  /**
+   * How hard the patch sways, 0–1 — `idleMotion` of Koala's distance in the
+   * park (see `../proximity.ts`), 0 for dead still. Default 1: the art bobs
+   * unless something asks it not to, and it is the park that does the asking.
+   */
+  sway?: number
 }
 
 /**
@@ -120,6 +130,7 @@ export function drawFlowers(
     form,
     ink: opts.ink ?? ((c) => c),
     frameCount: opts.frameCount ?? 0,
+    sway: opts.sway ?? 1,
   })
 }
 

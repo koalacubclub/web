@@ -21,7 +21,7 @@ export function drawLavender(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, frameCount }: DrawArgs,
+  { rng, form, ink, frameCount, sway }: DrawArgs,
 ): void {
   const t = LAVENDER_TONES
   const j = jitter(rng)
@@ -54,15 +54,15 @@ export function drawLavender(
     const f = count === 1 ? 0.5 : i / (count - 1)
     const bx = cx + (f - 0.5) * 2 * spread + (rng() - 0.5) * PIXEL * 0.05
     const h = stemH * (0.7 + rng() * 0.6)
-    const sway = bob(frameCount, i * 0.8 + px * 0.05) * 0.6
-    const topY = foot - h + sway
+    const nod = bob(frameCount, i * 0.8 + px * 0.05, sway) * 0.6
+    const topY = foot - h + nod
 
     ctx.strokeStyle = ink(t.stem)
     ctx.lineCap = 'round'
     ctx.lineWidth = SCALE * 0.5
     ctx.beginPath()
     ctx.moveTo(bx, foot - SCALE)
-    ctx.quadraticCurveTo(bx + sway * 0.5, foot - h * 0.5, bx + sway, topY)
+    ctx.quadraticCurveTo(bx + nod * 0.5, foot - h * 0.5, bx + nod, topY)
     ctx.stroke()
 
     // Narrow leaves in opposite pairs down the lower stem — lavender is as much
@@ -73,7 +73,7 @@ export function drawLavender(
     for (let k = 0; k < pairs; k++) {
       const lf = 0.22 + (k / pairs) * 0.46
       const ly = foot - h * lf
-      const lx = bx + sway * lf
+      const lx = bx + nod * lf
       for (const dir of [-1, 1]) {
         ctx.beginPath()
         ctx.moveTo(lx, ly)
@@ -94,7 +94,7 @@ export function drawLavender(
       ctx.fillStyle = k % 3 === 0 ? t.floretPale : t.floret
       disc(
         ctx,
-        bx + sway * (0.6 + kf * 0.4) + (rng() - 0.5) * SCALE * 0.5,
+        bx + nod * (0.6 + kf * 0.4) + (rng() - 0.5) * SCALE * 0.5,
         topY + kf * h * 0.3,
         SCALE * (0.9 - kf * 0.28) * j.bloom,
       )

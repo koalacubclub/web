@@ -54,6 +54,7 @@ function paint(
     form?: FlowerForm
     park?: boolean
     frameCount?: number
+    sway?: number
   } = {},
 ): string[] {
   const { ctx, calls } = recorder()
@@ -65,6 +66,7 @@ function paint(
       form: opts.form,
       ink: opts.park ? parkInk : undefined,
       frameCount: opts.frameCount,
+      sway: opts.sway,
     },
   )
   return calls
@@ -142,6 +144,35 @@ describe('drawing', () => {
     const still = paint(4, 6, { species: 'daisy', frameCount: 0 })
     const later = paint(4, 6, { species: 'daisy', frameCount: 24 })
     expect(still).not.toEqual(later)
+  })
+
+  it.each(FLOWER_SPECIES)('holds %s dead still with nobody near', (species) => {
+    // sway 0 is the park's "Koala is nowhere near this patch": the clock keeps
+    // running, the patch does not move.
+    const a = paint(4, 6, { species, frameCount: 0, sway: 0 })
+    const b = paint(4, 6, { species, frameCount: 24, sway: 0 })
+    const c = paint(4, 6, { species, frameCount: 137, sway: 0 })
+    expect(b).toEqual(a)
+    expect(c).toEqual(a)
+    // …and it is the sway that stopped it, not the art being static.
+    expect(paint(4, 6, { species, frameCount: 24, sway: 1 })).not.toEqual(a)
+  })
+
+  it.each(FLOWER_SPECIES)('sways %s harder the nearer she is', (species) => {
+    // Half-swayed sits between still and full, so a patch eases into its bob as
+    // she walks up rather than snapping into it.
+    const off = paint(4, 6, { species, frameCount: 24, sway: 0 })
+    const half = paint(4, 6, { species, frameCount: 24, sway: 0.5 })
+    const full = paint(4, 6, { species, frameCount: 24, sway: 1 })
+    expect(half).not.toEqual(off)
+    expect(half).not.toEqual(full)
+  })
+
+  it('bobs by default, so a patch is only still when asked to be', () => {
+    const now = paint(4, 6, { species: 'daisy', frameCount: 24 })
+    expect(now).toEqual(
+      paint(4, 6, { species: 'daisy', frameCount: 24, sway: 1 }),
+    )
   })
 
   it('redraws a tile identically every time', () => {

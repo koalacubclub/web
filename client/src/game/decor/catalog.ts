@@ -4,7 +4,9 @@
 //
 // Unlike the scenery catalogs this one runs an animation loop: half these
 // pieces only exist in motion — the ball bounces, the snowcat bobs, the fairy
-// lights twinkle, the radio pulses and puffs notes.
+// lights twinkle, the radio pulses and puffs notes. Two of those follow Koala
+// around: the ball only hops and the radio only plays while she is near, which
+// the "Koala near" toggle stands in for here.
 //
 // The mushroom's and the snow-cat's cards show every build side by side, drawn
 // with an explicit `form`; everywhere else (the bank across the top, the game
@@ -23,7 +25,9 @@ import type { Ink } from './types'
 const identity: Ink = (c) => c
 let ink: Ink = parkInk
 let seed = 3
-let playing = true
+// The park only animates a ball and only plays a radio while Koala is near
+// them; this toggle stands in for her being there.
+let near = true
 let frameCount = 0
 
 /** Every piece, with the footprint the shop sells it at. */
@@ -41,7 +45,7 @@ const PIECES: Array<{
     w: 1,
     h: 1,
     title: 'ball',
-    meta: '1×1 — the park seeds these too, and they are the same ball',
+    meta: '1×1 — the same ball the park seeds; hops only while Koala is near',
   },
   {
     type: 'mushroom',
@@ -56,7 +60,7 @@ const PIECES: Array<{
     w: 1,
     h: 1,
     title: 'snowcat',
-    meta: '1×1 — classic, tower or loaf: the stack is rolled by tile, bobbing',
+    meta: '1×1 — classic, tower or loaf by tile; bobs while Koala is near',
     forms: SNOWCAT_FORMS,
   },
   {
@@ -78,7 +82,7 @@ const PIECES: Array<{
     w: 2,
     h: 2,
     title: 'light tree',
-    meta: '2×2 — lamp scatter seeded by tile, so each tree differs',
+    meta: '2×2 — lamps scattered by tile; they twinkle while Koala is near',
   },
   {
     type: 'radio',
@@ -158,7 +162,13 @@ function place(
 ): void {
   ctx.save()
   ctx.translate(destX - tile.x * PIXEL, destY - tile.y * PIXEL)
-  drawDecor(ctx, type, tile, { ink, frameCount, playing, form })
+  drawDecor(ctx, type, tile, {
+    ink,
+    frameCount,
+    playing: near,
+    motion: near ? 1 : 0,
+    form,
+  })
   ctx.restore()
 }
 
@@ -245,10 +255,10 @@ function setInk(next: Ink): void {
 }
 btnNight.addEventListener('click', () => setInk(parkInk))
 btnDay.addEventListener('click', () => setInk(identity))
-const btnPlay = document.getElementById('btn-play') as HTMLButtonElement
-btnPlay.addEventListener('click', () => {
-  playing = !playing
-  btnPlay.setAttribute('aria-pressed', String(playing))
+const btnNear = document.getElementById('btn-play') as HTMLButtonElement
+btnNear.addEventListener('click', () => {
+  near = !near
+  btnNear.setAttribute('aria-pressed', String(near))
 })
 document.getElementById('btn-reroll')!.addEventListener('click', () => {
   seed = (seed * 7 + 13) % 499

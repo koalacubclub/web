@@ -45,6 +45,7 @@ import { drawNightTree as drawSpeciesTree } from '@/game/trees'
 import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
 import { drawNightRock as drawSpeciesRock } from '@/game/rocks'
 import { drawParkBall } from '@/game/decor'
+import { idleMotionNear, isNear, tileDistance } from '@/game/proximity'
 import {
   drawParkBench,
   drawPondSurface,
@@ -1847,13 +1848,16 @@ export default function ParkGame() {
     // the same patch and neighbours differ.
     //
     // frameCount drives the bob the blooms have always had; the species art keeps
-    // it, phase-shifted per stem rather than moving the whole patch as one.
+    // it, phase-shifted per stem rather than moving the whole patch as one. What
+    // is new is that a patch only bobs while Koala is near it — the same
+    // proximity the radio plays on — so the park is still until she walks
+    // through it, and a patch eases into and out of its sway as she passes.
     function drawFlowers(obj: GameObject) {
       if (!ctx) return
       drawSpeciesFlowers(
         ctx,
         { x: obj.x, y: obj.y },
-        { frameCount: g.frameCount },
+        { frameCount: g.frameCount, sway: idleMotionNear(g.cat, obj) },
       )
     }
 
@@ -1878,6 +1882,7 @@ export default function ParkGame() {
           reducedMotion,
           night: true,
           playing,
+          motion: idleMotionNear(g.cat, o),
         })
         return
       }
@@ -1981,10 +1986,12 @@ export default function ParkGame() {
     }
 
     // The ball is the decor module's ball — the same draw a bought one gets,
-    // so the base balls the park seeds and a shop ball are one sprite.
+    // so the base balls the park seeds and a shop ball are one sprite. Like the
+    // flowers, it only hops while Koala is near enough to be playing with it,
+    // and settles onto the grass once she has wandered off.
     function drawBall(obj: GameObject) {
       if (!ctx) return
-      drawParkBall(ctx, obj, g.frameCount)
+      drawParkBall(ctx, obj, g.frameCount, idleMotionNear(g.cat, obj))
     }
 
     // The park's stones are the faceted art in game/rocks — a boulder, a cairn,
@@ -2608,16 +2615,15 @@ export default function ParkGame() {
       }
     }
 
-    // How close (tiles) Koala must be for a radio to start playing.
-    const RADIO_REACH = 2.5
+    // A radio plays at the same distance everything else starts moving at —
+    // game/proximity's IDLE_REACH, which is where `isNear` measures to.
+    //
     // Don't auto-play until the player has actually walked — so spawning next to
     // a radio on entry stays silent (and it satisfies audio autoplay rules).
     // Set true on the first movement in updateCat.
 
     function drawObjects(now: number) {
       const sorted = [...g.objects].sort((a, b) => a.y - b.y)
-      const catX = g.cat.x + 0.5
-      const catY = g.cat.y + 0.5
       let radioPlaying = false
       let radioTrack = 0
       // Off-screen cull: skip any object whose footprint — plus a pad for canopy/
@@ -2645,8 +2651,7 @@ export default function ParkGame() {
             hasWalked &&
             obj.type === 'radio' &&
             cyc % 2 === 0 &&
-            Math.hypot(catX - (obj.x + obj.w / 2), catY - (obj.y + obj.h / 2)) <
-              RADIO_REACH
+            isNear(g.cat, obj)
           if (playing) {
             radioPlaying = true
             radioTrack = cyc === 2 ? 1 : 0 // state 2 = track B, state 0 = track A
@@ -3111,9 +3116,9 @@ export default function ParkGame() {
     // proximity), like the object tooltips. Purely cosmetic pride.
     function drawAuthorLabels() {
       if (!ctx) return
-      const catX = g.cat.x + 0.5
-      const catY = g.cat.y + 0.5
-      const REACH = 2.2 // tiles within which the author is revealed
+      // Closer in than the park's idle motion starts (game/proximity), on
+      // purpose: a name is worth reading only once she is right at the thing.
+      const REACH = 2.2
       for (const obj of g.objects) {
         if (obj.placedAt == null || obj.ownerId == null) continue
         // Resolve the author's CURRENT name from the shared authors map, so a
@@ -3121,8 +3126,7 @@ export default function ParkGame() {
         const author = mp?.authors.get(obj.ownerId)
         if (!author) continue
         const ix = obj.x + obj.w / 2
-        const iy = obj.y + obj.h / 2
-        const d = Math.hypot(catX - ix, catY - iy)
+        const d = tileDistance(g.cat, obj)
         if (d > REACH) continue
         const alpha = Math.min(0.8, ((REACH - d) / REACH) * 1.4)
         const px = ix * PIXEL

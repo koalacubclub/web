@@ -36,6 +36,15 @@ export interface AnimatedDrawArgs extends DrawArgs {
   frameCount: number
 }
 
+export interface BallDrawArgs extends AnimatedDrawArgs {
+  /**
+   * How high it bounces, 0–1: full while Koala is near it, easing to 0 — the
+   * ball sitting still on the grass — once she is out of reach. The park works
+   * it out from her distance (see `../proximity.ts`); the art just scales.
+   */
+  motion: number
+}
+
 /** Which build of a mushroom to draw — see `mushroom.ts` for the four. */
 export type MushroomForm = 0 | 1 | 2 | 3
 
@@ -56,11 +65,15 @@ export interface SnowcatDrawArgs extends AnimatedDrawArgs {
   /** Seeded PRNG — deterministic per tile. */
   rng: () => number
   form: SnowcatForm
+  /** How high it bobs, 0–1 — see `BallDrawArgs.motion`, same idea. */
+  motion: number
 }
 
 export interface LightTreeDrawArgs extends AnimatedDrawArgs {
   /** Seeds where the fairy lights sit, so a given tree is always the same tree. */
   seed: number
+  /** How far the lamps twinkle, 0–1 — see `BallDrawArgs.motion`, same idea. */
+  motion: number
 }
 
 export interface RadioDrawArgs extends AnimatedDrawArgs {

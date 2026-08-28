@@ -82,6 +82,13 @@ export interface DrawDecorOptions {
   /** Radio only: a koala is near, so it plays. */
   playing?: boolean
   /**
+   * How much of its idle motion a piece plays, 0–1: the ball's bounce, the
+   * snow-cat's bob, the light tree's twinkle. The park scales this with Koala's distance (see
+   * `../proximity.ts`) so what she is nowhere near sits still. Default 1 — the
+   * art moves unless a caller asks it not to.
+   */
+  motion?: number
+  /**
    * Which build to draw, for the two pieces that have more than one — the
    * mushroom's cap and the snow-cat's stack. Left out (the default), each is
    * rolled from the tile; a form the piece doesn't have falls back to its
@@ -127,9 +134,10 @@ export function drawDecor(
     ink: opts.ink ?? identity,
   }
   const animated = { ...base, frameCount: opts.frameCount ?? 0 }
+  const motion = opts.motion ?? 1
   switch (type) {
     case 'ball':
-      drawBallArt(ctx, px, py, animated)
+      drawBallArt(ctx, px, py, { ...animated, motion })
       break
     case 'mushroom':
       drawMushroomArt(ctx, px, py, {
@@ -145,6 +153,7 @@ export function drawDecor(
     case 'snowcat':
       drawSnowcatArt(ctx, px, py, {
         ...animated,
+        motion,
         rng: makeRng(seedAt(tile.x, tile.y, SEED_SNOWCAT_ART)),
         form: pickForm(SNOWCAT_FORMS, opts.form, snowcatFormAt(tile.x, tile.y)),
       })
@@ -158,6 +167,7 @@ export function drawDecor(
     case 'lighttree':
       drawLightTreeArt(ctx, px, py, {
         ...animated,
+        motion,
         seed: seedAt(tile.x, tile.y, SEED_LIGHTS),
       })
       break
@@ -182,12 +192,14 @@ export function drawParkDecor(
 
 /**
  * The ball on its own, since the park draws it as a base object rather than
- * through the shop dispatch. 1×1, always.
+ * through the shop dispatch. 1×1, always. `motion` is how much of its bounce it
+ * plays — the park passes Koala's proximity, so a ball she is far from rests.
  */
 export function drawParkBall(
   ctx: Ctx,
   tile: { x: number; y: number },
   frameCount: number,
+  motion = 1,
 ): void {
-  drawParkDecor(ctx, 'ball', { ...tile, w: 1, h: 1 }, { frameCount })
+  drawParkDecor(ctx, 'ball', { ...tile, w: 1, h: 1 }, { frameCount, motion })
 }

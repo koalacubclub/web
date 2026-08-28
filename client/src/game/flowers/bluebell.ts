@@ -19,7 +19,7 @@ export function drawBluebell(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, frameCount }: DrawArgs,
+  { rng, form, ink, frameCount, sway }: DrawArgs,
 ): void {
   const t = BLUEBELL_TONES
   const j = jitter(rng)
@@ -36,8 +36,8 @@ export function drawBluebell(
     const h = stemH * (0.76 + rng() * 0.48)
     const side = rng() < 0.5 ? -1 : 1
     const bow = side * PIXEL * (arching ? 0.22 : 0.1) * (0.7 + rng() * 0.6)
-    const sway = bob(frameCount, i * 1.6 + px * 0.05) * 0.5
-    const topX = bx + bow + sway
+    const nod = bob(frameCount, i * 1.6 + px * 0.05, sway) * 0.5
+    const topX = bx + bow + nod
     const topY = foot - h
 
     ctx.strokeStyle = ink(t.stem)

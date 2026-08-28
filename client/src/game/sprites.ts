@@ -75,6 +75,7 @@ function drawScenery(
   obj: SpriteObject,
   frameCount: number,
   night: boolean,
+  motion: number,
 ): void {
   const tile = { x: obj.x, y: obj.y }
   const species = speciesOf(obj)
@@ -93,6 +94,7 @@ function drawScenery(
       const opts = {
         frameCount,
         species: species as FlowerSpecies | undefined,
+        sway: motion,
       }
       if (night) drawNightFlowers(ctx, tile, opts)
       else drawSpeciesFlowers(ctx, tile, opts)
@@ -119,6 +121,11 @@ export interface DrawSpriteOptions {
   // Set on a placed radio when a koala is near it: pulses its speakers and
   // makes music notes drift up. Ignored by every other sprite.
   playing?: boolean
+  // How much of their idle motion the sprites that fidget play, 0–1 — a ball's
+  // bounce, a snow-cat's bob, a flower patch's sway. The park scales it with
+  // Koala's distance (see game/proximity), so what she is nowhere near sits
+  // still. Omit (previews) and everything moves. Ignored by the rest.
+  motion?: number
 }
 
 // Pop-in scale + pre-expiry blink alpha for a placed item (wall-clock based, so
@@ -187,12 +194,17 @@ export function drawShopSprite(
 ) {
   const { now, reducedMotion } = opts
   const night = !!opts.night
+  const motion = opts.motion ?? 1
   withPlacedFlourish(ctx, obj, now, reducedMotion, () => {
     if (isDecor(obj.type)) {
       const draw = night ? drawParkDecor : drawDecor
-      draw(ctx, obj.type, obj, { frameCount, playing: opts.playing === true })
+      draw(ctx, obj.type, obj, {
+        frameCount,
+        playing: opts.playing === true,
+        motion,
+      })
       return
     }
-    drawScenery(ctx, obj, frameCount, night)
+    drawScenery(ctx, obj, frameCount, night, motion)
   })
 }

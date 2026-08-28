@@ -19,7 +19,7 @@ export function drawPoppy(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, frameCount }: DrawArgs,
+  { rng, form, ink, frameCount, sway }: DrawArgs,
 ): void {
   const t = POPPY_TONES
   const j = jitter(rng)
@@ -37,7 +37,7 @@ export function drawPoppy(
     const h = stemH * (0.72 + rng() * 0.56)
     // A nodding head hangs off to one side of its stem's foot.
     const nod = (nodding ? 1 : 0.35) * (rng() - 0.5) * PIXEL * 0.24
-    const by = foot - h + bob(frameCount, i * 1.1 + px * 0.05)
+    const by = foot - h + bob(frameCount, i * 1.1 + px * 0.05, sway)
 
     ctx.strokeStyle = ink(t.stem)
     stem(ctx, bx, foot, bx + nod, by + petalR * 0.6, SCALE * 0.6)

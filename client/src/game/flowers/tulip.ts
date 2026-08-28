@@ -18,7 +18,7 @@ export function drawTulip(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, frameCount }: DrawArgs,
+  { rng, form, ink, frameCount, sway }: DrawArgs,
 ): void {
   const t = TULIP_TONES
   const j = jitter(rng)
@@ -35,15 +35,15 @@ export function drawTulip(
     const f = count === 1 ? 0.5 : i / (count - 1)
     const bx = cx + (f - 0.5) * 2 * spread
     const h = stemH * (0.78 + rng() * 0.44)
-    const sway = bob(frameCount, i * 1.9 + px * 0.05) * 0.5
-    const topY = foot - h + sway
+    const nod = bob(frameCount, i * 1.9 + px * 0.05, sway) * 0.5
+    const topY = foot - h + nod
 
     ctx.strokeStyle = ink(t.stem)
     ctx.lineCap = 'round'
     ctx.lineWidth = SCALE * 0.6
     ctx.beginPath()
     ctx.moveTo(bx, foot)
-    ctx.quadraticCurveTo(bx + sway, foot - h * 0.5, bx + sway, topY)
+    ctx.quadraticCurveTo(bx + nod, foot - h * 0.5, bx + nod, topY)
     ctx.stroke()
 
     // One blade of leaf, arcing up from the base.
@@ -63,29 +63,29 @@ export function drawTulip(
     // The cup: a rounded body with two points at the rim.
     ctx.fillStyle = t.cups[Math.floor(rng() * t.cups.length)]
     ctx.beginPath()
-    ctx.moveTo(bx + sway - cupW, topY - cupH * 0.35)
+    ctx.moveTo(bx + nod - cupW, topY - cupH * 0.35)
     ctx.quadraticCurveTo(
-      bx + sway - cupW,
+      bx + nod - cupW,
       topY + cupH * 0.55,
-      bx + sway,
+      bx + nod,
       topY + cupH * 0.55,
     )
     ctx.quadraticCurveTo(
-      bx + sway + cupW,
+      bx + nod + cupW,
       topY + cupH * 0.55,
-      bx + sway + cupW,
+      bx + nod + cupW,
       topY - cupH * 0.35,
     )
     ctx.quadraticCurveTo(
-      bx + sway + cupW * 0.5,
+      bx + nod + cupW * 0.5,
       topY - cupH * 0.1,
-      bx + sway,
+      bx + nod,
       topY - cupH * 0.5,
     )
     ctx.quadraticCurveTo(
-      bx + sway - cupW * 0.5,
+      bx + nod - cupW * 0.5,
       topY - cupH * 0.1,
-      bx + sway - cupW,
+      bx + nod - cupW,
       topY - cupH * 0.35,
     )
     ctx.closePath()
