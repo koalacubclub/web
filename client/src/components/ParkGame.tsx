@@ -31,6 +31,7 @@ import { ProgressiveImage } from './ProgressiveImage'
 import { jumpLiftTiles } from '@/game/jump'
 import { drawKoalaImprint } from '@/game/imprint'
 import {
+  kickDirection,
   slapPhase,
   slapShake,
   updateSlappables,
@@ -1032,16 +1033,24 @@ export default function ParkGame() {
           life: 28,
         })
       } else if (best.type === 'ball') {
-        // Every ball is knocked directly away from the cat. We simulate the roll
+        // Every ball is knocked away from the cat — back INTO the park when it
+        // is flush against an edge, where "away" would only be into the wall
+        // (see kickDirection; that, and kicks with no direction at all, are why
+        // a ball could sit unmovable along an edge). We simulate the roll
         // locally for instant feel; in multiplayer we also tell the server the
         // launch (id + tile + velocity) so peers roll the same ball via the same
         // integrator, and persist the resting tile once it settles (see below).
-        const dx = bx - cx
-        const dy = by - cy
-        const d = Math.hypot(dx, dy) || 1
+        const dir = kickDirection(
+          best,
+          cx,
+          cy,
+          g.cat.dir,
+          MAP_COLS,
+          GROUND_ROWS,
+        )
         const speed = 0.006 // tiles/ms
-        best.vx = (dx / d) * speed
-        best.vy = (dy / d) * speed
+        best.vx = dir.x * speed
+        best.vy = dir.y * speed
         if (best.id) {
           g.ballRolling.add(best.id)
           g.ballOwned.add(best.id)
