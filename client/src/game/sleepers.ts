@@ -19,7 +19,11 @@
 //      cast members who were never seen this session need placing: they go
 //      beside the first item they planted, or — owning nothing — on a tile
 //      picked from their id, arbitrary but always the same one.
-//   3. Once placed, stay placed. Spots are carried across re-layouts (a
+//   3. Elbow room. Sleepers keep SLEEP_GAP tiles between each other, so a
+//      group that all logged off in the same corner is spread across the
+//      grass instead of laid out shoulder to shoulder. (Spawn is one tile and
+//      koalas gather, so without this they pile up exactly where they met.)
+//   4. Once placed, stay placed. Spots are carried across re-layouts (a
 //      purchase, a ball rolling by, a peer waking up), so the park doesn't
 //      rearrange its nappers every time something else moves.
 //
@@ -70,6 +74,11 @@ export interface SleepWorld {
 const BOTTOM_MARGIN = 2
 // Row 0 is the horizon strip, not walkable ground.
 const TOP_ROW = 1
+// Tiles of clear ground a sleeper wants between itself and the next one. It is
+// a preference, not a rule: a park with nowhere left to lie down relaxes it
+// (RELAXED_GAPS) rather than turning anyone away.
+export const SLEEP_GAP = 4
+const RELAXED_GAPS = [SLEEP_GAP, 3, 2, 1]
 
 /** FNV-1a. Any stable string→int will do; this one is short and well-spread. */
 function hash(s: string): number {
@@ -140,11 +149,18 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v
 }
 
-/** Nearest free 1x1 tile to (ax, ay), spiralling out. Null if the park is full. */
+/**
+ * Nearest tile to (ax, ay) that a koala can lie on: clear of the park's
+ * furniture, and at least `gap` tiles from every koala already lying down.
+ * Spirals outward, so a huddle is pushed apart rather than stacked up. Null if
+ * nowhere in the park satisfies it.
+ */
 function findFree(
   ax: number,
   ay: number,
-  taken: readonly Rect[],
+  objects: readonly Rect[],
+  lying: readonly { x: number; y: number }[],
+  gap: number,
   world: SleepWorld,
 ): { x: number; y: number } | null {
   const maxY = world.rows - BOTTOM_MARGIN - 1
@@ -153,7 +169,8 @@ function findFree(
     x <= world.cols - 1 &&
     y >= TOP_ROW &&
     y <= maxY &&
-    !taken.some((r) => overlaps(x, y, r))
+    !objects.some((r) => overlaps(x, y, r)) &&
+    !lying.some((s) => Math.hypot(s.x - x, s.y - y) < gap)
 
   if (free(ax, ay)) return { x: ax, y: ay }
   const maxR = world.cols + world.rows
@@ -184,20 +201,21 @@ export function layoutSleepers(
   previous?: ReadonlyMap<string, SleepSpot>,
 ): Map<string, SleepSpot> {
   const out = new Map<string, SleepSpot>()
-  const taken: Rect[] = world.objects.map((r) => ({
+  const objects: Rect[] = world.objects.map((r) => ({
     x: r.x,
     y: r.y,
     w: r.w,
     h: r.h,
   }))
+  const lying: { x: number; y: number }[] = []
 
-  // Rule 3 first: everyone already lying down keeps their tile (their name can
+  // Rule 4 first: everyone already lying down keeps their tile (their name can
   // still change — a rename reaches items and sleepers alike).
   for (const s of sleepers) {
     const prev = previous?.get(s.id)
     if (!prev) continue
     out.set(s.id, { ...prev, name: s.name })
-    taken.push({ x: prev.x, y: prev.y, w: 1, h: 1 })
+    lying.push({ x: prev.x, y: prev.y })
   }
 
   // Then the new arrivals, in a stable order so a layout never depends on the
@@ -207,7 +225,12 @@ export function layoutSleepers(
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   for (const s of pending) {
     const anchor = anchorFor(s, world)
-    const spot = findFree(anchor.x, anchor.y, taken, world)
+    // Ask for room first; settle for less only where the park has none left.
+    let spot: { x: number; y: number } | null = null
+    for (const gap of RELAXED_GAPS) {
+      spot = findFree(anchor.x, anchor.y, objects, lying, gap, world)
+      if (spot) break
+    }
     if (!spot) continue
     out.set(s.id, {
       id: s.id,
@@ -217,7 +240,7 @@ export function layoutSleepers(
       // Which way they face is arbitrary but fixed, so a sleeper never flips.
       dir: (hash(s.id) & 1) === 0 ? 'left' : 'right',
     })
-    taken.push({ x: spot.x, y: spot.y, w: 1, h: 1 })
+    lying.push({ x: spot.x, y: spot.y })
   }
   return out
 }

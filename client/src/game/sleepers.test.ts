@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { layoutSleepers } from './sleepers'
+import { layoutSleepers, SLEEP_GAP } from './sleepers'
 import type { SleepSpot, SleepWorld } from './sleepers'
 
 const world = (over: Partial<SleepWorld> = {}): SleepWorld => ({
@@ -45,6 +45,29 @@ describe('layoutSleepers', () => {
           s.x < r.x + r.w && s.x + 1 > r.x && s.y < r.y + r.h && s.y + 1 > r.y
         expect(hit).toBe(false)
       }
+    }
+  })
+
+  it('spreads out a crowd that all logged off in the same corner', () => {
+    // Everyone leaves within a tile of spawn, as they actually do — a park
+    // where they lay down shoulder to shoulder would look like a pile-up.
+    const w = world()
+    const huddle = who(8).map((s, i) => ({
+      ...s,
+      x: 29 + (i % 2),
+      y: 7 + (i % 3) * 0.5,
+    }))
+    const spots = [...layoutSleepers(huddle, w).values()]
+    expect(spots).toHaveLength(8)
+    for (const a of spots) {
+      for (const b of spots) {
+        if (a.id === b.id) continue
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(
+          SLEEP_GAP,
+        )
+      }
+      // ...but still near where they were standing, not flung across the map.
+      expect(Math.abs(a.x - 29)).toBeLessThanOrEqual(12)
     }
   })
 
