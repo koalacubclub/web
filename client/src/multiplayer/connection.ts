@@ -32,6 +32,14 @@ export interface OnlinePlayer {
   self: boolean
 }
 
+/** A cast member who is offline. The server names them; `x`/`y` are added by
+ *  this client when it actually watched them go, so the park can lay them down
+ *  on the spot rather than somewhere else entirely (see game/sleepers). */
+export interface SleepingKoala extends SleepingPlayer {
+  x?: number
+  y?: number
+}
+
 export interface RemotePlayer {
   id: string
   name: string
@@ -63,7 +71,7 @@ export interface Multiplayer {
   /** The cast members who are offline, keyed by session id — drawn asleep in the
    *  park rather than left as a gap (their items are standing there either way).
    *  A `leave` moves a koala in here, a `join` takes it back out. */
-  readonly sleepers: Map<string, SleepingPlayer>
+  readonly sleepers: Map<string, SleepingKoala>
   /** Server-owned collectibles currently on the map, keyed by food id. */
   readonly food: Map<string, Food>
   /** Server-owned placed decorations (shop items), keyed by item id. */
@@ -126,7 +134,7 @@ export function createMultiplayer(
     onPlaced?: (placed: PlacedItem[]) => void
     /** Fired whenever the sleeping set changes, so the game can re-lay them out
      *  (which tile each one gets is the client's business — see game/sleepers). */
-    onSleepers?: (sleepers: SleepingPlayer[]) => void
+    onSleepers?: (sleepers: SleepingKoala[]) => void
     /** Fired when a buy is rejected by the server. */
     onBuyFail?: (reason: BuyFailReason) => void
     /** Fired with this player's own name (on welcome and on rename). */
@@ -157,7 +165,7 @@ export function createMultiplayer(
   if (!HTTP_BASE || !WS_BASE) return null
 
   const players = new Map<string, RemotePlayer>()
-  const sleepers = new Map<string, SleepingPlayer>()
+  const sleepers = new Map<string, SleepingKoala>()
   const food = new Map<string, Food>()
   const placed = new Map<string, PlacedItem>()
   const authors = new Map<string, string>()
@@ -313,7 +321,15 @@ export function createMultiplayer(
         const gone = players.get(msg.id)
         players.delete(msg.id)
         if (gone) {
-          sleepers.set(gone.id, { id: gone.id, name: gone.name })
+          // Where they were standing travels with them, so a koala that logs
+          // off in front of you curls up on the spot instead of teleporting to
+          // wherever the layout would otherwise have put it.
+          sleepers.set(gone.id, {
+            id: gone.id,
+            name: gone.name,
+            x: gone.rx,
+            y: gone.ry,
+          })
           emitSleepers()
         }
         emitPresence()
@@ -368,7 +384,7 @@ export function createMultiplayer(
           if (p) p.name = msg.name // canvas name tag reads this each frame
           const sp = sleepers.get(msg.id)
           if (sp) {
-            sleepers.set(msg.id, { id: msg.id, name: msg.name })
+            sleepers.set(msg.id, { ...sp, name: msg.name })
             emitSleepers()
           }
         }

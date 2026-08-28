@@ -14,9 +14,11 @@
 //
 //   1. Nobody overlaps. Not another sleeper, not a tree, bench, pond, or a
 //      placed item. A sleeping koala is a 1x1 footprint like any other.
-//   2. Sleep next to your things. A sleeper with items in the park is placed
-//      beside the first one they planted; one with none gets a spot picked from
-//      their id, so it's arbitrary but always the same spot.
+//   2. Lie down where you last stood. A koala that logs off in front of you
+//      curls up on the spot rather than teleporting off across the park. Only
+//      cast members who were never seen this session need placing: they go
+//      beside the first item they planted, or — owning nothing — on a tile
+//      picked from their id, arbitrary but always the same one.
 //   3. Once placed, stay placed. Spots are carried across re-layouts (a
 //      purchase, a ball rolling by, a peer waking up), so the park doesn't
 //      rearrange its nappers every time something else moves.
@@ -30,10 +32,13 @@ export interface Rect {
   h: number
 }
 
-/** A cast member who is offline, as the server names them. */
+/** A cast member who is offline, as the server names them — plus, when the park
+ *  watched them go, where they were standing at the time. */
 export interface Sleeper {
   id: string
   name: string
+  x?: number
+  y?: number
 }
 
 /** Anything in the park with a footprint: the scenery a sleeper must not lie on,
@@ -102,9 +107,20 @@ function ownItem(
 }
 
 /** Where to start looking for this sleeper's tile. */
-function anchorFor(id: string, world: SleepWorld): { x: number; y: number } {
-  const item = ownItem(id, world.objects)
+function anchorFor(
+  sleeper: Sleeper,
+  world: SleepWorld,
+): { x: number; y: number } {
+  const id = sleeper.id
   const maxY = world.rows - BOTTOM_MARGIN - 1
+  // Watched them go: they lie down on the spot.
+  if (sleeper.x != null && sleeper.y != null) {
+    return {
+      x: clamp(Math.round(sleeper.x), 0, world.cols - 1),
+      y: clamp(Math.round(sleeper.y), TOP_ROW, maxY),
+    }
+  }
+  const item = ownItem(id, world.objects)
   if (item) {
     // Just off the item's left edge, on its bottom row — the search spirals out
     // from here, so a crowded corner simply pushes them a tile or two further.
@@ -190,7 +206,7 @@ export function layoutSleepers(
     .filter((s) => !out.has(s.id))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   for (const s of pending) {
-    const anchor = anchorFor(s.id, world)
+    const anchor = anchorFor(s, world)
     const spot = findFree(anchor.x, anchor.y, taken, world)
     if (!spot) continue
     out.set(s.id, {

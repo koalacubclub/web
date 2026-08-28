@@ -48,6 +48,19 @@ describe('layoutSleepers', () => {
     }
   })
 
+  it('lies down on the spot when the park watched them go', () => {
+    // A koala that logs off in front of you curls up where it stood, even
+    // though it owns a tree on the far side of the park.
+    const w = world({
+      objects: [{ id: 'a', ownerId: 's0', x: 50, y: 6, w: 2, h: 2 }],
+    })
+    const spot = layoutSleepers(
+      [{ id: 's0', name: 'k', x: 8.4, y: 5.6 }],
+      w,
+    ).get('s0')!
+    expect(spot).toMatchObject({ x: 8, y: 6 })
+  })
+
   it('naps beside the first item its sleeper planted', () => {
     const w = world({
       objects: [

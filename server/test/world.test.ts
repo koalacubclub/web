@@ -1206,6 +1206,23 @@ describe('GameWorld cast', () => {
     expect(w.sleepers).toEqual([{ id: a.id, name: a.name }])
   })
 
+  it('tells the park when the head count drops, not just when it rises', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(60)
+    expect([...msgsA].reverse().find((m) => m.t === 'stats')?.population).toBe(
+      2,
+    )
+
+    wsB.close()
+    await wait(80)
+    expect([...msgsA].reverse().find((m) => m.t === 'stats')?.population).toBe(
+      1,
+    )
+  })
+
   it('lists an away item owner as a sleeper, and as a koala once they are back', async () => {
     await setCastLimit(3)
     const a = await session()

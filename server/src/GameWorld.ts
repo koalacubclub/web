@@ -617,6 +617,14 @@ export class GameWorld extends DurableObject<Env> {
     // you were shown doesn't reshuffle because someone logged off, and if they
     // come back they walk straight back into it.
     this.toWatchers(a.id, { t: 'leave', id: a.id })
+    // The head count just dropped. Tell everyone, or a park that emptied out
+    // would keep claiming the crowd it had when they arrived — the mirror of
+    // the stats push a new session triggers.
+    this.broadcast({
+      t: 'stats',
+      ...this.globalStats(Date.now()),
+      population: this.sockets.size,
+    })
   }
 
   private allow(id: string): boolean {
