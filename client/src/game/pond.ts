@@ -38,24 +38,19 @@ const REFLECT_LIFT = PIXEL * 1.2
 // (objects and cats reflect live, separately). Returns null without a DOM.
 const reflCache = new Map<string, HTMLCanvasElement | null>()
 
-/**
- * Drop every cached reflection. The sprites are cut from the baked background
- * at its resolution, so they go stale the moment that bake is re-rendered at a
- * different one (a resize that moves RS).
- */
-export function clearPondReflections(): void {
-  reflCache.clear()
-}
-
 export function getPondReflection(
   bg: HTMLCanvasElement,
   x: number,
   y: number,
   /**
-   * Device pixels per logical px in `bg` — the RS the background was baked at.
-   * The source rect below is in LOGICAL coords, so it has to be scaled up to
-   * address the bitmap; the sprite is cut at the same scale so the reflection
-   * is as sharp as the sky it mirrors.
+   * Device pixels per logical px in `bg` — the scale the background was baked
+   * at. The source rect below is in LOGICAL coords, so it has to be scaled up
+   * to address the bitmap; the sprite is cut at the same scale so the
+   * reflection is as sharp as the sky it mirrors.
+   *
+   * It's a constant today (the bake never changes resolution), but the cache is
+   * still keyed by it: if that ever stops being true, a stale sprite cut from
+   * the old bitmap is a subtle enough bug to be worth the twelve characters.
    */
   bgScale = 1,
 ): HTMLCanvasElement | null {

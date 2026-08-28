@@ -56,12 +56,7 @@ import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, makeRng, HORIZON } from '@/game/constants'
-import {
-  clearPondReflections,
-  getPondReflection,
-  reflectObjects,
-  reflectCat,
-} from '@/game/pond'
+import { getPondReflection, reflectObjects, reflectCat } from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -883,10 +878,18 @@ export default function ParkGame() {
     // Sized in DEVICE px, like the visible canvas — NOT in logical px. Baked at
     // 1x it was upscaled by RS on every blit, which is why the grass patches and
     // the koala imprint read soft next to the sprites drawn live at full
-    // resolution. `bgRS` records the scale the bake holds, so a change in RS can
-    // re-bake it (rebakeIfScaleChanged) instead of leaving it stale.
+    // resolution.
+    //
+    // Baked at the CAP RS can reach rather than at the current RS, so the bake
+    // is a constant and can never go stale. RS only moves with device pixel
+    // ratio (the canvas's CSS width is fixed), and it is already pinned to the
+    // cap for every DPR at or above 1.5 — so on all but 1x displays this is
+    // exactly the display resolution, and on 1x the blit downscales 2 → 1.46,
+    // which supersamples rather than blurs. Tracking RS instead would buy a
+    // sharper 1x at the price of a re-bake path that has to fire on every DPR
+    // change and keep the pond's cut-from-the-bake reflections in step.
+    const BAKE_RS = 2
     const bgCanvas = document.createElement('canvas')
-    let bgRS = 0
     const bgCtx = bgCanvas.getContext('2d')
 
     // Whether an ability input should act right now: hero on-screen, not typing
@@ -1925,7 +1928,7 @@ export default function ParkGame() {
       // Baked environment reflection: the mirrored static background (sky/hills/
       // grass) above the pond never changes, so it's baked once per pond (see
       // getPondReflection) and just blitted here.
-      const refl = getPondReflection(bgCanvas, obj.x, obj.y, bgRS)
+      const refl = getPondReflection(bgCanvas, obj.x, obj.y, BAKE_RS)
       if (refl) ctx.drawImage(refl, bx.left, bx.top, w, h)
       // Object reflections: nearby scenery above the pond, mirrored into the water
       // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
@@ -3642,13 +3645,17 @@ export default function ParkGame() {
 
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
-      // Bake through the SAME transform the world draws through, onto an
-      // offscreen the same size as the visible backing, so the blit below is
-      // pixel-for-pixel rather than an upscale.
-      bgCanvas.width = canvas.width
-      bgCanvas.height = canvas.height
-      bgRS = RS
-      ctx!.setTransform(RS, 0, 0, RS, 0, 0)
+      // Draw the bake on the visible canvas and copy it off, so drawGround and
+      // the imprint keep using the one `ctx` they are written against. That
+      // means borrowing its backing store at BAKE_RS for the duration and
+      // putting it back at the end.
+      const keepW = canvas.width
+      const keepH = canvas.height
+      bgCanvas.width = Math.round(CANVAS_WIDTH * BAKE_RS)
+      bgCanvas.height = Math.round(CANVAS_HEIGHT * BAKE_RS)
+      canvas.width = bgCanvas.width
+      canvas.height = bgCanvas.height
+      ctx!.setTransform(BAKE_RS, 0, 0, BAKE_RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       const horizon = HORIZON
       // Near-black night sky, climbing 0.02 L in total from the top of the canvas to
@@ -3687,6 +3694,10 @@ export default function ParkGame() {
       ctx!.restore()
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
+      // Hand the canvas back the size the loop expects. (Assigning width/height
+      // also clears it, which is fine: the loop repaints every frame.)
+      canvas.width = keepW
+      canvas.height = keepH
     }
     // Size the backing FIRST: the bake renders at whatever RS is current, so it
     // has to know it. (It used to run before this, at logical size, and every
@@ -3950,19 +3961,9 @@ export default function ParkGame() {
       updateOnScreen()
       setHover(null) // don't leave a tooltip stranded while scrolling away
     }
-    // Re-bake the static background when the device scale moves under us — a
-    // window resize, a DPR change, a drag between monitors. Without this the
-    // bake keeps the resolution it was made at and the sky/grass/imprint go
-    // soft (or needlessly heavy) relative to everything drawn live.
-    const rebakeIfScaleChanged = () => {
-      if (bgRS === RS) return
-      renderStaticBackground()
-      clearPondReflections() // sprites were cut from the old bitmap
-    }
     const handleResize = () => {
       measure()
       sizeBacking()
-      rebakeIfScaleChanged()
       updateOnScreen()
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -3982,7 +3983,6 @@ export default function ParkGame() {
         ? new ResizeObserver(() => {
             measure()
             sizeBacking()
-            rebakeIfScaleChanged()
             updateCamera()
           })
         : null
