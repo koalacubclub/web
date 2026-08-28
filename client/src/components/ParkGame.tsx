@@ -742,7 +742,8 @@ export default function ParkGame() {
       onWallet: (likes) => parkStore.applyServerWallet(likes),
       onPlaced: (items) => parkStore.applyServerPlaced(items),
       onName: (name) => parkStore.applyServerName(name),
-      onPresence: (roster) => parkStore.applyServerPresence(roster),
+      onPresence: (roster, population) =>
+        parkStore.applyServerPresence(roster, population),
       onStats: (stats) => parkStore.applyServerStats(stats),
       // A peer launched a ball: seed its velocity onto our local object and mark
       // it rolling, so our own updateSlappables carries it at 60fps (no position
@@ -3858,12 +3859,24 @@ export default function ParkGame() {
       }
       // Remote koalas, interpolated toward their latest target and depth-sorted
       // with each other (drawn after the local cat, like all other players).
+      // There are never more than CAST_SIZE of them (the server shows each
+      // client a sample of the park — see connection.ts), and the ones outside
+      // the camera's slice are culled exactly like the objects are: a koala is
+      // ~150 canvas ops and a two-pass name tag, which is far too much to spend
+      // on someone standing off-screen.
       if (mp && mp.players.size) {
         const lerp = Math.min(1, dt / 90)
+        const catVis = visibleX()
         const remotes = [...mp.players.values()].sort((a, b) => a.ry - b.ry)
         for (const p of remotes) {
           p.rx += (p.x - p.rx) * lerp
           p.ry += (p.y - p.ry) * lerp
+          // Interpolation still runs for everyone (so a koala that walks back on
+          // screen is already where it should be); only the drawing is skipped.
+          // One tile of pad each side covers the body's overhang and the name
+          // tag, which is centred on the koala but can be wider than it.
+          if (!isVisibleX(p.rx * PIXEL, (p.rx + 1) * PIXEL, catVis, PIXEL))
+            continue
           const moving =
             Math.abs(p.x - p.rx) > 0.02 || Math.abs(p.y - p.ry) > 0.02
           remoteCat.x = p.rx

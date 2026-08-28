@@ -22,7 +22,7 @@ import type {
   ServerMessage,
   WorldStats,
 } from '@koala/shared'
-import { CLIENT_SEND_HZ, NAME_MAX } from '@koala/shared'
+import { CAST_SIZE, CLIENT_SEND_HZ, NAME_MAX } from '@koala/shared'
 
 /** A player currently connected to the world (self included), for the roster. */
 export interface OnlinePlayer {
@@ -54,7 +54,10 @@ export interface RemotePlayer {
 }
 
 export interface Multiplayer {
-  /** Remote players only (never includes self), keyed by session id. */
+  /** Remote players only (never includes self), keyed by session id. The server
+   *  shows each client a CAST — a random, online-first sample of the park (see
+   *  CAST_SIZE) — so this holds at most CAST_SIZE entries however busy the world
+   *  is, and `placed` likewise only carries those koalas' items. */
   readonly players: Map<string, RemotePlayer>
   /** Server-owned collectibles currently on the map, keyed by food id. */
   readonly food: Map<string, Food>
@@ -72,6 +75,9 @@ export interface Multiplayer {
   clockOffset: number
   /** Durable world stats from the server (null until the first welcome). */
   stats: WorldStats | null
+  /** Everyone in the park right now, including the koalas this client's cast
+   *  left out — `players.size` is capped, this isn't. 0 until the first welcome. */
+  population: number
   /** Send local koala state; internally throttled to CLIENT_SEND_HZ. */
   sendState(s: PlayerState): void
   /** Ask the server to collect a food by id; the server validates + awards. */
@@ -117,8 +123,9 @@ export function createMultiplayer(
     onBuyFail?: (reason: BuyFailReason) => void
     /** Fired with this player's own name (on welcome and on rename). */
     onName?: (name: string) => void
-    /** Fired with the live roster (self + remotes) whenever presence changes. */
-    onPresence?: (players: OnlinePlayer[]) => void
+    /** Fired with the live roster (self + the cast) whenever presence changes,
+     *  plus the park's true head count (which the roster is a sample of). */
+    onPresence?: (players: OnlinePlayer[], population: number) => void
     /** Fired with the durable world stats (on welcome and on stats updates). */
     onStats?: (stats: WorldStats) => void
     /** A peer launched a ball (id + tile + launch velocity) — start rolling it. */
@@ -160,6 +167,7 @@ export function createMultiplayer(
     likes: 0,
     clockOffset: 0,
     stats: null,
+    population: 0,
     sendState,
     sendCollect,
     sendBuy,
@@ -185,7 +193,7 @@ export function createMultiplayer(
     if (!opts.onPresence) return
     // While disconnected there is no live roster — even our own entry is gone.
     if (!handle.connected) {
-      opts.onPresence([])
+      opts.onPresence([], 0)
       return
     }
     const roster: OnlinePlayer[] = []
@@ -194,7 +202,9 @@ export function createMultiplayer(
     for (const p of players.values())
       roster.push({ id: p.id, name: p.name, self: false })
     roster.sort((a, b) => a.name.localeCompare(b.name))
-    opts.onPresence(roster)
+    // The park can hold far more koalas than the cast we're shown; report both
+    // so the UI can say "12 of 1,204" rather than pretending the park is small.
+    opts.onPresence(roster, Math.max(handle.population, roster.length))
   }
 
   const setConnected = (v: boolean) => {
@@ -215,6 +225,11 @@ export function createMultiplayer(
       existing.interacting = p.interacting
       existing.name = p.name
     } else {
+      // The cast is sampled server-side, so this cap should never bite. It is
+      // here so the client's own guarantee — never more than CAST_SIZE remote
+      // koalas to track and draw — holds even against a server that hasn't been
+      // deployed yet (or a rolled-back one) that still announces the whole park.
+      if (players.size >= CAST_SIZE) return
       players.set(p.id, { ...p, rx: p.x, ry: p.y })
     }
   }
@@ -242,6 +257,7 @@ export function createMultiplayer(
         for (const [oid, nm] of Object.entries(msg.authors ?? {}))
           authors.set(oid, nm)
         setLikes(msg.likes ?? 0)
+        handle.population = msg.population ?? players.size + 1
         handle.stats = msg.stats
         if (msg.stats) opts.onStats?.(msg.stats)
         opts.onResync?.() // drop stale local ball sim before rebuilding from placed
@@ -251,6 +267,22 @@ export function createMultiplayer(
         emitPlaced()
         emitPresence()
         break
+      // The server re-sampled our cast (it does that when the world wakes from
+      // hibernation): replace the players and items we're shown wholesale, the
+      // same way `welcome` seeds them.
+      case 'roster': {
+        players.clear()
+        for (const p of msg.players ?? []) upsert(p)
+        placed.clear()
+        for (const it of msg.placed ?? []) placed.set(it.id, it)
+        authors.clear()
+        for (const [oid, nm] of Object.entries(msg.authors ?? {}))
+          authors.set(oid, nm)
+        handle.population = msg.population ?? players.size + 1
+        emitPlaced()
+        emitPresence()
+        break
+      }
       case 'join':
         upsert(msg.p)
         emitPresence()
@@ -320,6 +352,10 @@ export function createMultiplayer(
           yourVisits: handle.stats?.yourVisits ?? 0,
         }
         handle.stats = next
+        if (typeof msg.population === 'number') {
+          handle.population = msg.population
+          emitPresence() // the head count moved; the roster label shows it
+        }
         opts.onStats?.(next)
         break
       }
@@ -380,6 +416,7 @@ export function createMultiplayer(
     socket.addEventListener('close', () => {
       if (ws === socket) ws = null
       setConnected(false)
+      handle.population = 0
       players.clear()
       food.clear()
       placed.clear()
