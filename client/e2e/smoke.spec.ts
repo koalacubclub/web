@@ -60,3 +60,54 @@ test('hero scroll cue smooth-scrolls to the content', async ({ page }) => {
   await page.getByRole('button', { name: /scroll to see more/i }).click()
   await expect(feed).toBeInViewport()
 })
+
+// Every shop preview must contain its own art. The previews used to be sized by
+// three fixed pads, and the tree art outgrew them: all five species had their
+// crowns clipped flat against the top of the canvas. The box is measured from
+// the art now, and this is the guard — art can grow freely, but if it ever
+// grows past its box again, the ink lands on an edge and this fails.
+//
+// It lives in e2e because it needs a real canvas: jsdom has no 2D context, so
+// the component's measuring pass (and this check) can't run in a unit test.
+test('shop previews are not clipped by their canvas', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('button[aria-label*="open the shop"]').first().click()
+
+  const previews = page.locator('canvas[role="img"]')
+  await expect(previews.first()).toBeVisible()
+  expect(await previews.count()).toBeGreaterThan(10)
+
+  const clipped = await page.evaluate(() =>
+    (
+      Array.from(
+        document.querySelectorAll('canvas[role=img]'),
+      ) as HTMLCanvasElement[]
+    )
+      .map((c) => {
+        const ctx = c.getContext('2d')
+        if (!ctx) return null
+        const { data } = ctx.getImageData(0, 0, c.width, c.height)
+        // Alpha 8, matching the component's own threshold: shadows fade out to
+        // nothing, and their last near-invisible pixel is not the art's edge.
+        const lit = (x: number, y: number) =>
+          data[(y * c.width + x) * 4 + 3] > 8
+        const edges: string[] = []
+        for (let x = 0; x < c.width; x++) {
+          if (lit(x, 0)) edges.push('top')
+          if (lit(x, c.height - 1)) edges.push('bottom')
+          if (edges.length) break
+        }
+        for (let y = 0; y < c.height; y++) {
+          if (lit(0, y)) edges.push('left')
+          if (lit(c.width - 1, y)) edges.push('right')
+          if (edges.length) break
+        }
+        return edges.length
+          ? `${c.getAttribute('aria-label')}: ${[...new Set(edges)].join(', ')}`
+          : null
+      })
+      .filter(Boolean),
+  )
+
+  expect(clipped, 'shop art touching a canvas edge').toEqual([])
+})
