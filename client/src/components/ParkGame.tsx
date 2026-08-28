@@ -1814,16 +1814,12 @@ export default function ParkGame() {
       })
     }
 
-    // The Zzz bubble says someone is ACTUALLY HERE and merely idle. The park's
-    // sleepers — cast members who are offline (see game/sleepers) — are drawn in
-    // the same pose and deliberately get no bubble: that is the one thing that
-    // tells a napping visitor apart from a koala who has gone home.
-    function drawDreamBubble(cat: {
-      x: number
-      y: number
-      state: DrawableCat['state']
-    }) {
+    // Koala's own dream bubble, and hers alone: no remote koala gets one,
+    // whether it is a visitor dozing off or one of the park's sleepers (the
+    // offline cast members drawn in the same pose — see game/sleepers).
+    function drawDreamBubble() {
       if (!ctx) return
+      const cat = g.cat
       if (cat.state !== 'sleeping') return
       const x = cat.x * PIXEL
       const y = cat.y * PIXEL
@@ -3970,18 +3966,7 @@ export default function ParkGame() {
       ctx!.restore()
       ctx!.save()
       ctx!.translate(0, WORLD_OFFSET)
-      drawDreamBubble(g.cat)
-      // Every koala who is really here and dozing gets one too — the offline
-      // sleepers pointedly don't.
-      if (mp && mp.players.size) {
-        const bubbleVis = visibleX()
-        for (const p of mp.players.values()) {
-          if (p.pose !== 'sleeping') continue
-          if (!isVisibleX(p.rx * PIXEL, (p.rx + 1) * PIXEL, bubbleVis, PIXEL))
-            continue
-          drawDreamBubble({ x: p.rx, y: p.ry, state: 'sleeping' })
-        }
-      }
+      drawDreamBubble()
       drawFoods()
       g.effects = drawEffects(ctx!, g.effects, g.frameCount, PIXEL, f)
       drawAuthorLabels()
