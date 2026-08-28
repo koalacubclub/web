@@ -44,7 +44,13 @@ const LAMPS = 22
  */
 const TURNS = 3.25
 
-const LAMP_COLORS = ['#FF5A5A', '#FFD93D', '#7CFF9E', '#6EC6FF', '#FF8AD1']
+/**
+ * Three lamps, not a whole rainbow: warm red, amber, and one cool blue to keep
+ * it from going all-warm. The green and the pink that used to be in here read
+ * as a novelty string — and the green in particular disappeared into the
+ * foliage it was hanging on.
+ */
+const LAMP_COLORS = ['#FF5A5A', '#FFD93D', '#6EC6FF']
 
 const STAR = '#FFE97A'
 

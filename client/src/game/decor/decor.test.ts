@@ -239,14 +239,7 @@ describe('decor', () => {
   it('darkens the decor at night, but leaves the glowing bits alone', () => {
     // The lit windows, fairy lights, star topper and music notes are drawn in
     // raw bright colours on purpose — they are meant to glow, not to be dimmed.
-    const GLOW = [
-      '#FFE39A',
-      '#FFE97A',
-      '#FF5A5A',
-      '#7CFF9E',
-      '#6EC6FF',
-      '#FF8AD1',
-    ]
+    const GLOW = ['#FFE39A', '#FFE97A', '#FF5A5A', '#7CFF9E', '#6EC6FF']
     for (const type of ALL) {
       for (const form of FORMS[type]) {
         const bright = colours(paint(type, { form }))
