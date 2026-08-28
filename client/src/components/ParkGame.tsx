@@ -15,6 +15,7 @@ import {
   COLLECT_RADIUS,
   DASH_DURATION_MS,
   DASH_TILES,
+  ballRestTile,
   DEFAULT_BALLS,
   EMOTE_DURATION_MS,
   FOOD_TTL_MS,
@@ -3825,7 +3826,18 @@ export default function ParkGame() {
           const o = g.objects.find((ob) => ob.id === id)
           if (!o || (o.vx == null && o.vy == null)) {
             g.ballOwned.delete(id)
-            if (o) mp?.sendRest(id, o.x, o.y)
+            if (o) {
+              // Settle onto the whole tile the server will store it on, by the
+              // same shared rule it uses (ballRestTile). Both sides then agree
+              // on where the roll ended, so the authoritative `moved` echo is
+              // the tile the player already watched it stop on — rather than
+              // rounding it somewhere else a round-trip later, which is how a
+              // ball nudged out of a corner appeared to snap back into it.
+              const tile = ballRestTile(o.x, o.y)
+              o.x = tile.x
+              o.y = tile.y
+              mp?.sendRest(id, tile.x, tile.y)
+            }
           }
         }
       }

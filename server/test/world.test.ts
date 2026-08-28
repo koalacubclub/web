@@ -648,6 +648,30 @@ describe('GameWorld balls', () => {
     expect(ball.y).toBe(4)
   }, 15000)
 
+  it('keeps a ball rested on the last row/column where it stopped', async () => {
+    // The rest position is bounded by the BALL's reach, not the cat's — she
+    // stops at groundRows - 1.5, and clamping by her bound would lift a ball
+    // resting on the bottom row a tile up, contradicting the roll the player
+    // just watched. Same rule as the client's own settle (ballRestTile).
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await wait(60)
+    const id = DEFAULT_BALLS[0].id
+    const edge = { x: WORLD.cols - 1, y: WORLD.groundRows - 1 }
+    ws.send(JSON.stringify({ t: 'rest', id, ...edge }))
+    await wait(80)
+    const moved = msgs.find((m) => m.t === 'moved' && m.id === id)
+    expect(moved.x).toBe(edge.x)
+    expect(moved.y).toBe(edge.y)
+    // And a ball nudged off that corner is stored where it stopped, not rounded
+    // back onto it.
+    ws.send(JSON.stringify({ t: 'rest', id, x: edge.x - 0.6, y: edge.y - 0.6 }))
+    await wait(80)
+    const back = msgs.filter((m) => m.t === 'moved' && m.id === id).pop()
+    expect(back.x).toBe(edge.x - 1)
+    expect(back.y).toBe(edge.y - 1)
+  }, 15000)
+
   it('ignores push/rest for an unknown id or a non-ball item', async () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
