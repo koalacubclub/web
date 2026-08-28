@@ -26,6 +26,33 @@ describe('BottomBar', () => {
     expect(screen.getByRole('dialog', { name: /shop/i })).toBeInTheDocument()
   })
 
+  it('hangs the settings sheet below the gear, wherever the gear sits', () => {
+    // Installed to a notched phone's home screen the cluster starts at
+    // env(safe-area-inset-top) — ~59px — where the sheet's old hard-coded
+    // top of 56px opened it OVER its own gear: tapping the gear to close hit
+    // the sheet, and the ✕ sat under the status bar.
+    render(<BottomBar atTop={true} />)
+    const gear = screen.getByRole('button', { name: /settings/i })
+    vi.spyOn(gear, 'getBoundingClientRect').mockReturnValue({
+      top: 59,
+      bottom: 91,
+      left: 262,
+      right: 294,
+      width: 32,
+      height: 32,
+      x: 262,
+      y: 59,
+      toJSON: () => ({}),
+    })
+    fireEvent.click(gear)
+    const panel = screen.getByRole('dialog', { name: /^settings$/i })
+    // Below the button it belongs to, with the gap — never over it.
+    expect(panel).toHaveStyle({ top: '99px' })
+    // And no taller than the room left under it, so a short screen scrolls the
+    // sheet rather than running its bottom off the display.
+    expect(panel).toHaveStyle({ maxHeight: `${window.innerHeight - 99 - 8}px` })
+  })
+
   it('renames via the settings popover', () => {
     const rename = vi.spyOn(store, 'rename')
     render(<BottomBar atTop={true} />)

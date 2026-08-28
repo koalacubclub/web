@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bug, Settings, Volume2, VolumeX, X } from 'lucide-react'
 import * as parkStore from '@/game/parkStore'
@@ -10,6 +16,65 @@ import { NAME_MAX } from '@koala/shared'
 import Shop from './Shop'
 
 const DISPLAY_FONT = "'Cormorant Garamond', Georgia, serif"
+
+/** Gap between a button and its sheet, and the shortest a sheet may be. */
+const GAP = 8
+const MIN_SHEET = 160
+
+/**
+ * Where a popover hangs: directly under the button that opened it, measured
+ * rather than assumed.
+ *
+ * These used to sit at a hard-coded `top-14`, which is only under the cluster
+ * while the cluster is where the CSS thought it was. Installed to a notched
+ * phone's home screen it isn't: the cluster starts at
+ * `env(safe-area-inset-top)` (~59px on a recent iPhone), so a panel pinned at
+ * 56px opened OVER its own gear. Tapping the gear to close it hit the panel
+ * instead, and the panel's own ✕ sat up under the status bar — a settings
+ * sheet with no way out.
+ *
+ * Horizontal placement stays with the CSS (right-anchored to the viewport, not
+ * the button): the sheet is wider than the gear and the body is
+ * `overflow-x: hidden`, so anchoring it to the trigger would clip it off the
+ * left edge on a phone.
+ */
+function usePopoverAnchor(
+  open: boolean,
+  triggerRef: React.RefObject<HTMLElement | null>,
+) {
+  const [style, setStyle] = useState<{ top: number; maxHeight: number }>()
+  // Layout, not effect: the sheet is placed before it is painted, so it never
+  // shows up at one height and hops to another.
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      // visualViewport is the honest height with a phone keyboard up (the name
+      // field lives in here); innerHeight is the fallback.
+      const viewportH = window.visualViewport?.height ?? window.innerHeight
+      const top = rect.bottom + GAP
+      // Never taller than the room below the button — a long sheet on a short
+      // screen scrolls inside itself instead of running off the bottom.
+      setStyle({ top, maxHeight: Math.max(MIN_SHEET, viewportH - top - GAP) })
+    }
+    place()
+    // Anything that can move the trigger or resize the room under it: rotation,
+    // a resize, the URL bar sliding away, the keyboard opening.
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    window.visualViewport?.addEventListener('resize', place)
+    window.visualViewport?.addEventListener('scroll', place)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      window.visualViewport?.removeEventListener('resize', place)
+      window.visualViewport?.removeEventListener('scroll', place)
+    }
+  }, [open, triggerRef])
+  return style
+}
+
 const PILL =
   'flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 ring-1 ring-white/15 backdrop-blur-md transition-colors hover:bg-white/20 hover:text-white'
 
@@ -56,6 +121,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
 
   const shopTriggerRef = useRef<HTMLButtonElement>(null)
   const settingsTriggerRef = useRef<HTMLButtonElement>(null)
+  const devTriggerRef = useRef<HTMLButtonElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Close everything once the hero is scrolled away.
@@ -81,6 +147,9 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsOpen])
+
+  const settingsAnchor = usePopoverAnchor(settingsOpen, settingsTriggerRef)
+  const devAnchor = usePopoverAnchor(devOpen, devTriggerRef)
 
   const closeSettings = () => {
     setSettingsOpen(false)
@@ -148,9 +217,12 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                 transition={{ duration: 0.18 }}
                 onPointerDownCapture={(e) => e.stopPropagation()}
                 onTouchStartCapture={(e) => e.stopPropagation()}
-                /* Anchored to the viewport (not the gear) so the 288px sheet can't
-                   clip off the left edge on phones (body is overflow-x:hidden). */
-                className="fixed right-4 top-14 w-[min(18rem,calc(100vw-2rem))] rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7 sm:top-[4.25rem]"
+                /* Right edge anchored to the viewport so the 288px sheet can't
+                   clip off the left on phones (body is overflow-x:hidden); the
+                   top is measured off the gear (see usePopoverAnchor), so the
+                   sheet is always below the button that opened it. */
+                style={settingsAnchor}
+                className="fixed right-4 top-14 w-[min(18rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7"
               >
                 <div className="mb-3 flex items-center justify-between">
                   <span
@@ -300,6 +372,7 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
         {devMode && (
           <div className="relative">
             <button
+              ref={devTriggerRef}
               type="button"
               onClick={() => {
                 setSettingsOpen(false)
@@ -325,7 +398,9 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                   transition={{ duration: 0.18 }}
                   onPointerDownCapture={(e) => e.stopPropagation()}
                   onTouchStartCapture={(e) => e.stopPropagation()}
-                  className="fixed right-4 top-14 w-[min(16rem,calc(100vw-2rem))] rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7 sm:top-[4.25rem]"
+                  /* Same anchoring as the Settings sheet above. */
+                  style={devAnchor}
+                  className="fixed right-4 top-14 w-[min(16rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-2xl bg-[oklch(0.13_0.008_60_/_0.97)] p-3 ring-1 ring-white/15 backdrop-blur-md sm:right-7"
                 >
                   <div className="mb-3 flex items-center justify-between">
                     <span
