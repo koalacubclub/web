@@ -515,7 +515,7 @@ describe('GameWorld shop', () => {
     const a = await session()
     const { ws, msgs } = await connect(a.cookie)
     await wait(50)
-    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 5, y: 5 }))
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 5, y: 5 }))
     await wait(120)
     expect(msgs.some((m) => m.t === 'placed')).toBe(false)
     expect(
@@ -545,13 +545,13 @@ describe('GameWorld shop', () => {
     const likes = await earnAtLeast(ws, msgs, 20) // flowers cost 20
     expect(likes).toBeGreaterThanOrEqual(20)
 
-    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 3, y: 3 }))
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 3, y: 3 }))
     await wait(150)
     const placed = msgs.find(
       (m) => m.t === 'placed' && m.item.x === 3 && m.item.y === 3,
     )
     expect(placed).toBeTruthy()
-    expect(placed.item.key).toBe('flowers')
+    expect(placed.item.key).toBe('flowers-daisy')
     expect(placed.item.ownerId).toBe(a.id)
     // Authorship: the placed broadcast carries the buyer's current name.
     expect(placed.authorName).toBe(a.name)
@@ -564,7 +564,7 @@ describe('GameWorld shop', () => {
     ).toBe(true)
 
     // A second buy on the SAME tile is rejected as occupied.
-    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 3, y: 3 }))
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 3, y: 3 }))
     await wait(120)
     expect(msgs.some((m) => m.t === 'buyfail' && m.reason === 'occupied')).toBe(
       true,
@@ -656,10 +656,10 @@ describe('GameWorld balls', () => {
     await wait(60)
     // Buy a non-ball item, then try to push/rest it.
     await earnAtLeast(ws, msgs, 20) // flowers cost 20
-    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 5, y: 5 }))
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 5, y: 5 }))
     await wait(150)
     const flowers = msgs.find(
-      (m) => m.t === 'placed' && m.item.key === 'flowers',
+      (m) => m.t === 'placed' && m.item.key === 'flowers-daisy',
     )
     expect(flowers).toBeTruthy()
     ws.send(
@@ -789,7 +789,7 @@ describe('GameWorld authorship follows rename (directory)', () => {
     await wait(50)
     const likes = await earnAtLeast(ws, msgs, 20)
     expect(likes).toBeGreaterThanOrEqual(20)
-    ws.send(JSON.stringify({ t: 'buy', key: 'flowers', x: 8, y: 8 }))
+    ws.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 8, y: 8 }))
     await wait(150)
     const placed = msgs.find(
       (m) => m.t === 'placed' && m.item.x === 8 && m.item.y === 8,

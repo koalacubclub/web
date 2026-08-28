@@ -141,11 +141,26 @@ so the React UI and the imperative canvas never fight.
   In multiplayer it's **fed by the server** (`applyServerWallet`/`applyServerPlaced`)
   and `purchase()` routes a `buy` to it (`setServerBuyer`); solo, `earn()` /
   `purchase()` / `sweepExpired()` mutate it directly and persist to localStorage.
-- **`shared/protocol.ts` → `SHOP_ITEMS`** — the catalog (`key,label,type,w,h,price`)
-  now lives in the shared protocol so the **server** validates purchases against
-  the same prices + footprints; `client/src/game/shopItems.ts` re-exports it.
-  Reuses existing decor (flowers / mushroom / rock / ball / bench / pond / tree)
-  plus shop-only sprites: `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
+- **`shared/protocol.ts` → `SHOP_ITEMS`** — the catalog
+  (`key,label,type,w,h,price,species?`) now lives in the shared protocol so the
+  **server** validates purchases against the same prices + footprints;
+  `client/src/game/shopItems.ts` re-exports it. Reuses existing decor (flowers /
+  mushroom / rock / ball / bench / pond / tree) plus shop-only sprites:
+  `snowcat`, `cardbox`, a 4×4 `house`, and a `radio`.
+- **One shop entry per species.** Trees and flowers are sold by species —
+  `tree-maple`, `flowers-poppy` and so on — rather than as one generic Tree and
+  one Flower patch, so you plant the thing you picked. `species` on the catalog
+  entry pins it; it is **client-side presentation only**, since the server
+  stores the `key` and the client reads the species back off the catalog, so
+  nothing about it needs validating or migrating. All five of each are sold at
+  one price: the split is about choice, not about pricing them apart. The maple
+  and crabapple are sold even though the park doesn't grow them wild — they're
+  held back as feature trees, and the shop is where someone plants one on
+  purpose. **Only the species is pinned:** form and the art's own jitter are
+  still rolled from the tile, so three maples in a row are three different
+  maples. An item with no usable key — a base object, or one placed before the
+  catalog was split — falls back to rolling its species from the tile exactly as
+  before, which is what makes the split need no migration.
 - **Boombox (interactive):** the 2×1 `radio` sprite plays a driving rave loop when
   Koala walks within ~2.5 tiles of it — its speakers pulse and music notes drift
   up. The audio is synthesised with the Web Audio API in `client/src/game/radio.ts`

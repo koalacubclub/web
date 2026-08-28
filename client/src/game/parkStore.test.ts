@@ -27,14 +27,14 @@ describe('parkStore economy', () => {
 
   it('spends coins on purchase but never lowers best', () => {
     store.earn(100)
-    expect(store.purchase('flowers')).toBe('ok') // flowers = 20
+    expect(store.purchase('flowers-daisy')).toBe('ok') // flowers = 20
     expect(store.getCoins()).toBe(80)
     expect(store.getBest()).toBe(100) // peak unchanged by spending
   })
 
   it('refuses a purchase you cannot afford', () => {
     store.earn(10)
-    expect(store.purchase('flowers')).toBe('insufficient') // needs 20
+    expect(store.purchase('flowers-daisy')).toBe('insufficient') // needs 20
     expect(store.getCoins()).toBe(10)
     expect(store.getPlaced()).toHaveLength(0)
   })
@@ -44,11 +44,11 @@ describe('placement', () => {
   it('records a purchased item at a tile within the map', () => {
     store.earn(100)
     store.setCatTile(5, 5)
-    expect(store.purchase('flowers')).toBe('ok')
+    expect(store.purchase('flowers-daisy')).toBe('ok')
     const placed = store.getPlaced()
     expect(placed).toHaveLength(1)
     expect(placed[0]).toMatchObject({
-      key: 'flowers',
+      key: 'flowers-daisy',
       type: 'flowers',
       w: 1,
       h: 1,
@@ -61,8 +61,8 @@ describe('placement', () => {
   it('never overlaps two placed items on the same tile', () => {
     store.earn(100)
     store.setCatTile(5, 5)
-    store.purchase('flowers')
-    store.purchase('flowers')
+    store.purchase('flowers-daisy')
+    store.purchase('flowers-daisy')
     const [a, b] = store.getPlaced()
     expect(a.x === b.x && a.y === b.y).toBe(false)
   })
@@ -73,10 +73,10 @@ describe('placement', () => {
     // only row 1 is placeable → tiles (0,1) and (1,1).
     store.configure({ mapCols: 2, groundRows: 4 })
     store.setCatTile(0, 1)
-    expect(store.purchase('flowers')).toBe('ok')
-    expect(store.purchase('flowers')).toBe('ok')
+    expect(store.purchase('flowers-daisy')).toBe('ok')
+    expect(store.purchase('flowers-daisy')).toBe('ok')
     const coinsBefore = store.getCoins()
-    expect(store.purchase('flowers')).toBe('no-room')
+    expect(store.purchase('flowers-daisy')).toBe('no-room')
     expect(store.getCoins()).toBe(coinsBefore) // no charge
     expect(store.getPlaced()).toHaveLength(2)
   })
@@ -85,7 +85,7 @@ describe('placement', () => {
 describe('expiry', () => {
   it('sweeps items only once their TTL has passed', () => {
     store.earn(100)
-    store.purchase('flowers')
+    store.purchase('flowers-daisy')
     expect(store.sweepExpired()).toBe(false) // still fresh
     expect(store.getPlaced()).toHaveLength(1)
 
@@ -98,8 +98,8 @@ describe('expiry', () => {
 describe('persistence', () => {
   it('restores coins, best and placed on reload, sweeping expired on load', () => {
     store.earn(100)
-    store.purchase('flowers') // expiresAt = BASE + TTL
-    store.purchase('tree') // 180 > 80 remaining → insufficient, ignore
+    store.purchase('flowers-daisy') // expiresAt = BASE + TTL
+    store.purchase('tree-broadleaf') // 180 > 80 remaining → insufficient, ignore
     expect(store.getPlaced()).toHaveLength(1)
 
     // Reload (fresh in-memory) BEFORE expiry: item survives.
@@ -123,7 +123,7 @@ describe('persistence', () => {
       })
     expect(() => store.earn(50)).not.toThrow()
     expect(store.getCoins()).toBe(50)
-    expect(() => store.purchase('flowers')).not.toThrow()
+    expect(() => store.purchase('flowers-daisy')).not.toThrow()
     expect(store.getCoins()).toBe(30)
     spy.mockRestore()
   })

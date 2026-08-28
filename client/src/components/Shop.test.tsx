@@ -19,7 +19,7 @@ describe('Shop (controlled sheet)', () => {
   it('buys an item, decrementing the balance and confirming placement', async () => {
     store.earn(500)
     render(<Shop open={true} onClose={() => {}} />)
-    fireEvent.click(screen.getByRole('button', { name: /buy flower patch/i }))
+    fireEvent.click(screen.getByRole('button', { name: /buy daisies/i }))
     expect(store.getCoins()).toBe(480)
     expect(await screen.findByText(/placed/i)).toBeInTheDocument()
   })
@@ -27,9 +27,7 @@ describe('Shop (controlled sheet)', () => {
   it('disables Buy when you cannot afford an item', () => {
     store.earn(10) // below the cheapest item (20)
     render(<Shop open={true} onClose={() => {}} />)
-    expect(
-      screen.getByRole('button', { name: /buy flower patch/i }),
-    ).toBeDisabled()
+    expect(screen.getByRole('button', { name: /buy daisies/i })).toBeDisabled()
   })
 
   it('calls onClose from the close button and on Escape', async () => {

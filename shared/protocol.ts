@@ -166,13 +166,67 @@ export interface ShopItem {
   w: number
   h: number
   price: number
+  /**
+   * Pins which species of `type` this entry sells — a maple rather than
+   * whatever the tile would have rolled. Client-side presentation only: the
+   * server stores the `key`, and the client reads the species back off the
+   * catalog, so nothing here needs validating or migrating.
+   *
+   * It pins the SPECIES and nothing else. Form and the art's own jitter are
+   * still rolled from the tile, so two maples planted side by side are two
+   * different maples.
+   *
+   * Absent on everything that has only one look (a bench is a bench), and
+   * absent on the legacy generic `tree` / `flowers` keys, which is what makes
+   * items placed before this split keep rolling their species from the tile.
+   */
+  species?: string
 }
 
 export const SHOP_ITEMS: readonly ShopItem[] = [
+  // One entry per flower species, so you plant the patch you picked. Same price
+  // across the five — this split is about choice, not about pricing them apart.
   {
-    key: 'flowers',
-    label: 'Flower patch',
+    key: 'flowers-daisy',
+    label: 'Daisies',
     type: 'flowers',
+    species: 'daisy',
+    w: 1,
+    h: 1,
+    price: 20,
+  },
+  {
+    key: 'flowers-poppy',
+    label: 'Poppies',
+    type: 'flowers',
+    species: 'poppy',
+    w: 1,
+    h: 1,
+    price: 20,
+  },
+  {
+    key: 'flowers-bluebell',
+    label: 'Bluebells',
+    type: 'flowers',
+    species: 'bluebell',
+    w: 1,
+    h: 1,
+    price: 20,
+  },
+  {
+    key: 'flowers-lavender',
+    label: 'Lavender',
+    type: 'flowers',
+    species: 'lavender',
+    w: 1,
+    h: 1,
+    price: 20,
+  },
+  {
+    key: 'flowers-tulip',
+    label: 'Tulips',
+    type: 'flowers',
+    species: 'tulip',
     w: 1,
     h: 1,
     price: 20,
@@ -198,7 +252,54 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   },
   { key: 'bench', label: 'Park bench', type: 'bench', w: 2, h: 1, price: 90 },
   { key: 'pond', label: 'Pond', type: 'pond', w: 3, h: 2, price: 150 },
-  { key: 'tree', label: 'Tree', type: 'tree', w: 2, h: 2, price: 180 },
+  // One entry per tree species. The maple and the crabapple don't grow wild in
+  // the park — they're held back as feature trees — but the shop is exactly the
+  // place to let someone plant one deliberately.
+  {
+    key: 'tree-broadleaf',
+    label: 'Leafy tree',
+    type: 'tree',
+    species: 'broadleaf',
+    w: 2,
+    h: 2,
+    price: 180,
+  },
+  {
+    key: 'tree-pine',
+    label: 'Pine',
+    type: 'tree',
+    species: 'pine',
+    w: 2,
+    h: 2,
+    price: 180,
+  },
+  {
+    key: 'tree-willow',
+    label: 'Willow',
+    type: 'tree',
+    species: 'willow',
+    w: 2,
+    h: 2,
+    price: 180,
+  },
+  {
+    key: 'tree-crabapple',
+    label: 'Crabapple',
+    type: 'tree',
+    species: 'crabapple',
+    w: 2,
+    h: 2,
+    price: 180,
+  },
+  {
+    key: 'tree-maple',
+    label: 'Maple',
+    type: 'tree',
+    species: 'maple',
+    w: 2,
+    h: 2,
+    price: 180,
+  },
   {
     key: 'lighttree',
     label: 'Fairy-light tree',

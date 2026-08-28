@@ -34,9 +34,11 @@ export default function ItemPreview({ item }: { item: ShopItem }) {
     ctx.clearRect(0, 0, logicalW, logicalH)
     ctx.imageSmoothingEnabled = true
     ctx.translate(PAD_X, PAD_TOP)
+    // `key` matters: it's what tells the sprite which species this entry sells,
+    // so the maple in the shop is the maple you get.
     drawShopSprite(
       ctx,
-      { type: item.type, x: 0, y: 0, w: item.w, h: item.h },
+      { type: item.type, key: item.key, x: 0, y: 0, w: item.w, h: item.h },
       0,
     )
   }, [item, logicalW, logicalH])
