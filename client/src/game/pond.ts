@@ -37,12 +37,24 @@ const REFLECT_LIFT = PIXEL * 1.2
 // open sky (and a hint of the distant hills), not the sand/grass it sits on
 // (objects and cats reflect live, separately). Returns null without a DOM.
 const reflCache = new Map<string, HTMLCanvasElement | null>()
+
 export function getPondReflection(
   bg: HTMLCanvasElement,
   x: number,
   y: number,
+  /**
+   * Device pixels per logical px in `bg` — the scale the background was baked
+   * at. The source rect below is in LOGICAL coords, so it has to be scaled up
+   * to address the bitmap; the sprite is cut at the same scale so the
+   * reflection is as sharp as the sky it mirrors.
+   *
+   * It's a constant today (the bake never changes resolution), but the cache is
+   * still keyed by it: if that ever stops being true, a stale sprite cut from
+   * the old bitmap is a subtle enough bug to be worth the twelve characters.
+   */
+  bgScale = 1,
 ): HTMLCanvasElement | null {
-  const key = `${x},${y}`
+  const key = `${x},${y}@${bgScale}`
   const cached = reflCache.get(key)
   if (cached !== undefined) return cached
   if (typeof document === 'undefined') {
@@ -52,13 +64,14 @@ export function getPondReflection(
   const { cx, rx, ry } = pondGeom(x, y)
   const rh = ry * 2
   const spr = document.createElement('canvas')
-  spr.width = Math.ceil(rx * 2)
-  spr.height = Math.ceil(rh)
+  spr.width = Math.ceil(rx * 2 * bgScale)
+  spr.height = Math.ceil(rh * bgScale)
   const sc = spr.getContext('2d')
   if (!sc) {
     reflCache.set(key, null)
     return null
   }
+  sc.scale(bgScale, bgScale)
   // Flip the slice vertically: sprite row 0 (far waterline) samples the highest
   // point of the band; deeper rows sample lower toward the horizon. Anchored
   // REFLECT_LIFT above HORIZON (not the pond), so it's always sky — never the
@@ -66,7 +79,17 @@ export function getPondReflection(
   const bandBottom = HORIZON - REFLECT_LIFT
   sc.translate(0, rh)
   sc.scale(1, -1)
-  sc.drawImage(bg, cx - rx, bandBottom - rh, rx * 2, rh, 0, 0, rx * 2, rh)
+  sc.drawImage(
+    bg,
+    (cx - rx) * bgScale,
+    (bandBottom - rh) * bgScale,
+    rx * 2 * bgScale,
+    rh * bgScale,
+    0,
+    0,
+    rx * 2,
+    rh,
+  )
   reflCache.set(key, spr)
   return spr
 }
