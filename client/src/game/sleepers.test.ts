@@ -48,19 +48,35 @@ describe('layoutSleepers', () => {
     }
   })
 
-  it('spreads out the koalas that were already asleep when you arrived', () => {
+  it('strews the koalas that were already asleep across the park', () => {
     // Nobody here was watched leaving — this is a park opened with offline
-    // koalas already in it, so they get laid out across the grass rather than
-    // wherever their anchors happen to bunch up.
+    // koalas already in it. Finding one should be a walk, not a glance, so
+    // they are most of a screenful apart.
     const w = world()
-    const spots = [...layoutSleepers(who(8), w).values()]
-    expect(spots).toHaveLength(8)
+    const spots = [...layoutSleepers(who(4), w).values()]
+    expect(spots).toHaveLength(4)
     for (const a of spots) {
       for (const b of spots) {
         if (a.id === b.id) continue
         expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(
           SLEEP_GAP,
         )
+      }
+    }
+  })
+
+  it('still spreads a full cast the width of the map, closer together', () => {
+    // 58 columns cannot hold ten koalas a screen apart, so the gap relaxes —
+    // but they end up strewn end to end rather than bunched in one corner.
+    const w = world()
+    const spots = [...layoutSleepers(who(10), w).values()]
+    expect(spots).toHaveLength(10)
+    const xs = spots.map((s) => s.x)
+    expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThanOrEqual(40)
+    for (const a of spots) {
+      for (const b of spots) {
+        if (a.id === b.id) continue
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(5)
       }
     }
   })

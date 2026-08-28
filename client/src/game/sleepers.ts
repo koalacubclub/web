@@ -23,13 +23,15 @@
 //      lies down exactly where it was — that's the whole point of rule 2, and
 //      nudging it "for looks" would just move someone you were standing next
 //      to. The rest — asleep before you arrived, placed by their items or by
-//      their id — are spread SLEEP_GAP tiles apart, so opening a park full of
-//      offline koalas gives you a park, not a heap of them in one corner.
+//      their id — are strewn across the whole park, most of a screen apart, so
+//      finding one is a walk rather than a glance.
 //   4. Once placed, stay placed. Spots are carried across re-layouts (a
 //      purchase, a ball rolling by, a peer waking up), so the park doesn't
 //      rearrange its nappers every time something else moves.
 //
 // Pure and DOM-free, so the rules can be tested directly.
+
+import { VIEW_COLS } from './constants'
 
 export interface Rect {
   x: number
@@ -76,12 +78,16 @@ export interface SleepWorld {
 const BOTTOM_MARGIN = 2
 // Row 0 is the horizon strip, not walkable ground.
 const TOP_ROW = 1
-// Tiles of clear ground a sleeper wants between itself and the next one, when
-// the park was already asleep when you got here. It is a preference, not a
-// rule: a park with nowhere left to lie down relaxes it step by step rather
-// than turning anyone away.
-export const SLEEP_GAP = 4
-const RELAXED_GAPS = [SLEEP_GAP, 3, 2, 1]
+// How far apart the koalas who were already asleep are strewn — most of a
+// screenful of park (the camera shows VIEW_COLS columns), so you rarely have
+// two of them in view at once and finding one means walking there.
+//
+// It is a preference, not a rule: 58 columns only hold so many at that spacing,
+// so a park with nowhere left to lie down relaxes the gap step by step rather
+// than turning anyone away. A full cast still ends up strewn across the map,
+// just closer together.
+export const SLEEP_GAP = Math.round(VIEW_COLS * 0.7)
+const RELAXED_GAPS = [SLEEP_GAP, 10, 7, 5, 3, 2, 1]
 // A koala you watched log off asks for nothing but its own tile: it lies down
 // where it was standing, even if that is right beside someone else.
 const WITNESSED_GAPS = [1]
@@ -180,15 +186,17 @@ function findFree(
 
   if (free(ax, ay)) return { x: ax, y: ay }
   const maxR = world.cols + world.rows
+  // Ring by ring outward, walking each ring's PERIMETER rather than re-scanning
+  // the square inside it: the gap reaches most of a screen, so the search runs
+  // far and the difference is O(r) per ring instead of O(r²).
   for (let r = 1; r <= maxR; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        // Only the ring at radius r — the inner ones were checked already.
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-        const x = ax + dx
-        const y = ay + dy
-        if (free(x, y)) return { x, y }
-      }
+    for (let dx = -r; dx <= r; dx++) {
+      if (free(ax + dx, ay - r)) return { x: ax + dx, y: ay - r }
+      if (free(ax + dx, ay + r)) return { x: ax + dx, y: ay + r }
+    }
+    for (let dy = -r + 1; dy <= r - 1; dy++) {
+      if (free(ax - r, ay + dy)) return { x: ax - r, y: ay + dy }
+      if (free(ax + r, ay + dy)) return { x: ax + r, y: ay + dy }
     }
   }
   return null
