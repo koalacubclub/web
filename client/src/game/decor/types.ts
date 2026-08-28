@@ -72,6 +72,8 @@ export interface SnowcatDrawArgs extends AnimatedDrawArgs {
 export interface LightTreeDrawArgs extends AnimatedDrawArgs {
   /** Seeds where the fairy lights sit, so a given tree is always the same tree. */
   seed: number
+  /** How far the lamps twinkle, 0–1 — see `BallDrawArgs.motion`, same idea. */
+  motion: number
 }
 
 export interface RadioDrawArgs extends AnimatedDrawArgs {

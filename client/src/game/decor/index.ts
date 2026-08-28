@@ -82,8 +82,8 @@ export interface DrawDecorOptions {
   /** Radio only: a koala is near, so it plays. */
   playing?: boolean
   /**
-   * How much of its idle motion a piece plays, 0–1: the ball's bounce and the
-   * snow-cat's bob. The park scales this with Koala's distance (see
+   * How much of its idle motion a piece plays, 0–1: the ball's bounce, the
+   * snow-cat's bob, the light tree's twinkle. The park scales this with Koala's distance (see
    * `../proximity.ts`) so what she is nowhere near sits still. Default 1 — the
    * art moves unless a caller asks it not to.
    */
@@ -167,6 +167,7 @@ export function drawDecor(
     case 'lighttree':
       drawLightTreeArt(ctx, px, py, {
         ...animated,
+        motion,
         seed: seedAt(tile.x, tile.y, SEED_LIGHTS),
       })
       break

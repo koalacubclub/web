@@ -8,7 +8,7 @@ export function drawLightTree(
   ctx: Ctx,
   px: number,
   py: number,
-  { w, frameCount, seed, ink }: LightTreeDrawArgs,
+  { w, frameCount, motion, seed, ink }: LightTreeDrawArgs,
 ) {
   const cx = px + w / 2
   const cyc = py + PIXEL * 0.85 // canopy centre
@@ -46,7 +46,10 @@ export function drawLightTree(
     const lx = cx + Math.cos(ang) * rad
     const ly = cyc + Math.sin(ang) * rad * 0.95
     const col = lights[i % lights.length]
-    const tw = 0.55 + 0.45 * Math.sin(frameCount * 0.08 + i * 1.7)
+    // `motion` scales how far each lamp swings off its mean, so a tree Koala is
+    // nowhere near holds a steady glow rather than going dark or freezing some
+    // lamps bright and others out.
+    const tw = 0.55 + 0.45 * motion * Math.sin(frameCount * 0.08 + i * 1.7)
     ctx.fillStyle = col
     ctx.globalAlpha = 0.35 * tw // soft glow
     ctx.beginPath()

@@ -289,6 +289,17 @@ describe('decor', () => {
     }
   })
 
+  it('holds the light tree at a steady glow when Koala is not near it', () => {
+    // Steady, not dark: the lamps stop swinging off their mean rather than
+    // going out, so the tree still reads as lit from across the park.
+    const a = paint('lighttree', { frameCount: 0, motion: 0 })
+    expect(paint('lighttree', { frameCount: 40, motion: 0 })).toEqual(a)
+    expect(paint('lighttree', { frameCount: 40, motion: 1 })).not.toEqual(a)
+    expect(
+      a.some((c) => c.startsWith('alpha(') && Number(c.slice(6, -1)) > 0.5),
+    ).toBe(true)
+  })
+
   it('settles the snow-cat when Koala is not near it', () => {
     for (const form of SNOWCAT_FORMS) {
       const a = paint('snowcat', { frameCount: 0, motion: 0, form })
