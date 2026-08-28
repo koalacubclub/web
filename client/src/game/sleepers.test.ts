@@ -48,16 +48,12 @@ describe('layoutSleepers', () => {
     }
   })
 
-  it('spreads out a crowd that all logged off in the same corner', () => {
-    // Everyone leaves within a tile of spawn, as they actually do — a park
-    // where they lay down shoulder to shoulder would look like a pile-up.
+  it('spreads out the koalas that were already asleep when you arrived', () => {
+    // Nobody here was watched leaving — this is a park opened with offline
+    // koalas already in it, so they get laid out across the grass rather than
+    // wherever their anchors happen to bunch up.
     const w = world()
-    const huddle = who(8).map((s, i) => ({
-      ...s,
-      x: 29 + (i % 2),
-      y: 7 + (i % 3) * 0.5,
-    }))
-    const spots = [...layoutSleepers(huddle, w).values()]
+    const spots = [...layoutSleepers(who(8), w).values()]
     expect(spots).toHaveLength(8)
     for (const a of spots) {
       for (const b of spots) {
@@ -66,8 +62,23 @@ describe('layoutSleepers', () => {
           SLEEP_GAP,
         )
       }
-      // ...but still near where they were standing, not flung across the map.
-      expect(Math.abs(a.x - 29)).toBeLessThanOrEqual(12)
+    }
+  })
+
+  it('leaves a watched crowd where it stood, spacing nobody out', () => {
+    // Five koalas log off in front of you, within a tile of each other. They
+    // are where they are: no nudging them apart for looks, just no stacking.
+    const w = world()
+    const huddle = who(5).map((s, i) => ({ ...s, x: 29 + i * 0.4, y: 7 }))
+    const spots = [...layoutSleepers(huddle, w).values()]
+    expect(spots).toHaveLength(5)
+    const seen = new Set<string>()
+    for (const s of spots) {
+      expect(seen.has(`${s.x},${s.y}`)).toBe(false) // never stacked
+      seen.add(`${s.x},${s.y}`)
+      // Still in the huddle they logged off in, not spread across the park.
+      expect(Math.abs(s.x - 29)).toBeLessThanOrEqual(2)
+      expect(Math.abs(s.y - 7)).toBeLessThanOrEqual(2)
     }
   })
 

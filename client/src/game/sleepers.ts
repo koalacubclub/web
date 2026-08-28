@@ -19,10 +19,12 @@
 //      cast members who were never seen this session need placing: they go
 //      beside the first item they planted, or — owning nothing — on a tile
 //      picked from their id, arbitrary but always the same one.
-//   3. Elbow room. Sleepers keep SLEEP_GAP tiles between each other, so a
-//      group that all logged off in the same corner is spread across the
-//      grass instead of laid out shoulder to shoulder. (Spawn is one tile and
-//      koalas gather, so without this they pile up exactly where they met.)
+//   3. Elbow room for the ones you didn't see leave. A koala you watched go
+//      lies down exactly where it was — that's the whole point of rule 2, and
+//      nudging it "for looks" would just move someone you were standing next
+//      to. The rest — asleep before you arrived, placed by their items or by
+//      their id — are spread SLEEP_GAP tiles apart, so opening a park full of
+//      offline koalas gives you a park, not a heap of them in one corner.
 //   4. Once placed, stay placed. Spots are carried across re-layouts (a
 //      purchase, a ball rolling by, a peer waking up), so the park doesn't
 //      rearrange its nappers every time something else moves.
@@ -74,11 +76,15 @@ export interface SleepWorld {
 const BOTTOM_MARGIN = 2
 // Row 0 is the horizon strip, not walkable ground.
 const TOP_ROW = 1
-// Tiles of clear ground a sleeper wants between itself and the next one. It is
-// a preference, not a rule: a park with nowhere left to lie down relaxes it
-// (RELAXED_GAPS) rather than turning anyone away.
+// Tiles of clear ground a sleeper wants between itself and the next one, when
+// the park was already asleep when you got here. It is a preference, not a
+// rule: a park with nowhere left to lie down relaxes it step by step rather
+// than turning anyone away.
 export const SLEEP_GAP = 4
 const RELAXED_GAPS = [SLEEP_GAP, 3, 2, 1]
+// A koala you watched log off asks for nothing but its own tile: it lies down
+// where it was standing, even if that is right beside someone else.
+const WITNESSED_GAPS = [1]
 
 /** FNV-1a. Any stable string→int will do; this one is short and well-spread. */
 function hash(s: string): number {
@@ -218,16 +224,23 @@ export function layoutSleepers(
     lying.push({ x: prev.x, y: prev.y })
   }
 
-  // Then the new arrivals, in a stable order so a layout never depends on the
-  // order the server happened to list them in.
+  // Then the new arrivals. Anyone the park watched go is laid down first, since
+  // they have a claim on one particular tile and nobody else does; the rest
+  // follow in a stable order, so a layout never depends on the order the server
+  // happened to list them in.
+  const witnessed = (s: Sleeper) => s.x != null && s.y != null
   const pending = sleepers
     .filter((s) => !out.has(s.id))
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .sort((a, b) => {
+      if (witnessed(a) !== witnessed(b)) return witnessed(a) ? -1 : 1
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    })
   for (const s of pending) {
     const anchor = anchorFor(s, world)
     // Ask for room first; settle for less only where the park has none left.
+    // A koala you saw leave skips this and simply takes its tile.
     let spot: { x: number; y: number } | null = null
-    for (const gap of RELAXED_GAPS) {
+    for (const gap of witnessed(s) ? WITNESSED_GAPS : RELAXED_GAPS) {
       spot = findFree(anchor.x, anchor.y, objects, lying, gap, world)
       if (spot) break
     }
