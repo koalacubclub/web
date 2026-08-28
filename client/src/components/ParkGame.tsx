@@ -15,6 +15,7 @@ import {
   COLLECT_RADIUS,
   DASH_DURATION_MS,
   DASH_TILES,
+  ballRestTile,
   DEFAULT_BALLS,
   EMOTE_DURATION_MS,
   FOOD_TTL_MS,
@@ -31,6 +32,7 @@ import { ProgressiveImage } from './ProgressiveImage'
 import { jumpLiftTiles } from '@/game/jump'
 import { drawKoalaImprint } from '@/game/imprint'
 import {
+  kickDirection,
   slapPhase,
   slapShake,
   updateSlappables,
@@ -1032,16 +1034,24 @@ export default function ParkGame() {
           life: 28,
         })
       } else if (best.type === 'ball') {
-        // Every ball is knocked directly away from the cat. We simulate the roll
+        // Every ball is knocked away from the cat — back INTO the park when it
+        // is flush against an edge, where "away" would only be into the wall
+        // (see kickDirection; that, and kicks with no direction at all, are why
+        // a ball could sit unmovable along an edge). We simulate the roll
         // locally for instant feel; in multiplayer we also tell the server the
         // launch (id + tile + velocity) so peers roll the same ball via the same
         // integrator, and persist the resting tile once it settles (see below).
-        const dx = bx - cx
-        const dy = by - cy
-        const d = Math.hypot(dx, dy) || 1
+        const dir = kickDirection(
+          best,
+          cx,
+          cy,
+          g.cat.dir,
+          MAP_COLS,
+          GROUND_ROWS,
+        )
         const speed = 0.006 // tiles/ms
-        best.vx = (dx / d) * speed
-        best.vy = (dy / d) * speed
+        best.vx = dir.x * speed
+        best.vy = dir.y * speed
         if (best.id) {
           g.ballRolling.add(best.id)
           g.ballOwned.add(best.id)
@@ -3816,7 +3826,18 @@ export default function ParkGame() {
           const o = g.objects.find((ob) => ob.id === id)
           if (!o || (o.vx == null && o.vy == null)) {
             g.ballOwned.delete(id)
-            if (o) mp?.sendRest(id, o.x, o.y)
+            if (o) {
+              // Settle onto the whole tile the server will store it on, by the
+              // same shared rule it uses (ballRestTile). Both sides then agree
+              // on where the roll ended, so the authoritative `moved` echo is
+              // the tile the player already watched it stop on — rather than
+              // rounding it somewhere else a round-trip later, which is how a
+              // ball nudged out of a corner appeared to snap back into it.
+              const tile = ballRestTile(o.x, o.y)
+              o.x = tile.x
+              o.y = tile.y
+              mp?.sendRest(id, tile.x, tile.y)
+            }
           }
         }
       }

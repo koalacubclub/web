@@ -62,6 +62,58 @@ export function pickSlapTarget<T extends SlapTarget>(
   return bestBall ?? best
 }
 
+// How close (tiles) a ball has to be to a map edge to count as against it, and
+// how close the two centres have to be to count as the cat standing ON it.
+const EDGE = 0.05
+const COINCIDENT = 0.05
+
+/**
+ * The unit direction a slap knocks a ball in: away from the cat, except where
+ * that would just shove it into an edge it is already flush against — there the
+ * outward component is flipped so the ball comes back into the park.
+ *
+ * Both special cases are why a ball got stuck along an edge. The cat's own
+ * clamp stops level with the ball's (both cap x at the last column; she can't
+ * get below the bottom row either), so once a ball is against a wall she can
+ * never stand on the far side of it: every kick pointed further into the wall.
+ * And reaching one usually means standing ON it, where "away from the cat" is
+ * the zero vector — the ball took a velocity of 0, which the integrator then
+ * cleared as "at rest". Slap after slap, nothing moved.
+ *
+ * The bounds are `updateSlappables`': x in [0, mapCols - w], y in [1,
+ * groundRows - h].
+ */
+export function kickDirection(
+  ball: { x: number; y: number; w: number; h: number },
+  cx: number,
+  cy: number,
+  facing: 'left' | 'right',
+  mapCols: number,
+  groundRows: number,
+): { x: number; y: number } {
+  let dx = ball.x + ball.w / 2 - cx
+  let dy = ball.y + ball.h / 2 - cy
+  const d = Math.hypot(dx, dy)
+  if (d < COINCIDENT) {
+    // She is standing on it — the usual way to reach a ball pinned against an
+    // edge, since there is no walking round it. Kick it the way she is looking.
+    dx = facing === 'left' ? -1 : 1
+    dy = 0
+  } else {
+    dx /= d
+    dy /= d
+  }
+  // Flipping one component keeps the vector a unit one, so the kick lands with
+  // the same strength wherever it is taken.
+  const atLeft = ball.x <= EDGE
+  const atRight = ball.x >= mapCols - ball.w - EDGE
+  const atTop = ball.y <= 1 + EDGE
+  const atBottom = ball.y >= groundRows - ball.h - EDGE
+  if ((atLeft && dx < 0) || (atRight && dx > 0)) dx = -dx
+  if ((atTop && dy < 0) || (atBottom && dy > 0)) dy = -dy
+  return { x: dx, y: dy }
+}
+
 // A short-lived slap impact burst (impact stars, or a pond splash), in canvas px.
 // `born` is a frameCount stamp; `life` counts down in frame-units.
 export interface SlapEffect {

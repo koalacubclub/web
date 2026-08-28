@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { SLAP_DURATION_MS } from '@koala/shared'
-import { slapPhase, slapSwing, updateSlappables, pickSlapTarget } from './slap'
+import {
+  kickDirection,
+  slapPhase,
+  slapSwing,
+  updateSlappables,
+  pickSlapTarget,
+} from './slap'
 
 // The swipe is an out-and-back arc that peaks mid-swing and is 0 (idle) outside
 // its window. Guards the load-time sentinel regression — slapAt inits to
@@ -104,5 +110,97 @@ describe('pickSlapTarget', () => {
     const near = obj('ball', 5, 5)
     const far = obj('ball', 6, 5)
     expect(pickSlapTarget([far, near], 5.5, 5.5, REACH)).toBe(near)
+  })
+})
+
+// The map the park runs at, and the cat's own clamp within it: she caps at
+// MAP_COLS - 1 (level with a 1×1 ball's own cap) and at GROUND_ROWS - 1.5, so
+// there is no standing on the far side of a ball that is against an edge.
+const COLS = 58
+const ROWS = 14
+const ball = (x: number, y: number) => ({ x, y, w: 1, h: 1 })
+/** Where the ball ends up after one kick, run through the real integrator. */
+const kickTo = (b: ReturnType<typeof ball>, cx: number, cy: number) => {
+  const dir = kickDirection(b, cx, cy, 'right', COLS, ROWS)
+  const o = { ...b, vx: dir.x * 0.006, vy: dir.y * 0.006 }
+  for (let i = 0; i < 600 && o.vx != null; i++) {
+    updateSlappables([o], 16, COLS, ROWS)
+  }
+  return o
+}
+
+describe('kickDirection (a ball against an edge stays kickable)', () => {
+  it('knocks a ball in the open straight away from the cat', () => {
+    const d = kickDirection(ball(20, 6), 19.5, 6.5, 'right', COLS, ROWS)
+    expect(d.x).toBeCloseTo(1)
+    expect(d.y).toBeCloseTo(0)
+    expect(Math.hypot(d.x, d.y)).toBeCloseTo(1)
+  })
+
+  it('turns a kick that would only shove a ball into the wall back inwards', () => {
+    // Right edge: she can only ever be level with or left of it, so away-from-
+    // the-cat always pointed further right, into the wall.
+    expect(
+      kickDirection(ball(COLS - 1, 6), 56, 6.5, 'right', COLS, ROWS).x,
+    ).toBeLessThan(0)
+    // Bottom edge: her clamp (y ≤ 12.5) keeps her above a ball resting at 13.
+    expect(
+      kickDirection(ball(20, ROWS - 1), 20.5, 13, 'right', COLS, ROWS).y,
+    ).toBeLessThan(0)
+    // And in the bottom-right corner, where she can only come at it from up and
+    // to the left, it goes up and to the left — out of the corner, not into it.
+    const corner = kickDirection(
+      ball(COLS - 1, ROWS - 1),
+      COLS - 1.5,
+      13,
+      'right',
+      COLS,
+      ROWS,
+    )
+    expect(corner.x).toBeLessThan(0)
+    expect(corner.y).toBeLessThan(0)
+  })
+
+  it('kicks the way she is looking when she is standing on the ball', () => {
+    // Centres coincide — which is how you reach a ball pinned to an edge. This
+    // used to hand the ball a velocity of exactly 0, which the integrator then
+    // cleared as "at rest": slap after slap, nothing moved.
+    const on = ball(20, 6)
+    expect(kickDirection(on, 20.5, 6.5, 'right', COLS, ROWS)).toEqual({
+      x: 1,
+      y: 0,
+    })
+    expect(kickDirection(on, 20.5, 6.5, 'left', COLS, ROWS)).toEqual({
+      x: -1,
+      y: 0,
+    })
+    // Facing the wall she is standing against, it still comes back inwards.
+    expect(
+      kickDirection(ball(COLS - 1, 6), COLS - 0.5, 6.5, 'right', COLS, ROWS).x,
+    ).toBeLessThan(0)
+  })
+
+  it('always moves the ball off the edge it is stuck on', () => {
+    const cases: Array<[ReturnType<typeof ball>, number, number]> = [
+      [ball(COLS - 1, 6), COLS - 1.5, 6.5], // right edge, cat beside it
+      [ball(COLS - 1, 6), COLS - 0.5, 6.5], // right edge, cat on it
+      [ball(0, 6), 0.5, 6.5], // left edge, cat on it
+      [ball(20, 1), 20.5, 1.5], // top edge
+      [ball(20, ROWS - 1), 20.5, 13], // bottom edge, cat as low as she goes
+      [ball(COLS - 1, ROWS - 1), COLS - 1.5, 13], // bottom-right corner
+    ]
+    for (const [b, cx, cy] of cases) {
+      const after = kickTo(b, cx, cy)
+      expect(
+        Math.hypot(after.x - b.x, after.y - b.y),
+        `${b.x},${b.y}`,
+      ).toBeGreaterThan(0.5)
+      // Still on the map, and settled (the integrator cleared its velocity).
+      expect(after.x).toBeGreaterThanOrEqual(0)
+      expect(after.x).toBeLessThanOrEqual(COLS - 1)
+      expect(after.y).toBeGreaterThanOrEqual(1)
+      expect(after.y).toBeLessThanOrEqual(ROWS - 1)
+      expect(after.vx).toBeUndefined()
+    }
   })
 })

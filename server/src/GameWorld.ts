@@ -15,6 +15,7 @@ import {
   AIR_PITY_MS,
   AIR_POINTS_MULT,
   AIR_SPAWN_SHARE,
+  ballRestTile,
   clampToSpeed,
   COLLECT_RADIUS,
   DEFAULT_BALLS,
@@ -405,11 +406,10 @@ export class GameWorld extends DurableObject<Env> {
       if (!r) return
       const item = this.placed.get(r.id)
       if (!item || item.type !== 'ball') return
-      // Clamp to the integer tiles a 1×1 ball can actually occupy — matching
-      // updateSlappables' bounce ceiling (groundRows - h). A tighter bound here
-      // would snap a ball resting on the bottom row up a tile.
-      const rx = Math.max(0, Math.min(WORLD.cols - 1, Math.round(r.x)))
-      const ry = Math.max(1, Math.min(WORLD.groundRows - 1, Math.round(r.y)))
+      // Which tile that spot is, decided by the same shared rule the client
+      // settles its own ball with (ballRestTile) — so the authoritative tile we
+      // broadcast back is the one the player already watched the ball stop on.
+      const { x: rx, y: ry } = ballRestTile(r.x, r.y)
       item.x = rx
       item.y = ry
       this.ctx.storage.sql.exec(

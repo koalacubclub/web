@@ -548,9 +548,32 @@ export function sanitizeAction(raw: unknown): { a: AbilityKind } | null {
     : null
 }
 
-// A bounded ball id + a finite tile position, clamped to the same playable bounds
-// as sanitizeState (a ball is 1×1). Unlike sanitizeBuy, x/y may be FRACTIONAL — a
-// ball rolls to a sub-tile spot before it settles. Shared by push + rest.
+/**
+ * Where a 1×1 ball may be, and which whole tile a resting one belongs on.
+ *
+ * The client rolls a ball through fractional tiles; the server stores whole ones
+ * (placed.x/y are INTEGER). Both sides therefore have to agree on which tile a
+ * given resting spot IS, or the roll a player just watched ends somewhere the
+ * server then contradicts and the ball hops back — most visibly against an
+ * edge, where a short roll rounded straight back into the corner it came from.
+ *
+ * These bounds are the BALL's, matching the client integrator's bounce ceiling
+ * (`updateSlappables`: x in [0, cols - w], y in [1, groundRows - h] at w = h =
+ * 1). They are deliberately NOT the cat's — she stops at groundRows - 1.5, and
+ * clamping a ball by her bound squashes one resting on the bottom row.
+ */
+export const ballX = (x: number) => Math.max(0, Math.min(WORLD.cols - 1, x))
+export const ballY = (y: number) =>
+  Math.max(1, Math.min(WORLD.groundRows - 1, y))
+
+/** The tile a ball resting at (x, y) settles on — round first, then clamp. */
+export function ballRestTile(x: number, y: number): { x: number; y: number } {
+  return { x: ballX(Math.round(x)), y: ballY(Math.round(y)) }
+}
+
+// A bounded ball id + a finite ball position (see ballX/ballY). Unlike
+// sanitizeBuy, x/y may be FRACTIONAL — a ball rolls to a sub-tile spot before it
+// settles. Shared by push + rest.
 function sanitizeBallPos(
   raw: unknown,
 ): { id: string; x: number; y: number } | null {
@@ -560,11 +583,7 @@ function sanitizeBallPos(
   if (typeof id !== 'string' || id.length === 0 || id.length > 64) return null
   if (typeof x !== 'number' || !Number.isFinite(x)) return null
   if (typeof y !== 'number' || !Number.isFinite(y)) return null
-  return {
-    id,
-    x: Math.max(0, Math.min(WORLD.cols - 1, x)),
-    y: Math.max(1, Math.min(WORLD.groundRows - 1.5, y)),
-  }
+  return { id, x: ballX(x), y: ballY(y) }
 }
 
 // Validate an untrusted ball-launch (`push`): a bounded position plus a finite
