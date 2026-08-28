@@ -2,6 +2,9 @@
 // sells that aren't scenery: a mushroom, a snow-cat, a cardboard box, a
 // cottage, a light tree and a boombox.
 //
+// Two of them come in more than one build: the mushroom's cap and the
+// snow-cat's stack, rolled from the tile the piece stands on.
+//
 // Same shape as ../trees, ../flowers, ../rocks and ../props: art only, drawn
 // with `ctx` primitives, every colour declared BRIGHT and re-inked for the park
 // through `parkInk.ts`. That is the whole reason these moved out of
@@ -31,6 +34,28 @@ export interface DrawArgs {
 /** For the pieces that move: the ball's bounce, the snowcat's bob, twinkles. */
 export interface AnimatedDrawArgs extends DrawArgs {
   frameCount: number
+}
+
+/** Which build of a mushroom to draw — see `mushroom.ts` for the four. */
+export type MushroomForm = 0 | 1 | 2 | 3
+
+/** Which build of a snow-cat to draw — see `snowcat.ts` for the three. */
+export type SnowcatForm = 0 | 1 | 2
+
+/**
+ * For the two pieces whose shape varies: both the build and the jitter on top
+ * of it are rolled from the tile, so a piece never flickers and never moves.
+ */
+export interface MushroomDrawArgs extends DrawArgs {
+  /** Seeded PRNG — deterministic per tile. */
+  rng: () => number
+  form: MushroomForm
+}
+
+export interface SnowcatDrawArgs extends AnimatedDrawArgs {
+  /** Seeded PRNG — deterministic per tile. */
+  rng: () => number
+  form: SnowcatForm
 }
 
 export interface LightTreeDrawArgs extends AnimatedDrawArgs {

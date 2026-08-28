@@ -5,10 +5,19 @@
 // Unlike the scenery catalogs this one runs an animation loop: half these
 // pieces only exist in motion — the ball bounces, the snowcat bobs, the fairy
 // lights twinkle, the radio pulses and puffs notes.
+//
+// The mushroom's and the snow-cat's cards show every build side by side, drawn
+// with an explicit `form`; everywhere else (the bank across the top, the game
+// itself) the build comes from the tile, as it does in the park.
 
 import { COLORS, NIGHT, PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
-import { drawDecor, type DecorType } from './index'
+import {
+  MUSHROOM_FORMS,
+  SNOWCAT_FORMS,
+  drawDecor,
+  type DecorType,
+} from './index'
 import type { Ink } from './types'
 
 const identity: Ink = (c) => c
@@ -24,6 +33,8 @@ const PIECES: Array<{
   h: number
   title: string
   meta: string
+  /** The builds this piece comes in, when the tile rolls its shape. */
+  forms?: readonly number[]
 }> = [
   {
     type: 'ball',
@@ -37,14 +48,16 @@ const PIECES: Array<{
     w: 1,
     h: 1,
     title: 'mushroom',
-    meta: '1×1 — red cap, white stem, two spots',
+    meta: '1×1 — button, parasol, bell, cluster: the cap is rolled by tile',
+    forms: MUSHROOM_FORMS,
   },
   {
     type: 'snowcat',
     w: 1,
     h: 1,
     title: 'snowcat',
-    meta: '1×1 — two snow spheres, big ears, bobbing',
+    meta: '1×1 — classic, tower or loaf: the stack is rolled by tile, bobbing',
+    forms: SNOWCAT_FORMS,
   },
   {
     type: 'cardbox',
@@ -141,10 +154,11 @@ function place(
   destY: number,
   tile: { x: number; y: number; w: number; h: number },
   type: DecorType,
+  form?: number,
 ): void {
   ctx.save()
   ctx.translate(destX - tile.x * PIXEL, destY - tile.y * PIXEL)
-  drawDecor(ctx, type, tile, { ink, frameCount, playing })
+  drawDecor(ctx, type, tile, { ink, frameCount, playing, form })
   ctx.restore()
 }
 
@@ -197,14 +211,22 @@ function renderGrid(): void {
     const ctx = setupCanvas(canvas, cssW, cssH)
     drawGround(ctx, cssW, cssH, 118)
     // Three of each, on different tiles — which matters for the light tree and
-    // is worth showing anyway: these are meant to sit next to each other.
+    // is worth showing anyway: these are meant to sit next to each other. A
+    // piece with builds shows one of each instead, so the card is the full set.
     const gap = p.w * PIXEL + 34
     // Three side by side, or two when the piece is too wide for three to fit.
-    const count = gap * 3 <= cssW - 40 ? 3 : 2
+    const count = p.forms ? p.forms.length : gap * 3 <= cssW - 40 ? 3 : 2
     const startX = (cssW - (count - 1) * gap - p.w * PIXEL) / 2
     for (let n = 0; n < count; n++) {
       const tile = { x: seed * 5 + n * 13 + i, y: 3 + n, w: p.w, h: p.h }
-      place(ctx, startX + n * gap, baseline - p.h * PIXEL, tile, p.type)
+      place(
+        ctx,
+        startX + n * gap,
+        baseline - p.h * PIXEL,
+        tile,
+        p.type,
+        p.forms?.[n],
+      )
     }
   })
 }
