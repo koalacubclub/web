@@ -385,7 +385,7 @@ export interface PlacedItem {
 //     their cast — with thousands online, two koalas may well be in different
 //     samples of the same park.
 // A fresh sample is drawn on the next connect, so reloading re-rolls the world.
-export const CAST_SIZE = 50
+export const CAST_SIZE = 10
 
 // Display-name bounds (server-enforced; the input caps at NAME_MAX too).
 export const NAME_MIN = 1
