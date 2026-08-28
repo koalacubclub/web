@@ -9,6 +9,7 @@ _not_ exhaustive — read the code for details. Start here so you don't re-deriv
 | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [architecture.md](./architecture.md)                   | Stack, rendering model, directory map, the data-as-source-of-truth + build pipeline.                                                                                                                |
 | [decisions.md](./decisions.md)                         | The **why** — short ADR-style entries for each key decision. Read this first.                                                                                                                       |
+| [code-style.md](./code-style.md)                       | **How the code is written** — comment style, module shape, tests, and what the tooling already enforces.                                                                                            |
 | [content-workflows.md](./content-workflows.md)         | How to refresh the reel feed and the followers ("club") wall — a deliberately semi-manual, agent-assisted process.                                                                                  |
 | [game.md](./game.md)                                   | The `ParkGame` canvas mini-game: coordinate system, controls (incl. mobile gestures), food/scoring, rendering & performance.                                                                        |
 | [images.md](./images.md)                               | Image pipeline: imagetools variants (`src/assets/`) vs verbatim `public/`, the `src/assets/rooted/` convention for stable public URLs, and progressive (LQIP) loading.                              |
@@ -19,6 +20,7 @@ _not_ exhaustive — read the code for details. Start here so you don't re-deriv
 | [food-icons.md](./food-icons.md)                       | _(Legacy)_ Raster food-sprite art spec — the PNG pipeline was removed; food is drawn procedurally now.                                                                                              |
 | [perf-main-thread-plan.md](./perf-main-thread-plan.md) | Main-thread performance analysis + a ranked, verified fix plan (measure prod first; canvas/CSS paint costs).                                                                                        |
 
-Conventions: [Conventional Commits](https://www.conventionalcommits.org/); the
-`@/` import alias maps to `src/`. `main` is often busy with parallel work — rebase
+Conventions: [code-style.md](./code-style.md) is the short version —
+[Conventional Commits](https://www.conventionalcommits.org/); the `@/` import
+alias maps to `src/`. `main` is often busy with parallel work — rebase
 before pushing, or use a feature branch + PR.

@@ -57,6 +57,7 @@ The `@/` import alias maps to `src/`. See [`docs/architecture.md`](./docs/archit
 | Doc                                                      |                                                         |
 | -------------------------------------------------------- | ------------------------------------------------------- |
 | [docs/decisions.md](./docs/decisions.md)                 | **Why** the key choices were made (read first)          |
+| [docs/code-style.md](./docs/code-style.md)               | How the code is written — conventions & enforcement     |
 | [docs/architecture.md](./docs/architecture.md)           | Stack, structure, data-source-of-truth + build pipeline |
 | [docs/content-workflows.md](./docs/content-workflows.md) | Refreshing the reel feed & followers wall               |
 | [docs/game.md](./docs/game.md)                           | The `ParkGame` mini-game & food-collectible system      |
