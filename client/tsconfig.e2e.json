@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    /* Playwright specs are Node code that also carries BROWSER code: the
+       callbacks handed to page.evaluate run in the page, so they need the DOM
+       lib. That's why e2e has its own project rather than sharing
+       tsconfig.node.json with vite.config.ts and playwright.config.ts — those
+       are Node-only, and DOM globals typechecking inside them would be a bug
+       waiting to happen. */
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["e2e"]
+}
