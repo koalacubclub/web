@@ -56,7 +56,12 @@ import { radio } from '@/game/radio'
 import * as perfPrefs from '@/game/perfPrefs'
 import * as devPrefs from '@/game/devPrefs'
 import { NIGHT, makeRng, HORIZON } from '@/game/constants'
-import { getPondReflection, reflectObjects, reflectCat } from '@/game/pond'
+import {
+  clearPondReflections,
+  getPondReflection,
+  reflectObjects,
+  reflectCat,
+} from '@/game/pond'
 import { visibleRange, isVisibleX } from '@/game/culling'
 import * as parkStore from '@/game/parkStore'
 import * as controls from '@/game/controlsStore'
@@ -871,12 +876,17 @@ export default function ParkGame() {
       warm.src = HERO_PHOTO
     }
 
-    // Offscreen canvas holding the fully static sky + ground. Rendered once,
-    // then blitted each frame instead of recomputing the grass blobs, sand
-    // texture, and gradients every frame.
+    // Offscreen canvas holding the fully static sky + ground + imprint. Rendered
+    // once, then blitted each frame instead of recomputing the grass blobs, sand
+    // texture and gradients every frame.
+    //
+    // Sized in DEVICE px, like the visible canvas — NOT in logical px. Baked at
+    // 1x it was upscaled by RS on every blit, which is why the grass patches and
+    // the koala imprint read soft next to the sprites drawn live at full
+    // resolution. `bgRS` records the scale the bake holds, so a change in RS can
+    // re-bake it (rebakeIfScaleChanged) instead of leaving it stale.
     const bgCanvas = document.createElement('canvas')
-    bgCanvas.width = CANVAS_WIDTH
-    bgCanvas.height = CANVAS_HEIGHT
+    let bgRS = 0
     const bgCtx = bgCanvas.getContext('2d')
 
     // Whether an ability input should act right now: hero on-screen, not typing
@@ -1915,7 +1925,7 @@ export default function ParkGame() {
       // Baked environment reflection: the mirrored static background (sky/hills/
       // grass) above the pond never changes, so it's baked once per pond (see
       // getPondReflection) and just blitted here.
-      const refl = getPondReflection(bgCanvas, obj.x, obj.y)
+      const refl = getPondReflection(bgCanvas, obj.x, obj.y, bgRS)
       if (refl) ctx.drawImage(refl, bx.left, bx.top, w, h)
       // Object reflections: nearby scenery above the pond, mirrored into the water
       // (gating in reflectObjects; drawObjectArt supplies the art). Opaque — the
@@ -3632,6 +3642,13 @@ export default function ParkGame() {
 
     function renderStaticBackground() {
       if (!bgCtx || !canvas) return
+      // Bake through the SAME transform the world draws through, onto an
+      // offscreen the same size as the visible backing, so the blit below is
+      // pixel-for-pixel rather than an upscale.
+      bgCanvas.width = canvas.width
+      bgCanvas.height = canvas.height
+      bgRS = RS
+      ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
       const horizon = HORIZON
       // Near-black night sky, climbing 0.02 L in total from the top of the canvas to
@@ -3671,9 +3688,11 @@ export default function ParkGame() {
       ctx!.restore()
       bgCtx.drawImage(canvas, 0, 0)
     }
-    renderStaticBackground()
-    // Bake runs at logical size (above); now upsize the visible canvas backing.
+    // Size the backing FIRST: the bake renders at whatever RS is current, so it
+    // has to know it. (It used to run before this, at logical size, and every
+    // frame paid for that by upscaling the result.)
     sizeBacking()
+    renderStaticBackground()
 
     // Only animate while the game is on screen and the tab is visible.
     let onScreen = window.scrollY < window.innerHeight
@@ -3759,8 +3778,10 @@ export default function ParkGame() {
       ctx!.setTransform(RS, 0, 0, RS, 0, 0)
       ctx!.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
-      // Pre-rendered static sky + ground (blitted, smoothly upscaled).
-      ctx!.drawImage(bgCanvas, 0, 0)
+      // Pre-rendered static sky + ground. The destination size is spelled out in
+      // LOGICAL px: the source bitmap is RS-sized, and the active transform is
+      // RS, so this lands one bitmap pixel on one device pixel.
+      ctx!.drawImage(bgCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
       // Dynamic world, pushed down so the sky has room above it.
       ctx!.save()
@@ -3929,9 +3950,19 @@ export default function ParkGame() {
       updateOnScreen()
       setHover(null) // don't leave a tooltip stranded while scrolling away
     }
+    // Re-bake the static background when the device scale moves under us — a
+    // window resize, a DPR change, a drag between monitors. Without this the
+    // bake keeps the resolution it was made at and the sky/grass/imprint go
+    // soft (or needlessly heavy) relative to everything drawn live.
+    const rebakeIfScaleChanged = () => {
+      if (bgRS === RS) return
+      renderStaticBackground()
+      clearPondReflections() // sprites were cut from the old bitmap
+    }
     const handleResize = () => {
       measure()
       sizeBacking()
+      rebakeIfScaleChanged()
       updateOnScreen()
     }
     document.addEventListener('visibilitychange', handleVisibility)
@@ -3951,6 +3982,7 @@ export default function ParkGame() {
         ? new ResizeObserver(() => {
             measure()
             sizeBacking()
+            rebakeIfScaleChanged()
             updateCamera()
           })
         : null
