@@ -247,8 +247,13 @@ so the React UI and the imperative canvas never fight.
   `radio` (with `note.ts` for the ones it puffs out). One file each, plus
   `index.ts` (a `type` → draw dispatch and `isDecor`), `types.ts` and its own
   `parkInk.ts`. **Nothing here rolls a form or a jitter** — a mushroom is a
-  mushroom; the light tree is the only exception, and only in where its lamps
-  sit (seeded from the tile). **Drawn by the park** — `ParkGame` draws the ball
+  mushroom; the light tree is the only exception, and it rolls off the tile
+  because it is not its own art at all: it calls `trees/pine.ts` for the tree
+  (always the spire build, jittered per tile like any park pine) and only hangs
+  the lamps and the star on top. It asks `pineFrame` where that pine's cone
+  ended up rather than assuming one, so the lamps stay on the boughs if the
+  species is ever retuned — which is also why `decor/parkInk.ts` carries the
+  three pine tones. **Drawn by the park** — `ParkGame` draws the ball
   through it, so a base ball and a bought one are one sprite. Colours that
   should **glow** — lit windows, fairy lights, the star topper, the drifting
   music notes — are deliberately absent from `parkInk`, so they fall through

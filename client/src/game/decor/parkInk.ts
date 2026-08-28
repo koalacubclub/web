@@ -13,14 +13,21 @@
 // as well — which means their COLORS value has to map to their NIGHT value
 // explicitly. Those four are marked below; drop one and its object renders
 // bright in the middle of the night park.
+//
+// Three entries are the PINE's tones, copied from ../trees/parkInk.ts. The
+// light tree is the park's pine with lamps on it (see lightTree.ts), so it
+// hands the species' colours to this ink rather than the trees' one — and they
+// have to resolve the same way here, or a decorated pine would stand bright
+// beside a wild one. Retune them there and retune them here.
 const PARK_INK: Record<string, string> = {
-  '#244B30': '#272E49', // light-tree canopy, deepest blob — near-navy
   '#2E2E2E': '#302F30',
-  '#2E5E3A': '#2D3C4E', // light-tree canopy, upper blobs — a step lighter/bluer
+  '#2F7C43': '#2C5252', // pine, dark — see the pine note above
   '#3A2E2C': '#392F2E',
+  '#46A15A': '#3C6E60', // pine, light — see the pine note above
   '#4A4A4A': '#444344', // = COLORS.charcoal → NIGHT.charcoal
   '#6E6E6E': '#5F5D5F',
   '#767A80': '#65656D',
+  '#7A5A12': '#693928', // pine trunk — see the pine note above
   '#8B6914': '#764428', // COLORS.treeTrunk → NIGHT.treeTrunk
   '#8C877E': '#766F6A',
   '#8C9096': '#75767E',

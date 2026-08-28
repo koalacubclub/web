@@ -8,10 +8,10 @@
 //
 // Three of them vary with the tile they stand on, and only with the tile, so a
 // piece is the same piece on every frame and every reload: the light tree in
-// where its fairy lights sit, and the mushroom and the snow-cat in their shape
-// — which cap a mushroom grows, how a snow-cat is stacked (see `mushroom.ts`
-// and `snowcat.ts` for the builds). The other four are drawn one way only: a
-// cardboard box is a cardboard box.
+// the pine it is strung on and where its lamps sit, and the mushroom and the
+// snow-cat in their shape — which cap a mushroom grows, how a snow-cat is
+// stacked (see `mushroom.ts` and `snowcat.ts` for the builds). The other four
+// are drawn one way only: a cardboard box is a cardboard box.
 
 import { PIXEL, makeRng } from '../constants'
 import { parkInk } from './parkInk'
@@ -28,9 +28,10 @@ export type { Ctx, DecorTile, Ink, MushroomForm, SnowcatForm } from './types'
 export { parkInk } from './parkInk'
 export { drawNote } from './note'
 
-// Distinct salts, so a tile's lamp scatter, its build roll and the jitter that
+// Distinct salts, so a tile's light tree, its build roll and the jitter that
 // build draws with are independent of one another. `SEED_LIGHTS` was inline in
-// sprites.ts as `31`.
+// sprites.ts as `31`; it now seeds the whole light tree — the pine's own
+// proportions as well as the lamps on it — see `lightTree.ts`.
 //
 // The two form salts are also picked so tile (0, 0) rolls each piece's FIRST
 // build: the shop preview draws every item at (0, 0) (see ItemPreview), and a

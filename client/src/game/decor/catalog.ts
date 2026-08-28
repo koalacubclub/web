@@ -82,7 +82,7 @@ const PIECES: Array<{
     w: 2,
     h: 2,
     title: 'light tree',
-    meta: '2×2 — lamps scattered by tile; they twinkle while Koala is near',
+    meta: '2×2 — the park pine, strung and starred; twinkles while Koala is near',
   },
   {
     type: 'radio',
