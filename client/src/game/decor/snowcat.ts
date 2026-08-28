@@ -101,12 +101,14 @@ export function drawSnowcat(
   let b: Build
   switch (form) {
     case 1: // tower
+      // Stacked to stand a good head taller than the classic — the ears clear
+      // the top of the tile, the way the light tree's canopy does.
       b = {
         balls: [
-          { y: 0.78, rx: 0.27, ry: 0.26 },
-          { y: 0.55, rx: 0.21, ry: 0.2 },
+          { y: 0.75, rx: 0.26, ry: 0.22 },
+          { y: 0.48, rx: 0.2, ry: 0.2 },
         ],
-        headY: 0.34,
+        headY: 0.21,
         headR: 0.17,
         ears: 'pointy',
         tail: false,
