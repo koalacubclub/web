@@ -17,10 +17,14 @@
 //
 //   form 0 — spire: tall and narrow, seven tight boughs.
 //   form 1 — full: shorter and broader, five boughs with a wide skirt.
+//
+// The fairy-light tree in ../decor/lightTree.ts is this pine with lamps and a
+// star on it — it calls `drawPine` for the tree and `pineFrame` to find out
+// where the boughs landed, so the two can never drift apart.
 
 import { PIXEL } from '../constants'
 import { jitter, trunkScale } from './variance'
-import type { Ctx, DrawArgs } from './types'
+import type { Ctx, DrawArgs, TreeForm } from './types'
 
 /** How much narrower the solid body is than the boughs that cover it. */
 const BODY_INSET = 0.78
@@ -31,6 +35,78 @@ export const PINE_TONES = {
   light: '#46A15A',
 }
 
+/**
+ * The cone a pine stands in, before any of its art is drawn: where the apex is,
+ * where the boughs reach, how tall the body is.
+ */
+export interface PineFrame {
+  /** Centre of the trunk, in logical px. */
+  cx: number
+  /** Where the very top of the tree sits — the leader's tip. */
+  apexX: number
+  topY: number
+  /** The foliage's bottom edge, and how far it is from apex to base. */
+  baseY: number
+  coneH: number
+  /** How far the boughs reach at the base — the two sides differ on purpose. */
+  leftR: number
+  rightR: number
+  /** The bare trunk under the cone. */
+  foot: number
+  trunkH: number
+  trunkW: number
+  /** How many boughs this build carries. */
+  tiers: number
+}
+
+/**
+ * Rolls one pine's cone. It CONSUMES `rng` — `drawPine` calls it first and then
+ * keeps drawing the boughs off the same rng, so the two stay in step.
+ *
+ * Exported because the fairy-light tree (`../decor/lightTree.ts`) is this same
+ * pine with lamps on it: it re-rolls the frame from the same seed to find out
+ * where the foliage actually ended up, rather than hanging its lamps on a cone
+ * of its own that would drift the moment this one was retuned.
+ */
+export function pineFrame(
+  px: number,
+  py: number,
+  rng: () => number,
+  form: TreeForm,
+): PineFrame {
+  const j = jitter(rng)
+  const foot = py + PIXEL * 2
+  const cx = px + PIXEL + j.lean * 0.4
+  const spire = form === 0
+  // The cone takes the roll; the bare trunk under it stays much the same.
+  const ts = trunkScale(j)
+  const trunkH = PIXEL * (spire ? 0.42 : 0.58) * ts
+  const coneH = PIXEL * (spire ? 1.92 : 1.44) * j.h
+  const baseY = foot - trunkH * 0.85
+
+  // One side of the tree reaches further than the other, all the way up — a
+  // conifer that mirrors itself down the middle reads as a paper cut-out.
+  const reach0 = PIXEL * (spire ? 0.8 : 1.04) * j.w
+  const bias = 0.78 + rng() * 0.44
+
+  return {
+    cx,
+    apexX: cx + (rng() - 0.5) * PIXEL * 0.2,
+    topY: baseY - coneH,
+    baseY,
+    coneH,
+    leftR: reach0 * bias,
+    rightR: reach0 * (1.9 - bias),
+    foot,
+    trunkH,
+    trunkW: PIXEL * 0.24 * ts,
+    tiers: spire ? 7 : 5,
+  }
+}
+
+/** Half-width of the boughs at height `f` up the cone (0 = base, 1 = leader). */
+export const pineTaper = (f: number): number => (1 - f) ** 0.62
+
 export function drawPine(
   ctx: Ctx,
   px: number,
@@ -38,28 +114,22 @@ export function drawPine(
   { rng, form, ink }: DrawArgs,
 ): void {
   const t = PINE_TONES
-  const j = jitter(rng)
-  const foot = py + PIXEL * 2
-  const cx = px + PIXEL + j.lean * 0.4
-  const spire = form === 0
-  const tiers = spire ? 7 : 5
-  // The cone takes the roll; the bare trunk under it stays much the same.
-  const ts = trunkScale(j)
-  const trunkH = PIXEL * (spire ? 0.42 : 0.58) * ts
-  const coneH = PIXEL * (spire ? 1.92 : 1.44) * j.h
-  const baseY = foot - trunkH * 0.85
-  const topY = baseY - coneH
-
-  // One side of the tree reaches further than the other, all the way up — a
-  // conifer that mirrors itself down the middle reads as a paper cut-out.
-  const reach0 = PIXEL * (spire ? 0.8 : 1.04) * j.w
-  const bias = 0.78 + rng() * 0.44
-  const leftR = reach0 * bias
-  const rightR = reach0 * (1.9 - bias)
-  const apexX = cx + (rng() - 0.5) * PIXEL * 0.2
+  const {
+    cx,
+    apexX,
+    topY,
+    baseY,
+    coneH,
+    leftR,
+    rightR,
+    foot,
+    trunkH,
+    trunkW,
+    tiers,
+  } = pineFrame(px, py, rng, form)
 
   ctx.fillStyle = ink(t.trunk)
-  ctx.fillRect(cx - PIXEL * 0.12 * ts, foot - trunkH, PIXEL * 0.24 * ts, trunkH)
+  ctx.fillRect(cx - trunkW / 2, foot - trunkH, trunkW, trunkH)
 
   // Solid body first: the boughs are shading on top of a continuous silhouette,
   // so a taller tree can't come apart into floating triangles. Control points
@@ -92,7 +162,7 @@ export function drawPine(
     const midY = baseY - coneH * f * 0.9 - rng() * coneH * 0.04
     // Reach stays ahead of the body's taper at the same height, so the tips
     // break the outline: the body is straight, this curve is convex.
-    const taper = (1 - f) ** 0.62
+    const taper = pineTaper(f)
     const wl = leftR * taper * (0.9 + rng() * 0.28)
     const wr = rightR * taper * (0.9 + rng() * 0.28)
     const drop = coneH * 0.19 * (1 - 0.3 * f)
