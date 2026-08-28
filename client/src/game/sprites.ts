@@ -13,6 +13,7 @@
 // Each fn draws with the object's top-left at (obj.x*PIXEL, obj.y*PIXEL); the
 // caller sets up any world translate / device-resolution transform.
 
+import { SHOP_ITEMS_BY_KEY } from '@koala/shared'
 import { PIXEL } from './constants'
 import { drawNightTree, drawTree as drawSpeciesTree } from './trees'
 import { drawFlowers as drawSpeciesFlowers, drawNightFlowers } from './flowers'
@@ -24,6 +25,8 @@ import {
   drawParkPond,
 } from './props'
 import { drawDecor, drawParkDecor, isDecor } from './decor'
+import type { FlowerSpecies } from './flowers/types'
+import type { TreeSpecies } from './trees/types'
 
 export interface SpriteObject {
   type: string
@@ -31,9 +34,29 @@ export interface SpriteObject {
   y: number
   w: number
   h: number
+  // The catalog key this was bought as. Present on placed items and on shop
+  // previews; it's what pins a bought maple to being a maple (see speciesOf).
+  key?: string
   // Set on shop-placed decorations (absent for shop previews):
   placedAt?: number // Date.now() at purchase — drives the pop-in flourish
   expiresAt?: number // Date.now() TTL — drives the pre-expiry blink
+}
+
+/**
+ * The species a shop entry sells, or undefined to let the tile roll one.
+ *
+ * The catalog sells a specific tree and a specific patch of flowers — you plant
+ * the maple you picked — but ONLY the species is pinned. Form and the art's own
+ * jitter still come from the tile, so two maples side by side are two different
+ * maples.
+ *
+ * Undefined covers three cases, all of which correctly fall back to the tile's
+ * own roll: a base object the park seeded, an item bought before the catalog
+ * split (its key is the retired generic `tree`/`flowers`), and anything with
+ * only one look.
+ */
+function speciesOf(obj: SpriteObject): string | undefined {
+  return obj.key ? SHOP_ITEMS_BY_KEY[obj.key]?.species : undefined
 }
 
 type Ctx = CanvasRenderingContext2D
@@ -54,19 +77,27 @@ function drawScenery(
   night: boolean,
 ): void {
   const tile = { x: obj.x, y: obj.y }
+  const species = speciesOf(obj)
   switch (obj.type) {
-    case 'tree':
-      if (night) drawNightTree(ctx, tile)
-      else drawSpeciesTree(ctx, tile)
+    case 'tree': {
+      const opts = { species: species as TreeSpecies | undefined }
+      if (night) drawNightTree(ctx, tile, opts)
+      else drawSpeciesTree(ctx, tile, opts)
       break
+    }
     case 'bench':
       if (night) drawParkBench(ctx, tile)
       else drawPropBench(ctx, tile)
       break
-    case 'flowers':
-      if (night) drawNightFlowers(ctx, tile, { frameCount })
-      else drawSpeciesFlowers(ctx, tile, { frameCount })
+    case 'flowers': {
+      const opts = {
+        frameCount,
+        species: species as FlowerSpecies | undefined,
+      }
+      if (night) drawNightFlowers(ctx, tile, opts)
+      else drawSpeciesFlowers(ctx, tile, opts)
       break
+    }
     case 'pond':
       if (night) drawParkPond(ctx, tile)
       else drawPropPond(ctx, tile)

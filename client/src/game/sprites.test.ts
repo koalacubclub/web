@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { drawShopSprite } from './sprites'
 import { COLORS, NIGHT } from './constants'
-import { SHOP_ITEMS } from './shopItems'
+import { SHOP_ITEMS, SHOP_ITEMS_BY_KEY } from './shopItems'
+import { FLOWER_SPECIES } from './flowers'
+import { TREE_SPECIES } from './trees'
 import { parkInk } from './trees/parkInk'
 
 // A minimal CanvasRenderingContext2D stand-in that records every colour assigned
@@ -49,6 +51,29 @@ function recorder() {
 function paint(type: string, w: number, h: number, night?: boolean): string[] {
   const { ctx, colors } = recorder()
   drawShopSprite(ctx, { type, x: 2, y: 2, w, h }, 0, night ? { night } : {})
+  return colors
+}
+
+/** Paint a catalog entry by key, on a nameable tile. */
+function paintKey(key: string, x = 2, y = 2): string[] {
+  const item = SHOP_ITEMS_BY_KEY[key]
+  const { ctx, colors } = recorder()
+  drawShopSprite(ctx, { type: item.type, key, x, y, w: item.w, h: item.h }, 0, {
+    night: true,
+  })
+  return colors
+}
+
+/** Paint a type with NO key, so the tile rolls the species itself. */
+function paintUnkeyed(
+  type: string,
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+) {
+  const { ctx, colors } = recorder()
+  drawShopSprite(ctx, { type, x, y, w, h }, 0, { night: true })
   return colors
 }
 
@@ -107,5 +132,83 @@ describe('drawShopSprite night tinting', () => {
       // Each item has at least one palette-driven colour, so night ≠ preview.
       expect(dark, `${item.key} not tinted in night mode`).not.toEqual(bright)
     }
+  })
+
+  // Every entry that names a species must name one the art actually has. The
+  // catalog lives in the shared protocol, which can't import the client's
+  // species unions, so `species` is a bare string there — a typo would fail
+  // silently, drawing whatever the tile happened to roll.
+  it('names only species the art can draw', () => {
+    const known: Record<string, readonly string[]> = {
+      tree: TREE_SPECIES,
+      flowers: FLOWER_SPECIES,
+    }
+    for (const item of SHOP_ITEMS) {
+      if (item.species == null) continue
+      expect(
+        known[item.type],
+        `${item.key}: no species list for ${item.type}`,
+      ).toBeDefined()
+      expect(known[item.type], item.key).toContain(item.species)
+    }
+  })
+
+  it('sells one entry per species, for trees and for flowers', () => {
+    for (const [type, all] of [
+      ['tree', TREE_SPECIES],
+      ['flowers', FLOWER_SPECIES],
+    ] as const) {
+      const sold = SHOP_ITEMS.filter((i) => i.type === type).map(
+        (i) => i.species,
+      )
+      expect(sold.slice().sort(), type).toEqual(all.slice().sort())
+    }
+  })
+
+  it('pins the species a shop entry sells, whatever the tile would roll', () => {
+    // The same key on wildly different tiles must draw the SAME species. Colour
+    // is the tell: a maple's canopy palette shares nothing with a pine's.
+    for (const item of SHOP_ITEMS) {
+      if (item.species == null) continue
+      const here = new Set(paintKey(item.key, 3, 4))
+      const there = new Set(paintKey(item.key, 40, 11))
+      const shared = [...here].filter((c) => there.has(c))
+      expect(
+        shared.length,
+        `${item.key} shares no colour across tiles`,
+      ).toBeGreaterThan(2)
+    }
+  })
+
+  it('still varies form and jitter between two of the same species', () => {
+    // The point of pinning only the species: three maples in a row are three
+    // different maples. Same key, different tiles → same palette, different art.
+    const a = paintKey('tree-maple', 3, 4)
+    const b = paintKey('tree-maple', 40, 11)
+    expect(new Set(a)).toEqual(new Set(b)) // same species, so same palette
+    expect(a).not.toEqual(b) // but not the same tree
+  })
+
+  it('lets an item with no key keep rolling its species from the tile', () => {
+    // Base objects, and anything placed before the catalog was split by
+    // species, carry no usable key — they must still roll per tile rather than
+    // all collapsing onto one species.
+    const seen = new Set<string>()
+    for (let x = 0; x < 24; x++)
+      seen.add(paintUnkeyed('tree', 2, 2, x, 3).join())
+    expect(seen.size).toBeGreaterThan(1)
+  })
+
+  it('ignores a key the catalog no longer has, rather than throwing', () => {
+    const { ctx, colors } = recorder()
+    expect(() =>
+      drawShopSprite(
+        ctx,
+        { type: 'tree', key: 'tree', x: 2, y: 2, w: 2, h: 2 },
+        0,
+        { night: true },
+      ),
+    ).not.toThrow()
+    expect(colors.length).toBeGreaterThan(0)
   })
 })
