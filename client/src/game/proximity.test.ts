@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { IDLE_FADE, IDLE_REACH, idleMotion, idleMotionNear } from './proximity'
+import {
+  IDLE_FADE,
+  IDLE_REACH,
+  idleMotion,
+  idleMotionNear,
+  isNear,
+  tileDistance,
+} from './proximity'
 
 describe('idle motion', () => {
   it('runs at full strength while Koala is inside the reach', () => {
@@ -48,5 +55,33 @@ describe('idle motion', () => {
     expect(mid).toBeGreaterThan(0)
     expect(mid).toBeLessThan(1)
     expect(far).toBe(0)
+  })
+})
+
+describe('near enough', () => {
+  const obj = { x: 10, y: 10, w: 1, h: 1 }
+
+  it('is the same reach the motion runs at full strength within', () => {
+    // The radio asks this question and everything else asks for an amplitude,
+    // but both measure to the same edge — one felt distance across the park.
+    expect(isNear({ x: 10, y: 10 }, obj)).toBe(true)
+    expect(isNear({ x: 10 + IDLE_REACH - 0.1, y: 10 }, obj)).toBe(true)
+    expect(isNear({ x: 10 + IDLE_REACH, y: 10 }, obj)).toBe(false)
+    expect(isNear({ x: 20, y: 10 }, obj)).toBe(false)
+    // Everything it says yes to is moving at full strength.
+    expect(idleMotionNear({ x: 10 + IDLE_REACH - 0.1, y: 10 }, obj)).toBe(1)
+  })
+
+  it('takes a reach of its own for the things that want one closer in', () => {
+    // The author labels reveal at 2.2 tiles, nearer than motion starts.
+    expect(isNear({ x: 12, y: 10 }, obj, 2.2)).toBe(true)
+    expect(isNear({ x: 12.5, y: 10 }, obj, 2.2)).toBe(false)
+  })
+
+  it('measures the same distance the amplitude does', () => {
+    const cat = { x: 8, y: 9 }
+    const d = tileDistance(cat, obj)
+    expect(isNear(cat, obj)).toBe(d < IDLE_REACH)
+    expect(idleMotionNear(cat, obj)).toBe(idleMotion(d))
   })
 })

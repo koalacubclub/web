@@ -4,8 +4,8 @@
 // every ball bounced on every frame, whether or not Koala was anywhere near
 // them. Now the motion follows her — a patch stirs and a ball starts hopping as
 // she comes close, and both settle once she has wandered off. It is the same
-// proximity idea a radio already plays on (RADIO_REACH in ParkGame), and it
-// also means the park is calm wherever she isn't.
+// proximity idea the radio plays on — which now asks the same question here
+// (`isNear`) — and it also means the park is calm wherever she isn't.
 //
 // The fade band is the point. A hard on/off at one radius would snap a bloom
 // mid-stroke and leave a ball hanging in the air. These return an AMPLITUDE
@@ -37,6 +37,21 @@ export function tileDistance(
     cat.x + 0.5 - (obj.x + obj.w / 2),
     cat.y + 0.5 - (obj.y + obj.h / 2),
   )
+}
+
+/**
+ * Whether Koala is inside `reach` tiles of an object — the same question in the
+ * one shape an amplitude can't answer. The radio wants this: its proximity is a
+ * yes/no (it also has to wait for her first step, and for an "on" slap state),
+ * and the smooth part of it is a jingle fading in the audio layer rather than
+ * anything the draw does.
+ */
+export function isNear(
+  cat: { x: number; y: number },
+  obj: { x: number; y: number; w: number; h: number },
+  reach = IDLE_REACH,
+): boolean {
+  return tileDistance(cat, obj) < reach
 }
 
 /** The idle motion an object gets with Koala where she is — the park's one call. */
