@@ -1,6 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { COLORS, NIGHT } from '../constants'
-import { drawDecor, isDecor, parkInk, type DecorType } from './index'
+import {
+  MUSHROOM_FORMS,
+  SNOWCAT_FORMS,
+  drawDecor,
+  isDecor,
+  mushroomFormAt,
+  parkInk,
+  snowcatFormAt,
+  type DecorType,
+} from './index'
+
+/** The builds each piece comes in — one, unless the tile rolls its shape. */
+const FORMS: Record<DecorType, readonly number[]> = {
+  ball: [0],
+  mushroom: MUSHROOM_FORMS,
+  snowcat: SNOWCAT_FORMS,
+  cardbox: [0],
+  house: [0],
+  lighttree: [0],
+  radio: [0],
+}
 
 const FOOTPRINT: Record<DecorType, { w: number; h: number }> = {
   ball: { w: 1, h: 1 },
@@ -71,6 +91,7 @@ function paint(
     park?: boolean
     frameCount?: number
     playing?: boolean
+    form?: number
   } = {},
 ): string[] {
   const { ctx, calls } = recorder()
@@ -82,6 +103,7 @@ function paint(
       ink: opts.park ? parkInk : undefined,
       frameCount: opts.frameCount ?? 0,
       playing: opts.playing,
+      form: opts.form,
     },
   )
   return calls
@@ -109,14 +131,18 @@ describe('decor', () => {
 
   it('is deterministic — the same tile paints the same thing twice', () => {
     for (const type of ALL) {
-      expect(paint(type), type).toEqual(paint(type))
+      for (const form of FORMS[type]) {
+        expect(paint(type, { form }), type).toEqual(paint(type, { form }))
+      }
     }
   })
 
   it('moves with its tile without changing shape', () => {
+    // Pinned to one build, since the whole point of the other builds is that
+    // they are a different shape.
     for (const type of ALL) {
-      const here = paint(type, { x: 3, y: 4 })
-      const there = paint(type, { x: 21, y: 9 })
+      const here = paint(type, { x: 3, y: 4, form: 0 })
+      const there = paint(type, { x: 21, y: 9, form: 0 })
       expect(shape(there), type).toEqual(shape(here))
       expect(there, type).not.toEqual(here)
     }
@@ -129,6 +155,62 @@ describe('decor', () => {
     expect(a).not.toEqual(b)
   })
 
+  it('draws a different shape for every build of the pieces that have them', () => {
+    for (const type of ['mushroom', 'snowcat'] as const) {
+      const drawn = FORMS[type].map((form) => shape(paint(type, { form })))
+      const distinct = new Set(drawn.map((d) => d.join('|')))
+      expect(distinct.size, type).toBe(FORMS[type].length)
+    }
+  })
+
+  it('falls back to the first build for a form a piece does not have', () => {
+    // The mushroom has four caps and the snow-cat three, so form 3 is a
+    // snow-cat that doesn't exist. It draws the classic one rather than nothing.
+    expect(paint('snowcat', { form: 3 })).toEqual(paint('snowcat', { form: 0 }))
+  })
+
+  it('rolls a build from the tile, and the same one every time', () => {
+    for (const [x, y] of [
+      [3, 4],
+      [21, 9],
+      [0, 0],
+    ]) {
+      expect(MUSHROOM_FORMS).toContain(mushroomFormAt(x, y))
+      expect(SNOWCAT_FORMS).toContain(snowcatFormAt(x, y))
+      expect(mushroomFormAt(x, y)).toBe(mushroomFormAt(x, y))
+      expect(paint('mushroom', { x, y })).toEqual(
+        paint('mushroom', { x, y, form: mushroomFormAt(x, y) }),
+      )
+      expect(paint('snowcat', { x, y })).toEqual(
+        paint('snowcat', { x, y, form: snowcatFormAt(x, y) }),
+      )
+    }
+  })
+
+  it('shows the plain build on the shop card', () => {
+    // ItemPreview draws every shop item at tile (0, 0), so that tile decides
+    // what a buyer sees on the card. The form salts are picked to land it on
+    // the plain mushroom and the plain snow-cat; changing one without checking
+    // here would quietly put a variant on the card.
+    expect(mushroomFormAt(0, 0)).toBe(MUSHROOM_FORMS[0])
+    expect(snowcatFormAt(0, 0)).toBe(SNOWCAT_FORMS[0])
+  })
+
+  it('grows more than one cap and stacks more than one snow-cat across the park', () => {
+    // Not a distribution test — just that a stretch of park doesn't come out
+    // all one build, which is what a broken roll would look like.
+    const caps = new Set<number>()
+    const stacks = new Set<number>()
+    for (let x = 0; x < 40; x++) {
+      for (let y = 0; y < 14; y++) {
+        caps.add(mushroomFormAt(x, y))
+        stacks.add(snowcatFormAt(x, y))
+      }
+    }
+    expect(caps.size).toBe(MUSHROOM_FORMS.length)
+    expect(stacks.size).toBe(SNOWCAT_FORMS.length)
+  })
+
   it('inks every palette colour it uses, so nothing renders bright at night', () => {
     // Any COLORS value the art reaches for must have a park counterpart, or it
     // would light up in the middle of the night park.
@@ -139,7 +221,9 @@ describe('decor', () => {
     // flower2 (#CC963E) — so all this can fairly ask is that the ink lands on
     // one of them, not on which.
     const used = new Set<string>()
-    for (const type of ALL) for (const c of colours(paint(type))) used.add(c)
+    for (const type of ALL)
+      for (const form of FORMS[type])
+        for (const c of colours(paint(type, { form }))) used.add(c)
     const palette = Object.entries(COLORS) as [keyof typeof COLORS, string][]
     for (const bright of used) {
       const names = palette.filter(([, v]) => v === bright).map(([n]) => n)
@@ -162,15 +246,20 @@ describe('decor', () => {
       '#FF8AD1',
     ]
     for (const type of ALL) {
-      const bright = colours(paint(type))
-      const park = colours(paint(type, { park: true }))
-      expect(park.length, type).toBe(bright.length)
-      let changed = 0
-      bright.forEach((c, i) => {
-        if (GLOW.includes(c)) expect(park[i], `${type} glow ${c}`).toBe(c)
-        if (park[i] !== c) changed++
-      })
-      expect(changed, `${type} has no park-toned colour`).toBeGreaterThan(0)
+      for (const form of FORMS[type]) {
+        const bright = colours(paint(type, { form }))
+        const park = colours(paint(type, { form, park: true }))
+        expect(park.length, type).toBe(bright.length)
+        let changed = 0
+        bright.forEach((c, i) => {
+          if (GLOW.includes(c)) expect(park[i], `${type} glow ${c}`).toBe(c)
+          if (park[i] !== c) changed++
+        })
+        expect(
+          changed,
+          `${type} form ${form} has no park-toned colour`,
+        ).toBeGreaterThan(0)
+      }
     }
   })
 
@@ -183,9 +272,18 @@ describe('decor', () => {
       )
     }
     for (const type of still) {
-      expect(paint(type, { frameCount: 40 }), type).toEqual(
-        paint(type, { frameCount: 0 }),
-      )
+      for (const form of FORMS[type]) {
+        expect(paint(type, { frameCount: 40, form }), type).toEqual(
+          paint(type, { frameCount: 0, form }),
+        )
+      }
+    }
+    // Every snow-cat bobs, however it is stacked.
+    for (const form of SNOWCAT_FORMS) {
+      expect(
+        paint('snowcat', { frameCount: 40, form }),
+        `form ${form}`,
+      ).not.toEqual(paint('snowcat', { frameCount: 0, form }))
     }
   })
 
