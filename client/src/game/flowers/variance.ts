@@ -32,9 +32,17 @@ export function jitter(rng: () => number): Jitter {
   }
 }
 
-/** The park's bloom bob: a slow sway, phase-shifted per stem. */
-export function bob(frameCount: number, phase: number): number {
-  return Math.sin(frameCount * 0.05 + phase) * 2
+/**
+ * The park's bloom bob: a slow sway, phase-shifted per stem, scaled by how much
+ * this patch is swaying at all (see `swayAt` in `index.ts` — the park holds a
+ * patch still until Koala comes near it).
+ *
+ * `sway` scales the AMPLITUDE and not the clock on purpose: the phase runs on
+ * whether anyone is watching or not, so a patch eases back to its rest pose and
+ * out of it again instead of snapping mid-stroke as she walks past.
+ */
+export function bob(frameCount: number, phase: number, sway = 1): number {
+  return Math.sin(frameCount * 0.05 + phase) * 2 * sway
 }
 
 /** Filled circle. */

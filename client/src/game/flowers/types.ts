@@ -36,6 +36,11 @@ export interface DrawArgs {
   ink: Ink
   /** Game frame counter, for the same gentle bob the park's blooms have. */
   frameCount: number
+  /**
+   * How hard this patch is swaying, 0–1: full while Koala is near it, easing to
+   * 0 (dead still) once she is out of reach. Multiply every `bob` by it.
+   */
+  sway: number
 }
 
 /**

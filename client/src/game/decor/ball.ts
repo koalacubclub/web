@@ -3,15 +3,18 @@
 // ball; ParkGame used to carry its own copy with the park colours hard-coded.
 
 import { COLORS, PIXEL, SCALE } from '../constants'
-import type { AnimatedDrawArgs, Ctx } from './types'
+import type { BallDrawArgs, Ctx } from './types'
 
 export function drawBall(
   ctx: Ctx,
   px: number,
   py: number,
-  { frameCount, ink }: AnimatedDrawArgs,
+  { frameCount, motion, ink }: BallDrawArgs,
 ) {
-  const bounce = Math.abs(Math.sin(frameCount * 0.06)) * SCALE * 2
+  // `motion` scales the hop rather than the clock, so a ball settles onto the
+  // grass as Koala walks off and lifts out of it again as she comes back —
+  // where stopping the clock would strand it mid-air.
+  const bounce = Math.abs(Math.sin(frameCount * 0.06)) * SCALE * 2 * motion
   ctx.fillStyle = 'rgba(0,0,0,0.1)'
   ctx.beginPath()
   ctx.ellipse(

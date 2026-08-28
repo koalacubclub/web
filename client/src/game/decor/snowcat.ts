@@ -89,10 +89,12 @@ export function drawSnowcat(
   ctx: Ctx,
   px: number,
   py: number,
-  { frameCount, rng, form, ink }: SnowcatDrawArgs,
+  { frameCount, motion, rng, form, ink }: SnowcatDrawArgs,
 ): void {
   const s = SCALE
-  const bob = Math.sin(frameCount * 0.04) * s * 0.3
+  // `motion` scales the bob rather than the clock: a snow-cat Koala has walked
+  // away from sinks back onto the snow instead of freezing mid-hover.
+  const bob = Math.sin(frameCount * 0.04) * s * 0.3 * motion
   // Narrow rolls: a snow-cat is a snow-cat, only rounder or leaner.
   const plump = 0.94 + rng() * 0.14
   const lift = 0.96 + rng() * 0.09

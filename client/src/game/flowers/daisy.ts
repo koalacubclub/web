@@ -20,7 +20,7 @@ export function drawDaisy(
   ctx: Ctx,
   px: number,
   py: number,
-  { rng, form, ink, frameCount }: DrawArgs,
+  { rng, form, ink, frameCount, sway }: DrawArgs,
 ): void {
   const t = DAISY_TONES
   const j = jitter(rng)
@@ -36,7 +36,7 @@ export function drawDaisy(
     const f = count === 1 ? 0.5 : i / (count - 1)
     const bx = cx + (f - 0.5) * 2 * spread + (rng() - 0.5) * PIXEL * 0.06
     const h = stemH * (0.7 + rng() * 0.6)
-    const by = foot - h + bob(frameCount, i * 1.4 + px * 0.05)
+    const by = foot - h + bob(frameCount, i * 1.4 + px * 0.05, sway)
     ctx.strokeStyle = ink(t.stem)
     stem(ctx, bx + (rng() - 0.5) * SCALE, foot, bx, by + petalR, SCALE * 0.7)
     // A leaf on some stems, never all.

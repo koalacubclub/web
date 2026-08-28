@@ -45,6 +45,7 @@ import { drawNightTree as drawSpeciesTree } from '@/game/trees'
 import { drawNightFlowers as drawSpeciesFlowers } from '@/game/flowers'
 import { drawNightRock as drawSpeciesRock } from '@/game/rocks'
 import { drawParkBall } from '@/game/decor'
+import { idleMotionNear } from '@/game/proximity'
 import {
   drawParkBench,
   drawPondSurface,
@@ -1847,13 +1848,16 @@ export default function ParkGame() {
     // the same patch and neighbours differ.
     //
     // frameCount drives the bob the blooms have always had; the species art keeps
-    // it, phase-shifted per stem rather than moving the whole patch as one.
+    // it, phase-shifted per stem rather than moving the whole patch as one. What
+    // is new is that a patch only bobs while Koala is near it — the same
+    // proximity the radio plays on — so the park is still until she walks
+    // through it, and a patch eases into and out of its sway as she passes.
     function drawFlowers(obj: GameObject) {
       if (!ctx) return
       drawSpeciesFlowers(
         ctx,
         { x: obj.x, y: obj.y },
-        { frameCount: g.frameCount },
+        { frameCount: g.frameCount, sway: idleMotionNear(g.cat, obj) },
       )
     }
 
@@ -1878,6 +1882,7 @@ export default function ParkGame() {
           reducedMotion,
           night: true,
           playing,
+          motion: idleMotionNear(g.cat, o),
         })
         return
       }
@@ -1981,10 +1986,12 @@ export default function ParkGame() {
     }
 
     // The ball is the decor module's ball — the same draw a bought one gets,
-    // so the base balls the park seeds and a shop ball are one sprite.
+    // so the base balls the park seeds and a shop ball are one sprite. Like the
+    // flowers, it only hops while Koala is near enough to be playing with it,
+    // and settles onto the grass once she has wandered off.
     function drawBall(obj: GameObject) {
       if (!ctx) return
-      drawParkBall(ctx, obj, g.frameCount)
+      drawParkBall(ctx, obj, g.frameCount, idleMotionNear(g.cat, obj))
     }
 
     // The park's stones are the faceted art in game/rocks — a boulder, a cairn,

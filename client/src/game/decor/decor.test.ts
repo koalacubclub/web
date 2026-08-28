@@ -92,6 +92,7 @@ function paint(
     frameCount?: number
     playing?: boolean
     form?: number
+    motion?: number
   } = {},
 ): string[] {
   const { ctx, calls } = recorder()
@@ -104,6 +105,7 @@ function paint(
       frameCount: opts.frameCount ?? 0,
       playing: opts.playing,
       form: opts.form,
+      motion: opts.motion,
     },
   )
   return calls
@@ -285,6 +287,36 @@ describe('decor', () => {
         `form ${form}`,
       ).not.toEqual(paint('snowcat', { frameCount: 0, form }))
     }
+  })
+
+  it('settles the snow-cat when Koala is not near it', () => {
+    for (const form of SNOWCAT_FORMS) {
+      const a = paint('snowcat', { frameCount: 0, motion: 0, form })
+      expect(
+        paint('snowcat', { frameCount: 40, motion: 0, form }),
+        `form ${form}`,
+      ).toEqual(a)
+      expect(paint('snowcat', { frameCount: 40, motion: 1, form })).not.toEqual(
+        a,
+      )
+    }
+  })
+
+  it('rests the ball on the grass when Koala is not near it', () => {
+    // motion 0 is the park's "she is nowhere near this ball": the clock keeps
+    // running, the ball sits still. Anything else animates as it always did.
+    const a = paint('ball', { frameCount: 0, motion: 0 })
+    expect(paint('ball', { frameCount: 40, motion: 0 })).toEqual(a)
+    expect(paint('ball', { frameCount: 91, motion: 0 })).toEqual(a)
+    expect(paint('ball', { frameCount: 40, motion: 1 })).not.toEqual(a)
+    // Half way through the fade band it hops, but lower than at her feet.
+    const half = paint('ball', { frameCount: 40, motion: 0.5 })
+    expect(half).not.toEqual(a)
+    expect(half).not.toEqual(paint('ball', { frameCount: 40, motion: 1 }))
+    // Bouncing is still the default — only the park asks it to stop.
+    expect(paint('ball', { frameCount: 40 })).toEqual(
+      paint('ball', { frameCount: 40, motion: 1 }),
+    )
   })
 
   it('only pulses and puffs notes out of the radio while it plays', () => {
