@@ -73,7 +73,22 @@ function Reveal({
   )
 }
 
-// Reel card — poster thumbnail that links out to the reel on Instagram
+// Corner quick-link icon — always-visible, one-tap shortcut for a user who
+// already knows which platform they want. Independent hover/focus feedback,
+// not tied to the card's `.group` hover state.
+const cornerIconClass =
+  'w-4 h-4 text-white/90 drop-shadow-sm transition-transform duration-200 hover:scale-110 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.13_78)]/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/40 rounded-full'
+
+// Choice button used inside the platform picker overlay — bigger, clearly
+// tappable (44px+), icon + label so it doesn't read as a duplicate of the
+// icon-only corner quick-links.
+const choiceButtonClass =
+  'flex flex-col items-center gap-1.5 px-4 py-3 rounded-xl bg-white/10 border border-white/15 text-white/90 transition-colors duration-150 hover:bg-white/20 hover:border-[oklch(0.82_0.13_78)]/50 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[oklch(0.82_0.13_78)]/70'
+
+// Reel card — poster thumbnail that links out to the reel. Single-platform
+// reels (Instagram only) navigate straight out on click, exactly as before.
+// Dual-platform reels (also on TikTok) open a card-scoped picker instead,
+// since a plain click can no longer resolve to a single destination.
 function ReelCard({
   code,
   caption,
@@ -85,86 +100,228 @@ function ReelCard({
   tiktok?: string
   index: number
 }) {
-  const ref = useRef(null)
-  const isInView = useInView(ref, { once: true, margin: '-5%' })
+  const cardRef = useRef<HTMLAnchorElement | HTMLDivElement | null>(null)
+  const setCardRef = (node: HTMLAnchorElement | HTMLDivElement | null) => {
+    cardRef.current = node
+  }
+  const igButtonRef = useRef<HTMLButtonElement>(null)
+  const isInView = useInView(cardRef, { once: true, margin: '-5%' })
+  const [choosing, setChoosing] = useState(false)
+  const dualPlatform = Boolean(tiktok)
 
   // Alternate slight rotations for playfulness
   const rotation = index % 3 === 0 ? -1.5 : index % 3 === 1 ? 1 : -0.5
 
-  return (
-    <motion.a
-      ref={ref}
-      href={reelUrl(code)}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={`Watch on Instagram: ${caption}`}
-      className="group relative block"
-      initial={{ opacity: 0, y: 60, rotate: rotation * 2 }}
-      animate={isInView ? { opacity: 1, y: 0, rotate: rotation } : {}}
-      transition={{
-        duration: 0.9,
-        delay: (index % 2) * 0.1,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      whileHover={{ rotate: 0, scale: 1.02, y: -4 }}
-      style={{ transformOrigin: 'center bottom' }}
-    >
-      {/* Poster with organic shadow */}
-      <div className="relative aspect-[9/16] rounded-2xl overflow-hidden transform-gpu isolate [clip-path:inset(0_round_1rem)] bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
-        <img
-          src={reelSrc[code]}
-          srcSet={reelSrcSet[code]}
-          sizes="(min-width: 1024px) 330px, 45vw"
-          alt=""
-          loading="lazy"
-          width={640}
-          height={1136}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-        />
+  // Escape closes the picker while it's open.
+  useEffect(() => {
+    if (!choosing) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setChoosing(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [choosing])
 
-        {/* Legibility gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+  // Move focus into the picker when it opens — a div[role=button] doesn't
+  // naturally move focus into new content the way a native <dialog> would.
+  useEffect(() => {
+    if (choosing) igButtonRef.current?.focus()
+  }, [choosing])
 
-        {/* Platform glyphs, top-right — Instagram always, TikTok mirror only
-            when this clip also exists there */}
-        <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
-          <SiInstagram className="w-4 h-4 text-white/90 drop-shadow-sm" />
-          {tiktok && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                window.open(
-                  tiktokReelUrl(tiktok),
-                  '_blank',
-                  'noopener,noreferrer',
-                )
-              }}
-              aria-label={`Also watch on TikTok: ${caption}`}
-              className="text-white/90 drop-shadow-sm transition-transform hover:scale-110 hover:text-white"
-            >
-              <SiTiktok className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+  const closeAndReturnFocus = () => {
+    setChoosing(false)
+    cardRef.current?.focus()
+  }
 
-        {/* Play affordance */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md flex items-center justify-center opacity-80 transition-all duration-300 group-hover:opacity-100 group-hover:scale-110">
-            <Play
-              className="w-5 h-5 translate-x-[1px] text-white"
-              fill="currentColor"
-            />
-          </div>
+  const selectPlatform = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer')
+    closeAndReturnFocus()
+  }
+
+  const poster = (
+    <div className="relative aspect-[9/16] rounded-2xl overflow-hidden transform-gpu isolate [clip-path:inset(0_round_1rem)] bg-white/[0.03] border border-white/[0.06] shadow-[0_8px_40px_rgba(0,0,0,0.3)]">
+      <img
+        src={reelSrc[code]}
+        srcSet={reelSrcSet[code]}
+        sizes="(min-width: 1024px) 330px, 45vw"
+        alt=""
+        loading="lazy"
+        width={640}
+        height={1136}
+        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+      />
+
+      {/* Legibility gradient */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+      {/* Platform glyphs, top-right — Instagram always, TikTok mirror only
+          when this clip also exists there. Both are independent quick-links:
+          always-visible, one-tap shortcuts for a user who already knows
+          which platform they want, complementary to (not replaced by) the
+          picker overlay below. */}
+      <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            window.open(reelUrl(code), '_blank', 'noopener,noreferrer')
+          }}
+          aria-label={`Watch on Instagram: ${caption}`}
+          className={cornerIconClass}
+        >
+          <SiInstagram className="w-4 h-4" />
+        </button>
+        {tiktok && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              window.open(
+                tiktokReelUrl(tiktok),
+                '_blank',
+                'noopener,noreferrer',
+              )
+            }}
+            aria-label={`Also watch on TikTok: ${caption}`}
+            className={cornerIconClass}
+          >
+            <SiTiktok className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Play affordance */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-md flex items-center justify-center opacity-80 transition-all duration-300 group-hover:opacity-100 group-hover:scale-110">
+          <Play
+            className="w-5 h-5 translate-x-[1px] text-white"
+            fill="currentColor"
+          />
         </div>
       </div>
 
-      {/* Caption below */}
-      <p className="mt-3 line-clamp-1 text-[11px] tracking-wide text-white/35 font-light text-center">
-        {caption}
-      </p>
-    </motion.a>
+      {/* Card-scoped platform picker — only for reels that also exist on
+          TikTok. A "this card is now asking a question" overlay, not a page
+          modal: darkens the poster, offers the two destinations, and
+          dismisses via backdrop click or Escape (no close button). */}
+      {dualPlatform && (
+        <AnimatePresence>
+          {choosing && (
+            <motion.div
+              role="dialog"
+              aria-modal="false"
+              aria-label="Choose platform"
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/75 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={closeAndReturnFocus}
+            >
+              <p className="text-[11px] tracking-wide text-white/60 font-light uppercase">
+                Watch on
+              </p>
+              <div
+                className="flex items-center gap-3"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  ref={igButtonRef}
+                  type="button"
+                  className={choiceButtonClass}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    selectPlatform(reelUrl(code))
+                  }}
+                >
+                  <SiInstagram className="w-6 h-6" />
+                  <span className="text-[10px] tracking-wide">Instagram</span>
+                </button>
+                <button
+                  type="button"
+                  className={choiceButtonClass}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    selectPlatform(tiktokReelUrl(tiktok!))
+                  }}
+                >
+                  <SiTiktok className="w-6 h-6" />
+                  <span className="text-[10px] tracking-wide">TikTok</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      )}
+    </div>
+  )
+
+  const captionEl = (
+    <p className="mt-3 line-clamp-1 text-[11px] tracking-wide text-white/35 font-light text-center">
+      {caption}
+    </p>
+  )
+
+  const motionProps = {
+    initial: { opacity: 0, y: 60, rotate: rotation * 2 },
+    animate: isInView ? { opacity: 1, y: 0, rotate: rotation } : {},
+    transition: {
+      duration: 0.9,
+      delay: (index % 2) * 0.1,
+      ease: [0.16, 1, 0.3, 1] as const,
+    },
+    whileHover: { rotate: 0, scale: 1.02, y: -4 },
+    style: { transformOrigin: 'center bottom' },
+  }
+
+  if (!dualPlatform) {
+    // Single-platform: unchanged real anchor semantics — a click always
+    // navigates, so a real <a href> is correct and nothing is muddied.
+    return (
+      <motion.a
+        ref={setCardRef}
+        href={reelUrl(code)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Watch on Instagram: ${caption}`}
+        className="group relative block"
+        {...motionProps}
+      >
+        {poster}
+        {captionEl}
+      </motion.a>
+    )
+  }
+
+  // Dual-platform: a click no longer resolves to a single destination, so
+  // the outer element is a role="button" div (not a real link) that opens
+  // the in-card picker instead.
+  return (
+    <motion.div
+      ref={setCardRef}
+      role="button"
+      tabIndex={0}
+      aria-haspopup="dialog"
+      aria-expanded={choosing}
+      aria-label={`${caption} — choose Instagram or TikTok`}
+      className="group relative block"
+      onClick={() => {
+        if (choosing) return
+        setChoosing(true)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setChoosing(true)
+        }
+      }}
+      {...motionProps}
+    >
+      {poster}
+      {captionEl}
+    </motion.div>
   )
 }
 
