@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test'
+import { REELS, type Reel } from '../src/data/reels.ts'
+
+const dualPlatformReelCount = REELS.filter((reel: Reel) => reel.tiktok).length
 
 // Smoke test: verifies the app shell, the reel feed, and outbound links render.
 test('landing page renders hero, reel feed and social links', async ({
@@ -11,10 +14,38 @@ test('landing page renders hero, reel feed and social links', async ({
   // Hero: the Koala's Park mini game canvas
   await expect(page.locator('canvas[aria-label*="mini game"]')).toBeVisible()
 
-  // Reel feed: poster cards that link out to Instagram reels
-  const reelLinks = page.locator('a[href*="instagram.com/reel/"]')
-  await expect(reelLinks).toHaveCount(17)
-  await expect(reelLinks.first()).toHaveAttribute('target', '_blank')
+  // Reel feed: poster cards — single-platform reels link straight out to
+  // Instagram, reels that also exist on TikTok open an in-card platform
+  // picker instead of a direct link.
+  const reelCards = page.locator(
+    'a[href*="instagram.com/reel/"], [aria-label$="choose Instagram or TikTok"]',
+  )
+  await expect(reelCards).toHaveCount(REELS.length)
+
+  const directReelLinks = page.locator('a[href*="instagram.com/reel/"]')
+  await expect(directReelLinks).toHaveCount(
+    REELS.length - dualPlatformReelCount,
+  )
+  await expect(directReelLinks.first()).toHaveAttribute('target', '_blank')
+
+  // A dual-platform reel card doesn't navigate directly — tapping it opens a
+  // card-scoped picker with links to both platforms.
+  const dualCard = page
+    .locator('[aria-label$="choose Instagram or TikTok"]')
+    .first()
+  await dualCard.click()
+  const platformDialog = page.getByRole('dialog', {
+    name: /choose platform/i,
+  })
+  await expect(platformDialog).toBeVisible()
+  await expect(
+    platformDialog.getByRole('button', { name: /instagram/i }),
+  ).toBeVisible()
+  await expect(
+    platformDialog.getByRole('button', { name: /tiktok/i }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(platformDialog).not.toBeVisible()
 
   // The profile link, named exactly "Instagram" — reel cards are also named
   // "Watch on Instagram: …", so a loose /instagram/i match resolves to a reel.
