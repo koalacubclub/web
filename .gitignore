@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# `dist` above is a bare pattern, so it also matches the 3D package's output.
+# Those .glb files are generated but deliberately committed — building them in
+# CI would mean installing Blender on every runner. See 3d/README.md.
+!3d/dist/
+
+# Python bytecode from the Blender asset generators
+__pycache__/
+*.pyc
+
 # Test / coverage artifacts
 coverage
 playwright-report

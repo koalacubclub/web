@@ -1,0 +1,14 @@
+{
+  "name": "@koala/3d",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Koala Cub Club 3D assets — Blender generator scripts and the .glb artifacts they produce.",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "blender --background --python blender/build.py",
+    "check": "blender --background --python blender/build.py && git diff --exit-code -- dist"
+  }
+}
