@@ -13,6 +13,8 @@ import sys
 BLENDER_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BLENDER_DIR)
 
+import lib  # noqa: E402
+
 
 def generators():
     """Every `<group>/<asset>.py` under `blender/`, in a stable order."""
@@ -31,4 +33,5 @@ if __name__ == "__main__":
         raise SystemExit("no generators found under blender/")
     for path in paths:
         runpy.run_path(path, run_name="__main__")
-    print(f"\nbuilt {len(paths)} asset(s)")
+    print(f"\nbuilt {len(paths)} generator(s)")
+    lib.write_manifest()

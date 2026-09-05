@@ -36,8 +36,19 @@ the same trade the site already made when it
 [chose a `<noscript>` mirror over SSR](../docs/decisions.md#1-client-rendered-spa--build-time-noscript-for-crawlers-not-ssr)
 rather than put a headless browser in the build.
 
-`pnpm check` rebuilds and fails on any diff, so a stale `dist/` can't drift
-silently past review.
+**The `.glb` bytes are not reproducible.** Blender's glTF exporter permutes
+vertex and index order between runs, so three builds of an unchanged asset
+produce three different files containing identical geometry. (Verified: the
+glTF JSON chunk is byte-identical and only the index buffer shuffles.
+`PYTHONHASHSEED` does not pin it.) A rebuild therefore dirties every binary in
+`dist/` whether or not anything really changed — if `git status` shows churn and
+`manifest.json` is untouched, nothing changed and you can discard it.
+
+`dist/manifest.json` exists for exactly that reason: triangle count, bounding
+size and node names per asset. All stable across rebuilds, all things a careless
+edit would move, and plain sorted JSON that reviews cleanly. **`pnpm check`
+compares the manifest, not the binaries** — comparing the binaries would fail
+100% of the time.
 
 ## House style — "claymorphic"
 
@@ -78,15 +89,37 @@ Origin-at-base-centre means a mesh drops onto the ground plane with no per-asset
 offset, and the tile-based domain layer (positions, collisions, the wire
 protocol) needs no changes at all to render in 3D.
 
+## Trees keep their 2D variance — don't bake it
+
+The 2D trees get their individuality from
+[`variance.ts`](../client/src/game/trees/variance.ts): a tile-seeded PRNG rolls a
+`jitter()` of width, height, lean and a spare `d`, applied at draw time. **None
+of that is baked into these meshes, and none of it needs porting.**
+
+Each species ships two `.glb` per form, each containing two named nodes —
+`trunk` and `crown`. The renderer applies the same `jitter()` at runtime: scale
+`crown` by `(w, w, h)`, scale `trunk` by `trunkScale(j)`, offset both by `lean`.
+So tile seeding still gives a deterministic tree per tile, and a park of nine
+broadleafs is still nine different broadleafs from two meshes rather than nine
+baked variants.
+
+That is the whole reason trunk and crown are separate nodes. Joining them into
+one mesh would throw the variance system away.
+
 ## Layout
 
 ```
 blender/
-  lib.py              srgb/clay/reset_scene/seat_on_ground/export
+  lib.py              srgb/clay/reset_scene/seat_on_ground/export/write_manifest
   build.py            runs every generator in one Blender process
-  food/fish.py        one script per asset
+  character/koala.py  one script per asset...
+  food/fish.py
+  trees/_common.py    ...except leading-underscore files, which are helpers
+  trees/pine.py          (build.py skips them as generators)
 dist/
-  food/fish.glb       generated, committed
+  character/koala.glb    generated, committed
+  trees/pine_0.glb       species export one .glb per form
+  manifest.json          tris + size + nodes per asset; what `check` compares
 ```
 
 Adding an asset: drop a `<group>/<name>.py` next to the others that defines
@@ -97,12 +130,25 @@ Adding an asset: drop a `<group>/<name>.py` next to the others that defines
 
 | Group       | Done | Total | Notes                                                                                  |
 | ----------- | ---- | ----- | -------------------------------------------------------------------------------------- |
-| Food        | 1    | 8     | fish ✅ — treat, cheese, drumstick, shrimp, tin, sushi, goldfish                       |
-| Trees       | 0    | 5     | broadleaf, crabapple, maple, pine, willow; needs per-tree variance                     |
+| Character   | 1    | 1     | koala ✅ standing only — `lying` / `sleeping` + walk cycle still to do                 |
+| Trees       | 10   | 10    | ✅ all five species × two forms                                                        |
+| Food        | 1    | 8     | fish ✅ — treat, cheese, drumstick, shrimp, tin, sushi, goldfish to go                 |
 | Shop / park | 0    | 11    | flowers, mushroom, stone, ball, snowcat, cardbox, bench, pond, lighttree, house, radio |
-| Character   | 0    | 1     | koala — 3 poses + walk cycle; the hard one                                             |
 | Scene       | 0    | —     | ground, social signs, photo frames, moon/stars                                         |
 
 Nothing consumes these yet — the game still renders in canvas 2D
 ([`docs/game.md`](../docs/game.md)). These are being built ahead of the
 renderer.
+
+### Known rough edges
+
+- **Koala has one pose.** `lying` and `sleeping` and the walk cycle almost
+  certainly want an armature rather than three more static meshes.
+- **Trunk bark reads orange** under neutral light. The hex is the species'
+  own `trunk` tone straight from the 2D palette, so this may simply be what the
+  night wash was hiding; worth re-checking once there's a lighting rig rather
+  than "correcting" a colour that matches its source.
+- **`crabapple_1` spans 3.2 tiles**, the widest of the set against a 2×2
+  footprint. Canopies are meant to overhang, but that one is at the limit.
+- **Willow strands are sparse** — they read as drooping, but closer to a fringe
+  than the filled curtain the 2D describes.

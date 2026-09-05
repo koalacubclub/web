@@ -1,0 +1,179 @@
+[
+  {
+    "asset": "character/koala.glb",
+    "nodes": [
+      "bands",
+      "bib",
+      "body",
+      "ear_0",
+      "ear_1",
+      "ear_inner_0",
+      "ear_inner_1",
+      "eye_0",
+      "eye_1",
+      "glint_0",
+      "glint_1",
+      "nose",
+      "paw_0",
+      "paw_1",
+      "paw_2",
+      "paw_3",
+      "pupil_0",
+      "pupil_1"
+    ],
+    "size_tiles": [
+      0.903,
+      0.318,
+      0.67
+    ],
+    "tris": 5562
+  },
+  {
+    "asset": "food/fish.glb",
+    "nodes": [
+      "fish_body",
+      "fish_dorsal",
+      "fish_eye_0",
+      "fish_eye_1",
+      "fish_pectoral_0",
+      "fish_pectoral_1",
+      "fish_tail"
+    ],
+    "size_tiles": [
+      0.441,
+      0.192,
+      0.254
+    ],
+    "tris": 800
+  },
+  {
+    "asset": "trees/broadleaf_0.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.033,
+      2.096,
+      2.551
+    ],
+    "tris": 1776
+  },
+  {
+    "asset": "trees/broadleaf_1.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.759,
+      2.653,
+      2.03
+    ],
+    "tris": 2112
+  },
+  {
+    "asset": "trees/crabapple_0.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      1.987,
+      1.866,
+      2.305
+    ],
+    "tris": 2900
+  },
+  {
+    "asset": "trees/crabapple_1.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.846,
+      3.2,
+      1.996
+    ],
+    "tris": 3732
+  },
+  {
+    "asset": "trees/maple_0.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.079,
+      2.09,
+      2.628
+    ],
+    "tris": 1944
+  },
+  {
+    "asset": "trees/maple_1.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.366,
+      2.595,
+      2.077
+    ],
+    "tris": 2280
+  },
+  {
+    "asset": "trees/pine_0.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      1.436,
+      1.462,
+      2.405
+    ],
+    "tris": 796
+  },
+  {
+    "asset": "trees/pine_1.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      1.803,
+      1.803,
+      2.207
+    ],
+    "tris": 676
+  },
+  {
+    "asset": "trees/willow_0.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      2.173,
+      2.414,
+      1.8
+    ],
+    "tris": 3792
+  },
+  {
+    "asset": "trees/willow_1.glb",
+    "nodes": [
+      "crown",
+      "trunk"
+    ],
+    "size_tiles": [
+      1.795,
+      1.555,
+      2.101
+    ],
+    "tris": 3376
+  }
+]

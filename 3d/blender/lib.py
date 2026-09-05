@@ -20,6 +20,7 @@ Conventions every asset must hold to:
   * exported +Y up (the glTF convention), materials embedded, modifiers applied
 """
 
+import json
 import os
 
 import bpy
@@ -28,6 +29,10 @@ from mathutils import Vector
 # `lib.py` lives at <package>/blender/, so dist is one level up.
 PACKAGE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DIST_DIR = os.path.join(PACKAGE_ROOT, "dist")
+
+# Every export() appends its measurements here; build.py writes them out as
+# dist/manifest.json. See write_manifest() for why that file exists.
+MANIFEST = []
 
 
 def srgb(hexstr):
@@ -155,10 +160,47 @@ def export(col, relpath, budget=None):
     )
 
     pts = _world_points(col)
+    size = [
+        round(max(p[i] for p in pts) - min(p[i] for p in pts), 3) for i in range(3)
+    ]
+    MANIFEST.append(
+        {
+            "asset": relpath,
+            "tris": tris,
+            "size_tiles": size,
+            "nodes": sorted(o.name for o in col.objects),
+        }
+    )
     print(
         f"{relpath}: {tris} tris, {os.path.getsize(out) / 1024:.1f} KB, "
-        f"{max(p[0] for p in pts) - min(p[0] for p in pts):.2f} x "
-        f"{max(p[1] for p in pts) - min(p[1] for p in pts):.2f} x "
-        f"{max(p[2] for p in pts) - min(p[2] for p in pts):.2f} tiles"
+        f"{size[0]:.2f} x {size[1]:.2f} x {size[2]:.2f} tiles"
     )
+    return out
+
+
+def write_manifest():
+    """Write dist/manifest.json — the reviewable record of what dist contains.
+
+    The .glb bytes are NOT reproducible: Blender's glTF exporter shuffles vertex
+    and index order between runs, so three builds of an unchanged asset give
+    three different files with identical geometry (verified — the JSON chunk is
+    byte-identical and only the index buffer permutes; PYTHONHASHSEED does not
+    pin it). So `git diff` over the binaries can't answer "did anything actually
+    change?".
+
+    This manifest can. It records triangle count, bounding size and node names
+    per asset — all stable across rebuilds, all things a careless edit would
+    move — as sorted JSON that diffs cleanly in review. `pnpm check` compares
+    THIS, not the binaries.
+
+    Only build.py calls this, since only a full build knows the complete set.
+    """
+    out = os.path.join(DIST_DIR, "manifest.json")
+    os.makedirs(DIST_DIR, exist_ok=True)
+    payload = sorted(MANIFEST, key=lambda e: e["asset"])
+    with open(out, "w") as fh:
+        json.dump(payload, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    total = sum(e["tris"] for e in payload)
+    print(f"\nmanifest: {len(payload)} assets, {total} tris total")
     return out

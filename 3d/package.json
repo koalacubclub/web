@@ -9,6 +9,6 @@
   ],
   "scripts": {
     "build": "blender --background --python blender/build.py",
-    "check": "blender --background --python blender/build.py && git diff --exit-code -- dist"
+    "check": "blender --background --python blender/build.py && git diff --exit-code -- dist/manifest.json"
   }
 }
