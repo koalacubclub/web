@@ -21,6 +21,8 @@ export interface Reel {
 }
 
 export const REELS: Reel[] = [
+  { code: 'Dc9qiNDxTOV', caption: 'Park day' },
+  { code: 'Dco9fb7R4cj', caption: 'Throwback: first hallway walks' },
   { code: 'DcW76bThzoT', caption: 'There was an attempt to walk Koala' },
   { code: 'DbO1l4bB8Mm', caption: 'Vaccine and flea prevention day' },
   { code: 'Da80D7RhEi8', caption: 'Happy birthday, Koala!' },
@@ -28,10 +30,26 @@ export const REELS: Reel[] = [
   { code: 'DaYw6x9RuMz', caption: 'Second day touching grass' },
   { code: 'DaGvXqFRQmV', caption: 'Brushing Koala’s teeth' },
   { code: 'DZ0zua6RSu7', caption: 'First time touching grass' },
-  { code: 'DZisOcxxiGj', caption: 'Would your cat love this?' },
-  { code: 'DZQqudUxfag', caption: 'TV time for Koala' },
-  { code: 'DY-pGuuxxZi', caption: 'Opinions on her walk' },
-  { code: 'DYsvinMRbTs', caption: 'Doorman approves' },
+  {
+    code: 'DZisOcxxiGj',
+    caption: 'Would your cat love this?',
+    tiktok: '7674659148910447885',
+  },
+  {
+    code: 'DZQqudUxfag',
+    caption: 'TV time for Koala',
+    tiktok: '7674658759095897358',
+  },
+  {
+    code: 'DY-pGuuxxZi',
+    caption: 'Opinions on her walk',
+    tiktok: '7674657958365646093',
+  },
+  {
+    code: 'DYsvinMRbTs',
+    caption: 'Doorman approves',
+    tiktok: '7674657684200754446',
+  },
   {
     code: 'DYNuk02xQqY',
     caption: 'Outdoor training, day 3',
