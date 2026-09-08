@@ -62,4 +62,24 @@ export const REELS: Reel[] = [
     caption: 'Nail trim, no problem',
     tiktok: '7656245559979740429',
   },
+  {
+    code: 'DWbvJ8kkQGk',
+    caption: 'Annual shower time',
+    tiktok: '7656245133796478222',
+  },
+  {
+    code: 'DWJjax_jSI4',
+    caption: 'Making a biscuit',
+    tiktok: '7656243398596234510',
+  },
+  {
+    code: 'DV2DjSdjc1K',
+    caption: 'Laser flashlight time',
+    tiktok: '7656242523505020173',
+  },
+  {
+    code: 'DVW4r3hFYVu',
+    caption: 'Hallway walk practice',
+    tiktok: '7656241170187635981',
+  },
 ]
