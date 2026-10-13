@@ -1,6 +1,7 @@
 import { env, reset, runInDurableObject, SELF } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  CAST_SIZE,
   DEFAULT_BALLS,
   MAX_BALL_SPEED,
   MAX_INBOUND_MSGS_PER_SEC,
@@ -10,6 +11,7 @@ import {
   WORLD,
 } from '@koala/shared'
 import type { GameWorld } from '../src/GameWorld'
+import { Casting } from '../src/cast'
 
 const ORIGIN = 'http://localhost:5173'
 
@@ -35,6 +37,37 @@ async function setMoveSpeed(v: number): Promise<void> {
   })
 }
 
+/**
+ * Re-seat the DO's cast bookkeeping with a smaller CAST_SIZE, so "the park is
+ * bigger than one client is shown" is three connections rather than fifty-one.
+ * Same in-place trick as setMoveSpeed above; also clears every existing cast,
+ * so tests must call it BEFORE they connect.
+ */
+async function setCastLimit(limit: number): Promise<void> {
+  const stub = env.GAME_WORLD.get(
+    env.GAME_WORLD.idFromName(ROOM),
+  ) as DurableObjectStub<GameWorld>
+  await runInDurableObject(stub, (instance) => {
+    ;(instance as unknown as { casting: Casting }).casting = new Casting(
+      Math.random,
+      limit,
+    )
+  })
+}
+
+/** Top up a session's wallet directly — the shop tests that go through real
+ *  food collection pay ~4s per treat, and these tests are about visibility. */
+async function grantLikes(id: string, amount: number): Promise<void> {
+  const stub = env.GAME_WORLD.get(
+    env.GAME_WORLD.idFromName(ROOM),
+  ) as DurableObjectStub<GameWorld>
+  await runInDurableObject(stub, (instance) => {
+    ;(
+      instance as unknown as { addLikes(id: string, delta: number): number }
+    ).addLikes(id, amount)
+  })
+}
+
 // vitest-pool-workers isolates storage per TEST FILE, not per test, so every
 // test must explicitly roll Durable Object / KV / D1 storage back to its
 // seeded state itself. Must run before the uncapped-speed beforeEach below.
@@ -43,6 +76,11 @@ beforeEach(() => reset())
 // Default every test to the uncapped speed; the anti-teleport describe overrides
 // back to REAL_SPEED in a nested beforeEach (which runs after this one).
 beforeEach(() => setMoveSpeed(UNCAPPED_SPEED))
+
+// Casts are in-memory and the DO instance is shared across this file, so give
+// every test the real CAST_SIZE back (and a clean slate of casts); the cast
+// describe below shrinks it per test.
+beforeEach(() => setCastLimit(CAST_SIZE))
 
 // Track sockets so we always tidy up between tests.
 const open: WebSocket[] = []
@@ -1090,5 +1128,173 @@ describe('GameWorld movement speed (anti-teleport)', () => {
     const relayed = lastStateOf(msgsA, b.id)
     expect(relayed).toBeTruthy()
     expect(relayed.s.x).toBeCloseTo(8, 5)
+  })
+})
+
+// ---- the cast: what one client is shown of a park that can hold thousands ----
+
+describe('GameWorld cast', () => {
+  it('shows a newcomer a sample of the park, and tells it the real head count', async () => {
+    await setCastLimit(1)
+    const a = await session()
+    await connect(a.cookie)
+    const b = await session()
+    await connect(b.cookie)
+    const c = await session()
+    const { msgs } = await connect(c.cookie)
+    await wait(60)
+
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w.players).toHaveLength(1) // one of the two, sampled
+    expect([a.id, b.id]).toContain(w.players[0].id)
+    // ...but the park is not pretending to be that small.
+    expect(w.population).toBe(3)
+  })
+
+  it('relays a koala only to the viewers showing them', async () => {
+    await setCastLimit(1)
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    await connect(b.cookie) // takes A's only slot
+    const c = await session()
+    const { ws: wsC } = await connect(c.cookie) // no room left in A's cast
+    await wait(60)
+
+    expect(msgsA.some((m) => m.t === 'join' && m.p.id === b.id)).toBe(true)
+    expect(msgsA.some((m) => m.t === 'join' && m.p.id === c.id)).toBe(false)
+
+    sendState(wsC, 5, 5)
+    await wait(60)
+    // C's movement costs A nothing — it is never sent to it.
+    expect(msgsA.some((m) => m.t === 'state' && m.id === c.id)).toBe(false)
+  })
+
+  it('keeps a member who logs off: their items stay, their slot is not backfilled, and they can come back', async () => {
+    await setCastLimit(1)
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(60)
+    expect(msgsA.some((m) => m.t === 'join' && m.p.id === b.id)).toBe(true)
+
+    await grantLikes(b.id, 100)
+    wsB.send(JSON.stringify({ t: 'buy', key: 'flowers-daisy', x: 7, y: 4 }))
+    await wait(120)
+    const placed = msgsA.find((m) => m.t === 'placed')
+    expect(placed?.item.ownerId).toBe(b.id)
+
+    wsB.close()
+    await wait(80)
+    // The koala goes...
+    expect(msgsA.some((m) => m.t === 'leave' && m.id === b.id)).toBe(true)
+    // ...the flowers they planted stay standing.
+    expect(msgsA.some((m) => m.t === 'unplaced')).toBe(false)
+
+    // No backfill: the slot is B's, so a newcomer doesn't inherit it.
+    const c = await session()
+    await connect(c.cookie)
+    await wait(80)
+    expect(msgsA.some((m) => m.t === 'join' && m.p.id === c.id)).toBe(false)
+
+    // B comes back and walks straight into the park A is shown.
+    await connect(b.cookie)
+    await wait(80)
+    expect(msgsA.filter((m) => m.t === 'join' && m.p.id === b.id)).toHaveLength(
+      2,
+    )
+  })
+
+  it('furnishes a quiet park from the owners of the items already in it', async () => {
+    await setCastLimit(1)
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    await grantLikes(a.id, 100)
+    wsA.send(JSON.stringify({ t: 'buy', key: 'flowers-poppy', x: 9, y: 5 }))
+    await wait(120)
+    wsA.close()
+    await wait(60)
+
+    // Nobody is online now, so B's cast is topped up from the item owners —
+    // which is what keeps a near-empty park looking like a park.
+    const b = await session()
+    const { msgs } = await connect(b.cookie)
+    await wait(60)
+    const w = msgs.find((m) => m.t === 'welcome')
+    expect(w.players).toHaveLength(0) // A is offline: a slot, not a koala
+    expect(w.placed.some((p: any) => p.ownerId === a.id)).toBe(true)
+    expect(w.authors[a.id]).toBe(a.name)
+    // ...and A is listed as a sleeper, so the park draws them napping by the
+    // poppies they planted rather than leaving a gap where a koala would be.
+    expect(w.sleepers).toEqual([{ id: a.id, name: a.name }])
+  })
+
+  it('tells the park when the head count drops, not just when it rises', async () => {
+    const a = await session()
+    const { msgs: msgsA } = await connect(a.cookie)
+    const b = await session()
+    const { ws: wsB } = await connect(b.cookie)
+    await wait(60)
+    expect([...msgsA].reverse().find((m) => m.t === 'stats')?.population).toBe(
+      2,
+    )
+
+    wsB.close()
+    await wait(80)
+    expect([...msgsA].reverse().find((m) => m.t === 'stats')?.population).toBe(
+      1,
+    )
+  })
+
+  it('lists an away item owner as a sleeper, and as a koala once they are back', async () => {
+    await setCastLimit(3)
+    const a = await session()
+    const { ws: wsA } = await connect(a.cookie)
+    await grantLikes(a.id, 100)
+    wsA.send(JSON.stringify({ t: 'buy', key: 'flowers-tulip', x: 12, y: 4 }))
+    await wait(120)
+    wsA.close()
+    await wait(60)
+
+    // While A is away it is a sleeper: its tulips are standing in the park, so
+    // the park shows A napping by them rather than an unexplained flowerbed.
+    const b = await session()
+    const { msgs: msgsB } = await connect(b.cookie)
+    await wait(60)
+    const away = msgsB.find((m) => m.t === 'welcome')
+    expect(away.players).toEqual([])
+    expect(away.sleepers).toEqual([{ id: a.id, name: a.name }])
+
+    // Back on its feet, A is sampled as a live koala instead.
+    await connect(a.cookie)
+    await wait(80)
+    const c = await session()
+    const { msgs: msgsC } = await connect(c.cookie)
+    await wait(60)
+    const back = msgsC.find((m) => m.t === 'welcome')
+    expect(back.sleepers).toEqual([])
+    expect(back.players.map((p: any) => p.id).sort()).toEqual(
+      [a.id, b.id].sort(),
+    )
+  })
+
+  it('always shows a viewer its own items and the park fixtures', async () => {
+    await setCastLimit(0) // shown nobody at all
+    const a = await session()
+    const { ws, msgs } = await connect(a.cookie)
+    await grantLikes(a.id, 100)
+    ws.send(JSON.stringify({ t: 'buy', key: 'stone', x: 11, y: 5 }))
+    await wait(120)
+
+    const w = msgs.find((m) => m.t === 'welcome')
+    // The seeded balls belong to nobody and are always part of the park.
+    for (const ball of DEFAULT_BALLS) {
+      expect(w.placed.some((p: any) => p.id === ball.id)).toBe(true)
+    }
+    // And you always see what you placed yourself.
+    expect(msgs.some((m) => m.t === 'placed' && m.item.ownerId === a.id)).toBe(
+      true,
+    )
   })
 })

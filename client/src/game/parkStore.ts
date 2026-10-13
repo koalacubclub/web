@@ -46,7 +46,10 @@ export interface ParkSnapshot {
   best: number
   placed: PlacedItem[]
   name: string // this player's display name (server-fed in MP; '' in solo)
-  online: OnlinePlayer[] // live roster (self + remotes); empty in solo/disconnected
+  online: OnlinePlayer[] // the cast we're shown (self + remotes); empty in solo
+  // Everyone in the park, which `online` is a capped sample of (see CAST_SIZE).
+  // 0 in solo/disconnected; equals online.length until the park outgrows a cast.
+  population: number
   stats: WorldStats | null // durable world stats; null in solo/until welcome
 }
 
@@ -132,6 +135,7 @@ const sync = {
       placed: parsePlaced(lsGet(PLACED_KEY)),
       name: '', // names are server-owned; solo has none
       online: [], // presence + stats are multiplayer-only
+      population: 0,
       stats: null,
     }
   },
@@ -154,7 +158,8 @@ let groundRows = GROUND_ROWS
 let obstacles: Rect[] = [] // static base-object footprints (set once by the game)
 
 let selfName = '' // this player's display name (server-fed in MP)
-let online: OnlinePlayer[] = [] // live roster (server-fed in MP)
+let online: OnlinePlayer[] = [] // the cast we're shown (server-fed in MP)
+let population = 0 // the park's true head count (server-fed in MP)
 let stats: WorldStats | null = null // durable world stats (server-fed in MP)
 let snapshot: ParkSnapshot = {
   coins,
@@ -162,6 +167,7 @@ let snapshot: ParkSnapshot = {
   placed,
   name: selfName,
   online,
+  population,
   stats,
 }
 const listeners = new Set<() => void>()
@@ -175,7 +181,15 @@ let serverBuyer: ((key: string, x: number, y: number) => void) | null = null
 let serverRenamer: ((name: string) => void) | null = null
 
 function rebuildSnapshot() {
-  snapshot = { coins, best, placed, name: selfName, online, stats }
+  snapshot = {
+    coins,
+    best,
+    placed,
+    name: selfName,
+    online,
+    population,
+    stats,
+  }
 }
 function emit() {
   for (const cb of listeners) cb()
@@ -264,6 +278,7 @@ export function setServerBuyer(
     placed = []
     selfName = ''
     online = []
+    population = 0
     stats = null
     rebuildSnapshot()
     emit()
@@ -303,8 +318,9 @@ export function applyServerName(name: string) {
 }
 
 /** Mirror the server's live roster (self + remotes). */
-export function applyServerPresence(roster: OnlinePlayer[]) {
+export function applyServerPresence(roster: OnlinePlayer[], headCount = 0) {
   online = roster
+  population = Math.max(headCount, roster.length)
   rebuildSnapshot()
   emit()
 }
@@ -454,6 +470,7 @@ export function __resetForTests() {
   serverRenamer = null
   selfName = ''
   online = []
+  population = 0
   stats = null
   rebuildSnapshot()
 }

@@ -317,7 +317,13 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                     <div className="mt-4 mb-1 flex items-baseline justify-between">
                       <span className="text-xs text-white/50">Online now</span>
                       <span className="text-xs tabular-nums text-white/40">
-                        {snap.online.length}
+                        {/* The park can hold far more koalas than any one
+                            visitor is shown — the roster below is a random
+                            sample of it (see CAST_SIZE), so say so rather than
+                            reporting the sample as the whole park. */}
+                        {snap.population > snap.online.length
+                          ? `${snap.online.length} of ${snap.population}`
+                          : snap.online.length}
                       </span>
                     </div>
                     {snap.online.length ? (
@@ -358,7 +364,10 @@ export default function BottomBar({ atTop }: { atTop: boolean }) {
                         label="Total sessions"
                         value={snap.stats?.totalSessions}
                       />
-                      <Stat label="Online" value={snap.online.length} />
+                      <Stat
+                        label="Online"
+                        value={snap.population || snap.online.length}
+                      />
                     </dl>
                   </>
                 )}
